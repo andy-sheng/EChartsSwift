@@ -51,7 +51,7 @@ import ZRenderKit
 // is the `[String: Any]` bag; these types are kept as documentation only — no Swift types are emitted.
 // ============================================================================
 
-// PORT-NOTE: TreeNode `depth`/`dataIndex` are `number` upstream; the sibling data/Tree.swift tracks
+// TreeNode `depth`/`dataIndex` are `number` upstream; the sibling data/Tree.swift tracks
 //   `depth: Double` and `dataIndex: Int`. Float-math uses of `depth` stay `Double`; array-index uses
 //   wrap in `Int(...)` (language difference, semantically equivalent).
 
@@ -75,7 +75,7 @@ open class TreeSeriesModel: SeriesModel {
     //   Inherited from SeriesModel (`open var coordinateSystem: Any?`); upstream types it `View`.
 
     // layoutInfo: LayoutRect;
-    //   A field slot populated by the tree layout stage (treeLayout). PORT-NOTE: LayoutRect == BoundingRect (typealias).
+    //   A field slot populated by the tree layout stage (treeLayout). note: LayoutRect == BoundingRect (typealias).
     open var layoutInfo: LayoutRect?
 
     // hasSymbolVisual = true;
@@ -127,7 +127,7 @@ open class TreeSeriesModel: SeriesModel {
         //         return model;
         //     });
         // }
-        // PORT-NOTE: Swift cannot rebind a method by string name the way upstream's `wrapMethod` does, so
+        // Swift cannot rebind a method by string name the way upstream's `wrapMethod` does, so
         //   `wrapMethod('getItemModel', fn)` stores `fn` in SeriesData's dedicated `_getItemModelInjections`
         //   list (see data/SeriesData.swift) and `getItemModel(idx)` threads its result through each stored
         //   injection. This closure IS therefore invoked on every `getItemModel` call, so the leaves-model
@@ -166,7 +166,7 @@ open class TreeSeriesModel: SeriesModel {
         // const expandTreeDepth = (expandAndCollapse && option.initialTreeDepth >= 0)
         //     ? option.initialTreeDepth : treeDepth;
         //   JS `option.initialTreeDepth >= 0` is false when it is undefined (`undefined >= 0` -> false).
-        //   PORT-NOTE: option dictionaries box integer literals as `Int`, so a bare `as? Double` read
+        //   option dictionaries box integer literals as `Int`, so a bare `as? Double` read
         //   would silently drop a user option of `initialTreeDepth: 2`; coerce Int/Double/NSNumber alike.
         let initialTreeDepth = asNumberOpt(opt?["initialTreeDepth"])
         let expandTreeDepth: Double
@@ -258,7 +258,7 @@ open class TreeSeriesModel: SeriesModel {
         var params = super.getDataParams(dataIndex, dataType)
 
         // const node = this.getData().tree.getNodeByDataIndex(dataIndex);
-        // PORT-NOTE: upstream types `tree`/`getNodeByDataIndex` optimistically; both are Optional here.
+        // upstream types `tree`/`getNodeByDataIndex` optimistically; both are Optional here.
         //   Deliberate divergence from the sunburst/treemap siblings (which mirror upstream's
         //   `wrapTreePathInfo(undefined, ...)` -> `[]`): upstream dereferences `node.isExpand` right
         //   after, so a missing node would throw and there is no upstream-defined value to mirror.
@@ -278,7 +278,7 @@ open class TreeSeriesModel: SeriesModel {
     }
 
     // __ownRoamView() { return this.coordinateSystem; }
-    //   Part of the `RoamHostModel` interface. PORT-NOTE (deferred): requires the View coord-sys + roam
+    //   Part of the `RoamHostModel` interface. TODO: requires the View coord-sys + roam
     //   (RoamController) modules; the `coordinateSystem` slot is `Any?`.
     open func __ownRoamView() -> Any? {
         return self.coordinateSystem
@@ -316,7 +316,7 @@ open class TreeSeriesModel: SeriesModel {
             "nodeScaleRatio": 0.4,
 
             // Default on center of graph
-            // PORT-NOTE: upstream value is `null`; NSNull() retains the key in the [String: Any] bag
+            // upstream value is `null`; NSNull() retains the key in the [String: Any] bag
             //   (the codebase convention for a null-valued default option — consumers treat NSNull as null).
             "center": NSNull(),
 

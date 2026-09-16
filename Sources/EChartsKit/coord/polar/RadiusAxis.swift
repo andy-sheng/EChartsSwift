@@ -26,7 +26,7 @@ import ZRenderKit
 //   import Scale from '../../scale/Scale';                             -> Scale (scale/Scale.swift).
 //   import Polar from './Polar';                                       -> Polar (sibling, this phase).
 //   import { RadiusAxisModel } from './AxisModel';                     -> RadiusAxisModel.
-//       PORT-NOTE: `RadiusAxisModel` is landed (coord/polar/PolarAxisModel.swift). The
+//       `RadiusAxisModel` is landed (coord/polar/PolarAxisModel.swift). The
 //       inherited `Axis.model: AxisBaseModel!` already provides the model slot (Swift can not narrow
 //       the generic option bag; options are read identically) — no re-declaration needed.
 

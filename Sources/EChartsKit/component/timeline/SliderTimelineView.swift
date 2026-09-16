@@ -41,7 +41,7 @@ import ZRenderKit
 //       (util/modelUtil.swift — WeakMap-backed, object-identity keyed; same call shape).
 //   Only the tooltip-CONTENT imports (getECData, createTooltipMarkup) remain DEFERRED — hover
 //     emphasis, click, pointer drag and the play/stop timer ARE ported (see `_renderAxisTick`,
-//     `_renderCurrentPointer`, `_doPlayStop`). (// PORT-TODO markers at the call sites.)
+//     `_renderCurrentPointer`, `_doPlayStop`). (// TODO markers at the call sites.)
 
 // upstream: class TimelineView extends ComponentView { static type = 'timeline'; }
 //   The thin base — SliderTimelineView extends it. (CONVENTIONS §2: `open class`.)
@@ -139,7 +139,7 @@ public final class SliderTimelineView: TimelineView {
             let axis = self._createAxis(layoutInfo, timelineModel)
             self._axis = axis
 
-            // PORT-TODO: deferred — timelineModel.formatTooltip = ... (tooltip CONTENT:
+            // TODO: deferred — timelineModel.formatTooltip = ... (tooltip CONTENT:
             //   createTooltipMarkup not ported).
 
             // each(['AxisLine', 'AxisTick', 'Control', 'CurrentPointer'], name => this['_render'+name](...));
@@ -501,7 +501,7 @@ public final class SliderTimelineView: TimelineView {
             // enableHoverEmphasis(el);
             states.enableHoverEmphasis(el)
 
-            // PORT-TODO: deferred — tooltip ecData (getECData(el).dataIndex/dataModel), tooltip CONTENT.
+            // TODO: deferred — tooltip ecData (getECData(el).dataIndex/dataModel), tooltip CONTENT.
 
             self._tickSymbols.append(el)
         }

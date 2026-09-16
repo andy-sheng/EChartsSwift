@@ -35,9 +35,9 @@ import ZRenderKit
 // import { AxisBaseModel } from '../AxisBaseModel';                   -> AxisBaseModel (coord/AxisBaseModel.swift — open class : ComponentModel, AxisModelCommonMixin)
 // import type Radar from './Radar';                                  -> Radar (coord/radar/Radar.swift — NOT yet ported; the coord-sys master. Typed via `CoordinateSystemMaster?` below.)
 // import {CoordinateSystemHostModel} from '../../coord/CoordinateSystem'; -> CoordinateSystemHostModel (coord/CoordinateSystem.swift)
-// import tokens from '../../visual/tokens';                           -> PORT-NOTE: `tokens.color.*` values are inlined verbatim here as resolved constants (visual/tokens.swift is ported).
+// import tokens from '../../visual/tokens';                           -> note: `tokens.color.*` values are inlined verbatim here as resolved constants (visual/tokens.swift is ported).
 //                                                                        tokens.color.neutral20 = '#cfd2d7'; tokens.color.axisLabel = '#54555a' (= color.neutral70)
-// import { getUID } from '../../util/component';                      -> component.getUID (util/componentUtil.swift); see the `model.uid` PORT-NOTE below.
+// import { getUID } from '../../util/component';                      -> component.getUID (util/componentUtil.swift); see the `model.uid` note below.
 
 // upstream: const valueAxisDefault = axisDefault.value;
 private let valueAxisDefault: [String: Any] = (axisDefault.option["value"] as? [String: Any]) ?? [:]
@@ -68,7 +68,7 @@ private func defaultsShow(_ opt: [String: Any], _ show: Bool) -> [String: Any] {
 //     color?: ColorString
 //     axisType?: 'value' | 'log'
 // }
-//   PORT-NOTE: option interface describes the dynamic per-indicator option shape; modeled as the
+//   option interface describes the dynamic per-indicator option shape; modeled as the
 //   dynamic option bag ([String: Any]), keyed access via util.* / Model.get (CONVENTIONS §2).
 
 // upstream:
@@ -91,7 +91,7 @@ private func defaultsShow(_ opt: [String: Any], _ show: Bool) -> [String: Any] {
 //     boundaryGap?: CategoryAxisBaseOption['boundaryGap'] | ValueAxisBaseOption['boundaryGap']
 //     indicator?: RadarIndicatorOption[]
 // }
-//   PORT-NOTE: `RadarOption` describes the dynamic option shape; modeled as the dynamic option bag
+//   `RadarOption` describes the dynamic option shape; modeled as the dynamic option bag
 //   ([String: Any]) per CONVENTIONS §2 — no standalone Swift struct emitted.
 
 // upstream: export type InnerIndicatorAxisOption = AxisBaseOption & { showName?: boolean };
@@ -111,7 +111,7 @@ public final class RadarModel: ComponentModel, CoordinateSystemHostModel {
     public override class var type: ComponentFullType { return COMPONENT_TYPE_RADAR }
 
     // coordinateSystem: Radar;
-    //   PORT-NOTE: upstream types this the concrete `Radar` (a `CoordinateSystemMaster`), injected and
+    //   upstream types this the concrete `Radar` (a `CoordinateSystemMaster`), injected and
     //   non-null once the coordinate system is built. `Radar` (coord/radar/Radar.swift) is ported;
     //   typed here as the `CoordinateSystemMaster?` required by `CoordinateSystemHostModel` (narrow via
     //   `as? Radar` at use).
@@ -123,7 +123,7 @@ public final class RadarModel: ComponentModel, CoordinateSystemHostModel {
     private var _indicatorModels: [AxisBaseModel]!
 
     // optionUpdated() { ... }
-    //   PORT-NOTE: upstream overrides `optionUpdated()` with NO params, but `ComponentModel.optionUpdated`
+    //   upstream overrides `optionUpdated()` with NO params, but `ComponentModel.optionUpdated`
     //   is `(newCptOption, isInit)`. Swift overrides must match the signature, so the two params are
     //   accepted and ignored (as upstream does implicitly).
     public override func optionUpdated(_ newCptOption: ModelOption?, _ isInit: Bool) {
@@ -230,7 +230,7 @@ public final class RadarModel: ComponentModel, CoordinateSystemHostModel {
             // const model = new Model(innerIndicatorOpt, null, this.ecModel) as AxisBaseModel<...>;
             // zrUtil.mixin(model, AxisModelCommonMixin.prototype);
             //   FIXME: construct an AxisBaseModel directly, rather than mixin.
-            //   PORT-NOTE: embracing that upstream FIXME — the Swift port has a real `AxisBaseModel`
+            //   embracing that upstream FIXME — the Swift port has a real `AxisBaseModel`
             //   (an `open class : ComponentModel, AxisModelCommonMixin`), so it is constructed directly.
             //   Its `ComponentModel.init` stores `option = innerIndicatorOpt` WITHOUT default-merge (mirrors
             //   `new Model(...)`), and the `AxisModelCommonMixin` methods (needIncludeZero / getCoordSysModel)
@@ -242,7 +242,7 @@ public final class RadarModel: ComponentModel, CoordinateSystemHostModel {
             // model.componentIndex = this.componentIndex;
             model.componentIndex = self.componentIndex
             // model.uid = getUID('ec_radar');
-            //   PORT-NOTE: `ComponentModel.uid` is a `let` assigned in its init (prefix "ec_cpt_model");
+            //   `ComponentModel.uid` is a `let` assigned in its init (prefix "ec_cpt_model");
             //   it can not be re-assigned to `getUID('ec_radar')` here. The uid still uniquely identifies
             //   the model (different prefix only). Reconcile if the "ec_radar" prefix is load-bearing.
             _ = COMPONENT_TYPE_RADAR   // (silences unused-import style lints; keeps constant referenced)
@@ -321,7 +321,7 @@ public final class RadarModel: ComponentModel, CoordinateSystemHostModel {
 }
 
 // JS truthiness for a dynamic option value (used where upstream relies on `!x` / `if (x)`).
-// PORT-NOTE: falsy = nil / NSNull / false / 0 / "" / NaN (CONVENTIONS §6). Mirrors Grid.swift's helper.
+// falsy = nil / NSNull / false / 0 / "" / NaN (CONVENTIONS §6). Mirrors Grid.swift's helper.
 private func isTruthy(_ value: Any?) -> Bool {
     switch value {
     case nil: return false

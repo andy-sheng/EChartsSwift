@@ -15,7 +15,7 @@
 //   - `base` is the epoch-millis of LOCAL midnight 1988-10-03, exactly as `+new Date(1988, 9, 3)` yields;
 //     it is resolved once in Swift so both panes read the same timestamps.
 //   - `title.text` keeps upstream's 'Large Ara Chart' typo verbatim.
-//   - `tooltip.position` is a JS closure and is dropped from the native option (see PORT-NOTE); it only
+//   - `tooltip.position` is a JS closure and is dropped from the native option (see note); it only
 //     affects the hover tooltip, which a static snapshot never shows. The reference pane keeps it.
 //   - the rest of the option is verbatim.
 import Foundation
@@ -122,7 +122,7 @@ option = {
         option: [
             "tooltip": [
                 "trigger": "axis"
-                // PORT-NOTE: tooltip.position omitted — JS closure `function (pt) { return [pt[0], '10%']; }`,
+                // tooltip.position omitted — JS closure `function (pt) { return [pt[0], '10%']; }`,
                 // which pins the tooltip box to the cursor's x and 10% of the grid height.
             ] as [String: Any],
             "title": [

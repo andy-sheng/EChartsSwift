@@ -8,7 +8,7 @@ import Foundation
 //   const THROTTLE_TYPE = '\0__throttleType';
 //   In JS these are stamped onto the throttled Function object so `createOrUpdate` can read the
 //   previous rate/type and the original method back off it. Swift functions carry no such slots, so
-//   `ThrottledFunction` (below) holds them as stored properties — see the createOrUpdate PORT-NOTE.
+//   `ThrottledFunction` (below) holds them as stored properties — see the createOrUpdate note.
 
 // upstream: export type ThrottleType = 'fixRate' | 'debounce';
 public enum ThrottleType: Equatable {
@@ -101,7 +101,7 @@ public final class ThrottledFunction {
     }
 
     // upstream: timer = setTimeout(exec, ms);
-    //   PORT-NOTE: browser `setTimeout` → main-queue `asyncAfter` (the browser timer fires on the main
+    //   browser `setTimeout` → main-queue `asyncAfter` (the browser timer fires on the main
     //   thread). The FIRST fixRate call always runs synchronously (lastExec starts at 0, so
     //   diff >> 0 → exec()); only rapid subsequent calls are deferred to the queue.
     private func scheduleExec(afterMs ms: Double) {
@@ -158,7 +158,7 @@ public enum throttleUtil {
     ///   the caller should store back into its slot (BaseAxisPointer keeps it in `_doDispatchThrottled`).
     ///   Returning `nil` mirrors upstream returning the raw `originFn` (unthrottled) — the caller then
     ///   calls `origin` directly.
-    // PORT-NOTE: closure-slot adaptation of the reflective `obj[fnAttr]` swap (see above).
+    // closure-slot adaptation of the reflective `obj[fnAttr]` swap (see above).
     public static func createOrUpdate(
         existing: ThrottledFunction?,
         origin: @escaping () -> Void,
@@ -194,7 +194,7 @@ public enum throttleUtil {
     /// upstream: `export function clear(obj, fnAttr)` — if `obj[fnAttr]` is a throttled wrapper, calls
     ///   its `.clear()` and restores the origin method onto `obj[fnAttr]`. Here the caller passes its
     ///   current wrapper; we clear its pending timer and return `nil` for the caller to store back.
-    // PORT-NOTE: closure-slot adaptation of the reflective `obj[fnAttr]` restore.
+    // closure-slot adaptation of the reflective `obj[fnAttr]` restore.
     @discardableResult
     public static func clear(_ existing: ThrottledFunction?) -> ThrottledFunction? {
         existing?.clear()

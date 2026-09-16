@@ -48,7 +48,7 @@ import ZRenderKit
  * Caveat: If a prop in the `query` object is `null/undefined`, it is the
  * same as there is no such prop in the `query` object.
  */
-// PORT-NOTE (CONVENTIONS §2): ZRenderKit's `EventProcessor` is a STRUCT of three optional closures (the
+// note (CONVENTIONS §2): ZRenderKit's `EventProcessor` is a STRUCT of three optional closures (the
 //   upstream TS interface has three optional methods). `ECEventProcessor` is a `final class` because
 //   `eventInfo` is mutable state written by `ECharts._initEvents` before each `trigger` and cleared by
 //   `afterTrigger`. `asEventProcessor()` adapts it into the closure struct `Eventful` stores.
@@ -57,9 +57,9 @@ public final class ECEventProcessor {
     // These info required: targetEl, packedEvent, model, view
     public struct EventInfo {
         public var targetEl: Element?
-        public var packedEvent: ECEventParams        // PORT-NOTE: `ECActionEvent | ECElementEvent` union → protocol
+        public var packedEvent: ECEventParams        // `ECActionEvent | ECElementEvent` union → protocol
         public var model: ComponentModel?
-        public var view: AnyObject?                  // PORT-NOTE: `ComponentView | ChartView` union → AnyObject
+        public var view: AnyObject?                  // `ComponentView | ChartView` union → AnyObject
         public init(targetEl: Element?, packedEvent: ECEventParams, model: ComponentModel?, view: AnyObject?) {
             self.targetEl = targetEl
             self.packedEvent = packedEvent
@@ -144,7 +144,7 @@ public final class ECEventProcessor {
         let cptQuery = query.cptQuery
         let dataQuery = query.dataQuery
 
-        // PORT-NOTE: upstream's local `check(query, host, prop, propOnHost)` does a DYNAMIC property read
+        // upstream's local `check(query, host, prop, propOnHost)` does a DYNAMIC property read
         //   (`host[propOnHost || prop]`) on the model / packed event. Swift has no dynamic member lookup,
         //   so the two hosts are read through explicit accessors (`modelProp` / `packedProp`) that resolve
         //   exactly the props upstream queries. `jsLooseEquals` reproduces `host[prop] === query[prop]`

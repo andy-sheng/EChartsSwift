@@ -241,7 +241,7 @@ option = {
                         //   else if (depth === 4) { return '0'; }
                         //   return '';
                         // }
-                        // PORT-NOTE: `params.treePathInfo` is now populated by
+                        // `params.treePathInfo` is now populated by
                         //   `SunburstSeriesModel.getDataParams` (chart/sunburst/SunburstSeries.swift), which
                         //   calls `treeHelper.wrapTreePathInfo`. A `(CallbackDataParams) -> String` closure in
                         //   this dict is honoured verbatim: `DataFormatMixin.getFormattedLabel` casts to

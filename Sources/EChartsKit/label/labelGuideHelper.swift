@@ -150,7 +150,7 @@ public enum labelGuideHelper {
         let x2 = r * cos(endAngle) + cx
         let y2 = r * sin(endAngle) + cy
 
-        // PORT-NOTE: upstream reuses the *normalized* `x`/`y` (after `x /= d`) here, not the
+        // upstream reuses the *normalized* `x`/`y` (after `x /= d`) here, not the
         //   original inputs — mirrored faithfully.
         let d1 = (x1 - x) * (x1 - x) + (y1 - y) * (y1 - y)
         let d2 = (x2 - x) * (x2 - x) + (y2 - y) * (y2 - y)
@@ -631,7 +631,7 @@ public enum labelGuideHelper {
             stateObj.shape = shapeBag
             // upstream: stateObj.style = styleObj; — the untyped per-state style bag ([String: Any]),
             //   stored RAW exactly as upstream does (upstream has no bridge to do).
-            // PORT-NOTE: its consumer is `PathStyleProps.animationSet` (via useState → _transitionState
+            // its consumer is `PathStyleProps.animationSet` (via useState → _transitionState
             //   → animateToShallow → animObjSet), which used to read `value as? Double` / `as? [Double]`
             //   and so silently DROPPED an Int-boxed `lineStyle.width: 2` (→ "lineWidth") and the String
             //   presets of `lineStyle.type` (→ "lineDash": "dashed"/"dotted"/"solid") on
@@ -728,7 +728,7 @@ public enum labelGuideHelper {
             return
         }
 
-        // PORT-NOTE: upstream reads `statesModels.normal` unguarded and runs the DISPLAY_STATES loop
+        // upstream reads `statesModels.normal` unguarded and runs the DISPLAY_STATES loop
         //   regardless — `getLabelLineStatesModels` always populates "normal", so this early return is
         //   the Swift-side Optional safety net, NOT an upstream branch.
         guard let normalModel = statesModels["normal"] else {
@@ -809,7 +809,7 @@ public enum labelGuideHelper {
             // Not fill. (upstream: labelLine.style.fill = null — the createStyle/useStyle merge
             //   would otherwise keep the '#000' default.)
             style.fill = nil
-            // PORT-NOTE: assign through `useStyle`, NOT `labelLine.pathStyle = style`. A direct store
+            // assign through `useStyle`, NOT `labelLine.pathStyle = style`. A direct store
             //   skips `dirtyStyle()` — required here, since clearing `fill` must invalidate the cached
             //   paint — and bypasses the Swift-only `_syncCommonStyle()` mirror (private, Path.swift)
             //   that copies opacity/shadow*/blend from `pathStyle` into the inherited

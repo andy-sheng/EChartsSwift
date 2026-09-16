@@ -8,9 +8,9 @@
 // `RADIAN_TO_DEGREE` / `EPSILON` constants.
 //
 // The JS object-merge / runtime duck-typing / DOM / polyfill helpers do NOT map onto
-// Swift's static type system and are intentionally left as `// PORT-NOTE` stubs below,
+// Swift's static type system and are intentionally left as `// note` stubs below,
 // in their original upstream position, so the file still diffs line-for-line against
-// `util.ts`. See the consolidated PORT-NOTE list at the bottom.
+// `util.ts`. See the consolidated note list at the bottom.
 
 import Foundation
 
@@ -18,11 +18,11 @@ import Foundation
 public enum util {
 
     // 用于处理merge时无法遍历Date等对象的问题
-    // PORT-NOTE: BUILTIN_OBJECT — JS runtime type tag table for merge/clone; no Swift analogue.
+    // BUILTIN_OBJECT — JS runtime type tag table for merge/clone; no Swift analogue.
 
-    // PORT-NOTE: TYPED_ARRAY — JS `[object Float32Array]` tag table; not needed by geometry.
+    // TYPED_ARRAY — JS `[object Float32Array]` tag table; not needed by geometry.
 
-    // PORT-NOTE: objToString / arrayProto / nativeForEach / nativeFilter / nativeSlice /
+    // objToString / arrayProto / nativeForEach / nativeFilter / nativeSlice /
     //            nativeMap / ctorFunction / protoFunction / protoKey — JS prototype plumbing.
 
     private static var idStart: Double = 0x0907
@@ -42,7 +42,7 @@ public enum util {
     }
 
     public static func logError(_ args: Any...) {
-        // PORT-NOTE: upstream forwards to console.error; geometry never calls this.
+        // upstream forwards to console.error; geometry never calls this.
         // print(args)
     }
 
@@ -85,7 +85,7 @@ public enum util {
             return result as! T
         }
         else if let arr = source as? [Any] {
-            // if (!isPrimitive(source)) — ALWAYS FALSE here; see the `[Any]` PORT-TODO on
+            // if (!isPrimitive(source)) — ALWAYS FALSE here; see the `[Any]` TODO on
             // setAsPrimitive: a Swift array has neither an in-band slot nor a stable identity,
             // so it can never carry the tag. Left as a comment-only structural mirror rather
             // than a live call, which would cost an `Any` box + a failed dictionary cast per
@@ -97,7 +97,7 @@ public enum util {
             // safe: T is [Any] (or a covariant element array) in this branch
             return result as! T
         }
-        // PORT-NOTE: TYPED_ARRAY branch (ContiguousArray<Float/Double/…>) — value
+        // TYPED_ARRAY branch (ContiguousArray<Float/Double/…>) — value
         //            semantics already copy on assignment, so the passthrough below
         //            reproduces it (and subsumes upstream's `!isPrimitive` guard on that
         //            branch: a tagged typed array is likewise never traversed);
@@ -168,7 +168,7 @@ public enum util {
         return target
     }
 
-    // PORT-NOTE: assignProps(tar, src, props) — copies a key subset between option bags.
+    // assignProps(tar, src, props) — copies a key subset between option bags.
     //            Use Swift `extend` over a filtered key list at call sites.
 
     /**
@@ -197,7 +197,7 @@ public enum util {
         return Array(obj.keys)
     }
 
-    // PORT-NOTE: createCanvas = platformApi.createCanvas — renderer seam (§9), not ported.
+    // createCanvas = platformApi.createCanvas — renderer seam (§9), not ported.
 
     /**
      * 查询数组中元素的index
@@ -213,10 +213,10 @@ public enum util {
         return -1
     }
 
-    // PORT-NOTE: inherits(clazz, baseClazz) — prototype-chain mixin; use `class Sub: Super`
+    // inherits(clazz, baseClazz) — prototype-chain mixin; use `class Sub: Super`
     //            (CONVENTIONS §2) at the Swift class definitions instead.
 
-    // PORT-NOTE: mixin(target, source, override) — prototype property copy; model with
+    // mixin(target, source, override) — prototype property copy; model with
     //            protocol + protocol-extension per CONVENTIONS §2.
 
     /**
@@ -224,7 +224,7 @@ public enum util {
      * @param data
      */
     public static func isArrayLike(_ data: Any?) -> Bool {
-        // PORT-NOTE: upstream is JS `.length` duck typing; here we approximate with the
+        // upstream is JS `.length` duck typing; here we approximate with the
         //            concrete array shapes the port produces. Non-string sequences with a
         //            count qualify; `String` is explicitly excluded (matches upstream).
         guard let data = data else {
@@ -313,7 +313,7 @@ public enum util {
         return nil
     }
 
-    // PORT-NOTE: bind / curry — JS Function.prototype.bind partial application; use Swift
+    // bind / curry — JS Function.prototype.bind partial application; use Swift
     //            closures directly at call sites.
 
     public static func isArray(_ value: Any?) -> Bool {
@@ -365,14 +365,14 @@ public enum util {
         if isFunction(value) {
             return true
         }
-        // PORT-NOTE: upstream `typeof === 'object'` also matches user class instances /
+        // upstream `typeof === 'object'` also matches user class instances /
         //            option bags. We approximate with reference (class) types here.
         return Mirror(reflecting: value).displayStyle == .class
     }
 
     public static func isBuiltInObject(_ value: Any?) -> Bool {
         // !!BUILTIN_OBJECT[objToString.call(value)]
-        // PORT-NOTE: BUILTIN_OBJECT tag table (Function/RegExp/Date/Error/CanvasGradient/
+        // BUILTIN_OBJECT tag table (Function/RegExp/Date/Error/CanvasGradient/
         //            CanvasPattern/Image/Canvas) has no faithful Swift analogue; none of
         //            these participate in the ported geometry/style bags, so `false`.
         _ = value
@@ -397,7 +397,7 @@ public enum util {
     public static func isDom(_ value: Any?) -> Bool {
         // typeof value === 'object' && typeof value.nodeType === 'number'
         //     && typeof value.ownerDocument === 'object'
-        // PORT-NOTE: DOM / HTMLElement detection — renderer/DOM seam (CONVENTIONS §9),
+        // DOM / HTMLElement detection — renderer/DOM seam (CONVENTIONS §9),
         //            no HTMLElement in the native port; always false.
         _ = value
         return false
@@ -458,7 +458,7 @@ public enum util {
             : value2
     }
 
-    // PORT-NOTE: slice(arr, ...args) — JS Array.prototype.slice forwarding; use Swift
+    // slice(arr, ...args) — JS Array.prototype.slice forwarding; use Swift
     //            subranges (`arr[i..<j]`) at call sites.
 
     /**
@@ -492,12 +492,12 @@ public enum util {
         }
     }
 
-    // PORT-NOTE: trim(str) — String trimming; use Swift
+    // trim(str) — String trimming; use Swift
     //            `str.trimmingCharacters(in: .whitespacesAndNewlines)` at call sites.
 
     // const primitiveKey = '__ec_primitive__';
     //
-    // PORT-NOTE: upstream stamps a hidden own-property on the object itself
+    // upstream stamps a hidden own-property on the object itself
     //   (`obj[primitiveKey] = true`) and relies on JS reference semantics, so every later
     //   holder of that reference observes the tag. Swift splits this into two cases:
     //     · plain option/style bags are `[String: Any]` VALUE types — they can carry the key
@@ -506,7 +506,7 @@ public enum util {
     //     · reference (class) objects have no dynamic property slot, so they are recorded in
     //       an identity side-set (weak, so the tag dies with the object like the JS property).
     //   `isPrimitive` consults both, so call sites read exactly as upstream.
-    // PORT-TODO: `[Any]` (e.g. `dataset.transform` given as an ARRAY of transforms) cannot
+    // TODO: `[Any]` (e.g. `dataset.transform` given as an ARRAY of transforms) cannot
     //   carry the tag — a Swift array has neither an in-band slot nor a stable identity. Two
     //   divergences follow from that, both inert today:
     //     (a) `merge` — NO divergence in effect: upstream's nested-merge branch is itself
@@ -535,7 +535,7 @@ public enum util {
         primitiveObjects.add(obj)
     }
 
-    /// Value-bag overload — see the PORT-NOTE above. `inout` so the in-band key lands in the
+    /// Value-bag overload — see the note above. `inout` so the in-band key lands in the
     /// caller's own storage (upstream mutates through the shared reference). Option/style bags
     /// MUST use this overload; it is the load-bearing one in-tree.
     public static func setAsPrimitive(_ obj: inout [String: Any]) {
@@ -565,17 +565,17 @@ public enum util {
         return (d[primitiveKey] as? Bool) == true
     }
 
-    // PORT-NOTE: MapPolyfill / maybeNativeMap / HashMap / createHashMap — JS Map shim;
+    // MapPolyfill / maybeNativeMap / HashMap / createHashMap — JS Map shim;
     //            use Swift `Dictionary` directly where geometry needs key/value storage.
 
-    // PORT-NOTE: concatArray(a, b) — typed-array concat preserving constructor; use Swift
+    // concatArray(a, b) — typed-array concat preserving constructor; use Swift
     //            `a + b` for `[T]` / `ContiguousArray`.
 
     public static func createObject<T>(_ proto: [String: T] = [:], _ properties: [String: T]? = nil) -> [String: T] {
         // Performance of Object.create
         // https://jsperf.com/style-strategy-proto-or-others
         //
-        // PORT-NOTE: upstream `Object.create(proto)` builds a new object with a LIVE
+        // upstream `Object.create(proto)` builds a new object with a LIVE
         //            prototype link, so missing keys resolve up the chain and later
         //            mutations of `proto` are visible. Swift has no prototype chain, so
         //            we materialize (flatten) the proto's keys into the new object and
@@ -588,9 +588,9 @@ public enum util {
         return obj
     }
 
-    // PORT-NOTE: disableUserSelect(dom) — DOM style mutation; renderer/DOM seam, not ported.
+    // disableUserSelect(dom) — DOM style mutation; renderer/DOM seam, not ported.
 
-    // PORT-NOTE: hasOwn(own, prop) — JS hasOwnProperty; use `dict[prop] != nil`.
+    // hasOwn(own, prop) — JS hasOwnProperty; use `dict[prop] != nil`.
 
     public static func noop() {}
 

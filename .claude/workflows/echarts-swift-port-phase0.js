@@ -17,8 +17,8 @@ const DST = PROJ + '/Sources/ZRenderKit/Core'
 // Phase 0 geometry foundation, ordered roughly by dependency depth (all translated in parallel; conventions keep them coherent)
 const FILES = [
   { name: 'types',         src: 'types.ts',         dst: 'types.swift',         note: 'Core type aliases (MatrixArray, VectorArray, etc). Establishes the shared numeric typealiases everything else uses.' },
-  { name: 'env',           src: 'env.ts',           dst: 'env.swift',           note: 'Environment detection. On iOS most browser checks collapse to constants; translate the struct shape, hardcode the native-relevant flags, mark browser-only fields with // PORT-TODO.' },
-  { name: 'util',          src: 'util.ts',          dst: 'util.swift',          note: 'Large general helper module. Translate the numeric/array helpers actually used by the geometry layer (clamp-like, map/each over numbers, retrieve/defaults). For JS object-merge/duck-typing helpers that do not map to Swift, provide Swift-idiomatic equivalents only where geometry needs them and mark the rest // PORT-TODO with a list. Do not invent.' },
+  { name: 'env',           src: 'env.ts',           dst: 'env.swift',           note: 'Environment detection. On iOS most browser checks collapse to constants; translate the struct shape, hardcode the native-relevant flags, mark browser-only fields with // TODO.' },
+  { name: 'util',          src: 'util.ts',          dst: 'util.swift',          note: 'Large general helper module. Translate the numeric/array helpers actually used by the geometry layer (clamp-like, map/each over numbers, retrieve/defaults). For JS object-merge/duck-typing helpers that do not map to Swift, provide Swift-idiomatic equivalents only where geometry needs them and mark the rest // TODO with a list. Do not invent.' },
   { name: 'LRU',           src: 'LRU.ts',           dst: 'LRU.swift',           note: 'LRU cache used by text/path caching. Generic. Translate faithfully as a final class.' },
   { name: 'WeakMap',       src: 'WeakMap.ts',       dst: 'WeakMap.swift',       note: 'zrender browser WeakMap shim. On Swift use NSMapTable weakToStrong or a thin wrapper; preserve the public API surface.' },
   { name: 'matrix',        src: 'matrix.ts',        dst: 'matrix.swift',        note: '2x3 affine matrix as a flat [a,b,c,d,e,f]. CRITICAL: functions mutate an `out` array. Follow the conventions doc decision on out-param mutation EXACTLY (inout vs SIMD). This file sets the precedent reviewers will check vector/Point against.' },
@@ -28,7 +28,7 @@ const FILES = [
   { name: 'bbox',          src: 'bbox.ts',          dst: 'bbox.swift',          note: 'Bounding-box-from-primitive helpers (fromLine/fromCubic/fromQuadratic/fromArc), mutate an out min/max. Same out-param convention.' },
   { name: 'BoundingRect',  src: 'BoundingRect.ts',  dst: 'BoundingRect.swift',  note: 'Axis-aligned rect with union/intersect/applyTransform. final class. Uses matrix/vector.' },
   { name: 'Transformable', src: 'Transformable.ts', dst: 'Transformable.swift', note: 'SRT decomposed transform mixin -> compose to MatrixArray. In TS this is mixed into Element; translate as a base class or protocol+extension per conventions. Uses matrix/vector/Point/BoundingRect.' },
-  { name: 'platform',      src: 'platform.ts',      dst: 'platform.swift',      note: 'platformApi injection point (measureText/createCanvas/loadImage). Define a PlatformAPI protocol + global setPlatformAPI. CRUCIALLY translate the built-in ASCII-width-table measureText FALLBACK so text measurement works with zero Core Text dependency in Phase 0. Mark createCanvas/loadImage as // PORT-TODO stubs.' },
+  { name: 'platform',      src: 'platform.ts',      dst: 'platform.swift',      note: 'platformApi injection point (measureText/createCanvas/loadImage). Define a PlatformAPI protocol + global setPlatformAPI. CRUCIALLY translate the built-in ASCII-width-table measureText FALLBACK so text measurement works with zero Core Text dependency in Phase 0. Mark createCanvas/loadImage as // TODO stubs.' },
   { name: 'PathProxy',     src: 'PathProxy.ts',     dst: 'PathProxy.swift',     note: 'THE CENTERPIECE. Records path commands into a numeric buffer (CMD opcodes M/L/C/Q/A/Z/R), computes bounding rect & arc length, and rebuildPath(rebuilder, percent) replays into a PathRebuilder (use the protocol scaffold defines). Float32Array buffer -> choose [Float]/ContiguousArray per conventions. getVersion() caching must be preserved. This is what the native Painter will consume.' },
 ]
 
@@ -106,7 +106,7 @@ Your tasks:
 
 2. Define the renderer-seam protocols (this is the boundary where native rendering plugs in):
    - In Sources/ZRenderKit/Core/PathRebuilder.swift: a \`PathRebuilder\` protocol with exactly: moveTo(x,y), lineTo(x,y), bezierCurveTo(x1,y1,x2,y2,x3,y3), quadraticCurveTo(x1,y1,x2,y2), arc(cx,cy,r,startAngle,endAngle,anticlockwise), ellipse(cx,cy,rx,ry,rotation,startAngle,endAngle,anticlockwise), rect(x,y,w,h), closePath(). All coords Double. This mirrors the consumer interface of PathProxy.rebuildPath in core/PathProxy.ts — READ that file to get the exact signatures.
-   - In Sources/NativePainter/Renderer.swift: a stub \`Painter\`/\`Renderer\` protocol sketch (the ~8 paint ops: fillPath/strokePath with style, drawImage, drawText, setClip, transform, opacity, shadow) with // PORT-TODO bodies. Just the contract, no implementation.
+   - In Sources/NativePainter/Renderer.swift: a stub \`Painter\`/\`Renderer\` protocol sketch (the ~8 paint ops: fillPath/strokePath with style, drawImage, drawText, setClip, transform, opacity, shadow) with // TODO bodies. Just the contract, no implementation.
 
 3. Write ${PROJ}/CONVENTIONS.md — the binding translation rulebook every translator agent will follow. It MUST decide and document, at minimum:
    - All JS \`number\` -> Swift \`Double\`. Typed arrays (Float32Array/Int32Array) -> chosen Swift type (e.g. ContiguousArray<Float>).
@@ -115,14 +115,14 @@ Your tasks:
    - TS classes -> Swift \`final class\` (reference semantics — REQUIRED for the scene graph; never struct for Element-like types).
    - null/undefined -> Optional; Math.* and bitwise ops -> Swift/Foundation equivalents (watch integer division).
    - Preserve upstream identifiers, file names, and code order. At the TOP of every Swift file add a header comment: \`// Ported from zrender/src/core/<File>.ts — keep in sync with upstream\`. Keep meaningful upstream comments.
-   - Mark every skipped/stubbed/uncertain piece with \`// PORT-TODO: ...\`.
+   - Mark every skipped/stubbed/uncertain piece with \`// TODO: ...\`.
    Make CONVENTIONS.md self-contained and copy-pasteable — its full text is your return value's \`conventions\` field, and it will be injected verbatim into every translator's prompt.
 
 Return the structured result. Be decisive on the mutation strategy — translators depend on it.`,
   { label: 'scaffold+conventions', phase: 'Scaffold', schema: CONV_SCHEMA }
 )
 
-const conventions = (scaffold && scaffold.conventions) || '(conventions doc unavailable — default: number->Double; free-fn modules->caseless enum namespace; classes->final class; use inout [Double] for out-params; preserve upstream names/structure; header comment // Ported from upstream; mark gaps // PORT-TODO.)'
+const conventions = (scaffold && scaffold.conventions) || '(conventions doc unavailable — default: number->Double; free-fn modules->caseless enum namespace; classes->final class; use inout [Double] for out-params; preserve upstream names/structure; header comment // Ported from upstream; mark gaps // TODO.)'
 
 log('Scaffold done. Mutation strategy: ' + ((scaffold && scaffold.mutationStrategy) || 'default inout'))
 
@@ -144,7 +144,7 @@ Process:
 2. Translate the logic line-by-line, preserving identifiers, function order, and meaningful comments. Add the upstream-sync header comment. number->Double. Apply the mandated out-param mutation strategy. classes->final class.
 3. Write the Swift file to the TARGET path. It should be as close to compilable as possible given that sibling files are being written concurrently (reference their conventional public names; do not stub them out locally).
 4. Be rigorous on numeric correctness: bezier/arc math, epsilon constants, integer vs Double division, NaN/precision handling, anticlockwise/angle sign conventions. These must match the TS exactly.
-5. Mark anything you skip or are unsure about with // PORT-TODO and list it in portTodos.
+5. Mark anything you skip or are unsure about with // TODO and list it in portTodos.
 
 Do NOT translate other files. Do NOT touch the scratchpad source. Return the structured result.`
 }
@@ -180,7 +180,7 @@ Target project: ${PROJ}
 Create under ${PROJ}/Oracle/ :
 1. A Node script dump-displaylist.js that, for a given option JSON, inits echarts in SSR mode (renderer 'svg', ssr:true, fixed width/height), setOption, then dumps chart.getZr().storage.getDisplayList(true) as JSON — each entry: { type, shape, style, transform, z, zlevel, z2 }. Write outputs to ${PROJ}/Oracle/fixtures/<name>.json. Round floats to a fixed precision for stable diffs.
 2. A small set of option fixtures focused on the geometry foundation (NOT full charts yet): a few raw shapes whose buildPath exercises the core math — e.g. a Rect, a Circle, a Sector, a BezierCurve, a Polygon, and a simple arc — defined via the \`graphic\` component or a minimal custom series so they hit PathProxy. Generate their display-list + the resulting SVG <path d> string fixtures.
-3. A Swift XCTest scaffold at ${PROJ}/Tests/ZRenderKitTests/GoldenTests.swift that loads a fixture JSON and shows the intended assertion shape (build a PathProxy via the same commands, rebuild through a test PathRebuilder that records a 'd'-like string or command list, and assert it matches the fixture). It's fine for it to reference types that don't fully exist yet — mark with // PORT-TODO — the point is the harness + pattern.
+3. A Swift XCTest scaffold at ${PROJ}/Tests/ZRenderKitTests/GoldenTests.swift that loads a fixture JSON and shows the intended assertion shape (build a PathProxy via the same commands, rebuild through a test PathRebuilder that records a 'd'-like string or command list, and assert it matches the fixture). It's fine for it to reference types that don't fully exist yet — mark with // TODO — the point is the harness + pattern.
 4. A short Oracle/README.md: how to run the dumper, how fixtures map to tests, how to add new ones as later phases land.
 
 Return the structured result.`,
@@ -201,7 +201,7 @@ Golden harness: ${JSON.stringify(golden)}
 The PORT_STATUS.md must contain:
 1. What landed in Phase 0 (the package layout, the seam protocols, the 14 translated core files, the golden harness) — as a checklist.
 2. A table of the 14 files: status (complete/partial/stub) and review verdict (faithful/minor/major).
-3. A consolidated, DEDUPED list of all open issues and PORT-TODOs across files, sorted by severity (blockers first) — these are the immediate fix-ups before Phase 1.
+3. A consolidated, DEDUPED list of all open issues and TODOs across files, sorted by severity (blockers first) — these are the immediate fix-ups before Phase 1.
 4. The next-phase plan: Phase 1 = zrender/graphic (Element, Displayable, Group, Path, Text, TSpan, Image) + graphic/shape buildPath set + contain/text layout, PLUS writing the first real NativePainter (CALayerPainter) so a hand-built scene graph renders on iOS. List the specific upstream files Phase 1 will translate and note which already-translated Core APIs they depend on.
 5. The standing rule for syncing upstream (header comments + mirrored structure + golden fixtures).
 

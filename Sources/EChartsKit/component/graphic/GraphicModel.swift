@@ -48,7 +48,7 @@ import ZRenderKit
 //   GraphicComponentGroupOption / GraphicComponentZRPathOption / GraphicComponentImageOption /
 //   GraphicComponentTextOption / GraphicComponentElementOption (the union of the four).
 //
-// PORT-NOTE (CONVENTIONS §2): the TS interface hierarchy + the `GraphicComponentElementOption`
+// note (CONVENTIONS §2): the TS interface hierarchy + the `GraphicComponentElementOption`
 //   discriminated union are collapsed to ONE dynamic option bag modeled as a reference class
 //   (`GraphicComponentElementOption` below). Upstream `GraphicComponentElementOption` IS a plain JS
 //   object flowing by identity (`option.parentOption = parentOption`, mutation through aliases,
@@ -235,7 +235,7 @@ func mergeNewElOptionToExist(
 
             // Rigid body, use ignoreSize.
             // mergeLayoutParam(existElOption, newElOptCopy, { ignoreSize: true });
-            // PORT-NOTE: `layout.mergeLayoutParam` (util/layout.swift) is ported and called below;
+            // `layout.mergeLayoutParam` (util/layout.swift) is ported and called below;
             //   operates on the `.option` bags in place.
             var mergeTarget = existElOption.option
             layout.mergeLayoutParam(&mergeTarget, newElOptCopy.option, ["ignoreSize": true])
@@ -243,7 +243,7 @@ func mergeNewElOptionToExist(
 
             // Will be used in render.
             // copyLayoutParams(newElOption, existElOption);
-            // PORT-NOTE: `layout.copyLayoutParams` (util/layout.swift) is ported and called below;
+            // `layout.copyLayoutParams` (util/layout.swift) is ported and called below;
             //   copies LOCATION_PARAMS from source bag onto target bag.
             newElOption.option = layout.copyLayoutParams(newElOption.option, existElOption.option)
 
@@ -413,7 +413,7 @@ open class GraphicComponentModel: ComponentModel {
     open override func optionUpdated(_ newCptOption: ModelOption?, _ isInit: Bool) {
         let newOption = newCptOption as? [String: Any]
         // const newList = (isInit ? thisOption : newOption).elements;
-        // PORT-NOTE (normalization): on first `setOption` the element options arrive as raw
+        // note (normalization): on first `setOption` the element options arrive as raw
         //   `[[String: Any]]` dicts (upstream treats them structurally); we wrap each into the
         //   reference `GraphicComponentElementOption` (recursively wrapping `children`) so the rest of
         //   the model can flow them by identity. After the first `optionUpdated` they are already
@@ -439,7 +439,7 @@ open class GraphicComponentModel: ComponentModel {
 
         // const mappingResult = modelUtil.mappingToExists(existList, flattenedList, 'normalMerge');
         //
-        // PORT-NOTE (bridge): the ported `model.mappingToExists` is specialized to
+        // note (bridge): the ported `model.mappingToExists` is specialized to
         //   `(MappingExistingItem, ComponentOption)`; upstream is generic over the element option
         //   objects (returned by identity). We (a) pass the existing elements as `MappingExistingItem`
         //   (they conform), and (b) project each new element into a `ComponentOption` carrying its
@@ -557,7 +557,7 @@ let GRAPHIC_EL_KEY = "\u{0}__graphicElOption"
 
 // Wrap raw element-option dicts into `GraphicComponentElementOption` reference bags (pass through
 // already-wrapped instances). Recurses into `children` so nested groups wrap too. See the
-// PORT-NOTE in `optionUpdated`.
+// note in `optionUpdated`.
 func normalizeElementOptions(_ raw: Any?) -> [GraphicComponentElementOption]? {
     guard let arr = raw as? [Any] else {
         return raw as? [GraphicComponentElementOption]

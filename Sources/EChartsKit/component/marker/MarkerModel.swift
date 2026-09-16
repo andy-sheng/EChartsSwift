@@ -132,14 +132,14 @@ public struct MarkerOption {
     // upstream: data?: unknown[]
     public var data: [Any?]?
     // upstream: tooltip?: CommonTooltipOption<unknown> & { trigger?: 'item' | 'axis' | boolean | 'none' }
-    // PORT-NOTE: tooltip option shape modeled as the dynamic bag.
+    // tooltip option shape modeled as the dynamic bag.
     public var tooltip: Any?
     public init() {}
 }
 
 // { [componentType]: MarkerModel }
 // const inner = makeInner<Dictionary<MarkerModel>, SeriesModel>();
-// PORT-NOTE: `makeInner` requires a reference (`AnyObject`) value type; the upstream value is a plain
+// `makeInner` requires a reference (`AnyObject`) value type; the upstream value is a plain
 //   `Dictionary<MarkerModel>` object. Wrapped in a reference `MarkerModelInner` holding the map so the
 //   per-host storage semantics are preserved (`inner(seriesModel).map[componentType]`).
 final class MarkerModelInner {
@@ -171,7 +171,7 @@ open class MarkerModel: ComponentModel, DataHost, DataFormatMixin {
     public var createdBySelf = false
 
     // preventAutoZ = true;  (upstream overrides ComponentModel's default `preventAutoZ`)
-    // PORT-NOTE: `preventAutoZ` is an inherited stored property (ComponentModel); default it to true
+    // `preventAutoZ` is an inherited stored property (ComponentModel); default it to true
     //   in `init`/`_manager` is not possible at declaration due to override, so set in `init` below.
 
     // static readonly dependencies = ['series', 'grid', 'polar', 'geo'];
@@ -211,7 +211,7 @@ open class MarkerModel: ComponentModel, DataHost, DataFormatMixin {
     //   Swift port typed it Optional); returns a non-nil Bool.
     open override func isAnimationEnabled() -> Bool? {
         // if (env.node) { return false; }
-        // PORT-NOTE: ZRenderKit's `env` is module-internal (not visible from EChartsKit) and the
+        // ZRenderKit's `env` is module-internal (not visible from EChartsKit) and the
         //   native client is treated as browser-like (`env.node == false`), matching the treatment in
         //   model/Series.swift `isAnimationEnabled`. The node early-return is therefore dropped.
 
@@ -350,7 +350,7 @@ open class MarkerModel: ComponentModel, DataHost, DataFormatMixin {
      * Create slave marker model from series.
      */
     // abstract createMarkerModelFromSeries(markerOpt, masterMarkerModel, ecModel): MarkerModel
-    // PORT-NOTE: abstract method — the per-type subclass (MarkerPointModel/MarkerLineModel/
+    // abstract method — the per-type subclass (MarkerPointModel/MarkerLineModel/
     //   MarkerAreaModel, dependent stage) must override. `markerOpt` is the dynamic option bag.
     open func createMarkerModelFromSeries(
         _ markerOpt: Any?,
@@ -375,7 +375,7 @@ open class MarkerModel: ComponentModel, DataHost, DataFormatMixin {
 //      protocol + extension (mirrors SeriesModel), grafting `getRawValue`/`getFormattedLabel` and the
 //      base `getDataParams`/`formatTooltip` that the overrides above build on.
 
-// PORT-NOTE: the marker views tag their graphic els with `getECData(el).dataModel = markerModel`
+// the marker views tag their graphic els with `getECData(el).dataModel = markerModel`
 //   (ECData.dataModel: DataModel?, innerStore.swift). `DataModel` (util/types.swift) refines
 //   `DataHost` + `DataFormatMixin` (both conformed on the class above) and additionally requires the
 //   3-arg `getDataParams(_:_:_:)`. The `el:` parameter is a port artifact that exists only on
@@ -389,7 +389,7 @@ extension MarkerModel: DataModel {
         _ dataType: SeriesDataType? = nil,
         _ el: Element? = nil
     ) -> CallbackDataParams {
-        // PORT-NOTE: this call MUST bind to the class-body 2-arg `open func getDataParams(_:_:)`
+        // this call MUST bind to the class-body 2-arg `open func getDataParams(_:_:)`
         //   (line ~327). It is non-recursive only because Swift prefers an exact-arity overload over
         //   applying a default argument to this 3-arg witness. If that 2-arg entry point is ever
         //   removed/renamed/given a default that changes its arity, this silently rebinds to itself

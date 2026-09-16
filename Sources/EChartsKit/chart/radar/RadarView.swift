@@ -30,7 +30,7 @@ import ZRenderKit
 //   import { setStatesStylesFromModel, toggleHoverEmphasis } from '../../util/states';
 //       -> `states` (util/states.swift). Wired: each item's polyline/polygon carry their emphasis/blur/
 //       select line/area state styles and the whole itemGroup is a highDown dispatcher (focus:self blurs
-//       the other polygons). PORT-NOTE (deferred): the per-state symbol itemStyle clone + per-state
+//       the other polygons). TODO: the per-state symbol itemStyle clone + per-state
 //       polygon.ignore toggle remain deferred (styling niceties, not the dispatcher).
 //   import * as zrUtil from 'zrender/src/core/util';               -> `zrUtil.defaults` inlined (radarDefaults) / map dropped.
 //   import * as symbolUtil from '../../util/symbol';               -> `symbol` namespace (util/symbol.swift).
@@ -64,7 +64,7 @@ import ZRenderKit
 //       polyline/polygon before the styling pass restyles (so a color change can tween).
 
 // type RadarSymbol = ReturnType<typeof symbolUtil.createSymbol> & { __dimIdx: number };
-//   PORT-NOTE: no literal `__dimIdx` tag is stored — symbols are added to `symbolGroup` untagged, in vertex
+//   no literal `__dimIdx` tag is stored — symbols are added to `symbolGroup` untagged, in vertex
 //   order, so the styling loop's enumeration index IS `__dimIdx` (the vertex→dimension index the value-label
 //   lookup needs). The label path itself IS ported (styleRadarSymbols).
 
@@ -344,7 +344,7 @@ open class RadarView: ChartView {
         // polygon.useStyle(zrUtil.defaults(
         //     itemModel.getModel('areaStyle').getAreaStyle(),
         //     { fill: color, opacity: 0.7, decal: itemStyle.decal }));
-        //   PORT-NOTE (deferred): `decal: itemStyle.decal` NOT applied (requires decal/pattern rendering, out of scope).
+        //   TODO: `decal: itemStyle.decal` NOT applied (requires decal/pattern rendering, out of scope).
         var areaStyleDict = areaStyleModel.getAreaStyle()
         if areaStyleDict["fill"] == nil, let color = color { areaStyleDict["fill"] = color }
         if areaStyleDict["opacity"] == nil { areaStyleDict["opacity"] = 0.7 }

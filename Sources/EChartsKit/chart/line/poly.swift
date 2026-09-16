@@ -417,7 +417,7 @@ public final class ECPolyline: Path {
 }
 
 // upstream: class ECPolygonShape extends ECPolylineShape { stackedOnPoints; stackedOnSmooth; }
-//   PORT-NOTE: Swift structs cannot inherit, so the ECPolylineShape fields are DUPLICATED here (the
+//   Swift structs cannot inherit, so the ECPolylineShape fields are DUPLICATED here (the
 //   `PathShape` value-type model, CONVENTIONS §4). Keep the two in sync.
 public struct ECPolygonShape: PathShape {
     public var points: [Double] = []

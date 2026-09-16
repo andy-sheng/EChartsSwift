@@ -12,7 +12,7 @@
 //   - `echarts.registerMap('MacOdrum-LV5-floorplan-web', { svg: svg })` is NOT called inside webOptionJS;
 //     it moves to `mapRegistrations` so BOTH panes register the same map (WebPage.swift injects registerMap
 //     into the page ahead of the option script; the native pane registers it in the option IIFE).
-//   - Native pane only: `geo.emphasis.itemStyle.color: undefined` is omitted (see PORT-NOTE) — Swift has no
+//   - Native pane only: `geo.emphasis.itemStyle.color: undefined` is omitted (see note) — Swift has no
 //     `undefined`, and the key is a no-op upstream.
 // NOT a deviation: `series[0].effect` (the walker running the route) is a plain option key, carried verbatim
 // by both panes and animated by each — no timeline is involved, so this demo needs no `drive`.
@@ -156,7 +156,7 @@ myChart.setOption(option);
                     "map": "MacOdrum-LV5-floorplan-web",
                     "roam": true,
                     "emphasis": [
-                        // PORT-NOTE: emphasis.itemStyle omitted — upstream sets `color: undefined`, i.e. an
+                        // emphasis.itemStyle omitted — upstream sets `color: undefined`, i.e. an
                         // explicit "no emphasis fill" that JS spells as undefined; Swift has no `undefined`
                         // ([:] / NSNull would both read as a real value), and the key is a no-op upstream.
                         "label": ["show": false] as [String: Any]

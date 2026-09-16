@@ -247,7 +247,7 @@ private let scatterAggregateBarScatterOption: [String: Any] = [
             "type": "scatter",
             "id": "female",
             "dataGroupId": "female",
-            // PORT-NOTE: universalTransition.delay omitted — upstream returns `Math.random() * 400`, so each
+            // universalTransition.delay omitted — upstream returns `Math.random() * 400`, so each
             // point's morph starts at a random offset within the first 400ms. Swift cannot carry the closure.
             "universalTransition": ["enabled": true] as [String: Any],
             "data": scatterAggregateBarFemaleData
@@ -256,7 +256,7 @@ private let scatterAggregateBarScatterOption: [String: Any] = [
             "type": "scatter",
             "id": "male",
             "dataGroupId": "male",
-            // PORT-NOTE: universalTransition.delay omitted — see above (`Math.random() * 400` per point).
+            // universalTransition.delay omitted — see above (`Math.random() * 400` per point).
             "universalTransition": ["enabled": true] as [String: Any],
             "data": scatterAggregateBarMaleData
         ] as [String: Any]
@@ -280,7 +280,7 @@ private let scatterAggregateBarBarOption: [String: Any] = [
                 ["value": scatterAggregateBarAverage(scatterAggregateBarFemaleData, 0),
                  "groupId": "female"] as [String: Any]
             ],
-            // PORT-NOTE: universalTransition.delay omitted — see the scatter option (`Math.random() * 400`).
+            // universalTransition.delay omitted — see the scatter option (`Math.random() * 400`).
             "universalTransition": [
                 "enabled": true,
                 "seriesKey": ["female", "male"]

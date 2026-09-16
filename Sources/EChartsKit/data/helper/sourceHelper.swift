@@ -156,7 +156,7 @@ public enum sourceHelper {
         var encodeSeriesName: [DimensionIndex] = []
 
         // upstream `ComponentModel.ecModel` is non-null; `Model.ecModel` is `GlobalModel?` in the port
-        // (see the reconciliation PORT-NOTE in util/types.swift, resolved now that model/Global landed —
+        // (see the reconciliation note in util/types.swift, resolved now that model/Global landed —
         //  so the `!` below is faithful to upstream's non-null `ecModel`).
         let ecModel = seriesModel.ecModel!
         let datasetMap = innerGlobalModel(ecModel).datasetMap!
@@ -167,7 +167,7 @@ public enum sourceHelper {
         var coordDimensions = coordDimensionsInput   // coordDimensions.slice()
         util.each(coordDimensions) { coordDimInfoLoose, coordDimIdx in
             // isObject(coordDimInfoLoose) ? coordDimInfoLoose : (coordDimensions[i] = { name: ... })
-            // PORT-NOTE: upstream uses `isObject(...)`; modeled as a type-cast because
+            // upstream uses `isObject(...)`; modeled as a type-cast because
             //   `CoordDimensionDefinition` is a Swift value struct (util.isObject only
             //   recognizes class instances / dictionaries).
             let coordDimInfo: CoordDimensionDefinition
@@ -193,7 +193,7 @@ public enum sourceHelper {
         }
 
         // datasetMap.get(key) || datasetMap.set(key, {categoryWayDim: categoryWayValueDimStart, valueWayDim: 0})
-        // PORT-NOTE: `categoryWayValueDimStart` can be undefined upstream when there is no ordinal
+        // `categoryWayValueDimStart` can be undefined upstream when there is no ordinal
         //   coord dim; in that case `categoryWayDim` is never read (value-way path), so `?? 0` is benign.
         let datasetRecord = datasetMap.get(key)
             ?? datasetMap.set(key, DatasetRecord(categoryWayDim: categoryWayValueDimStart ?? 0, valueWayDim: 0))
@@ -277,7 +277,7 @@ public enum sourceHelper {
         if sourceFormat == SOURCE_FORMAT_OBJECT_ROWS || sourceFormat == SOURCE_FORMAT_KEYED_COLUMNS {
             util.each(dimensionsDefine) { dim, idx in
                 // (isObject(dim) ? dim.name : dim) === 'name'
-                // PORT-NOTE: `dimensionsDefine` is `DimensionDefinition[]` (always objects);
+                // `dimensionsDefine` is `DimensionDefinition[]` (always objects);
                 //   the `isString(dim)` arm of upstream is unreachable here.
                 if dim.name == "name" {
                     potentialNameDimIndex = Double(idx)
@@ -461,7 +461,7 @@ public enum sourceHelper {
         if let dimensionsDefine = dimensionsDefine {
             let di = Int(dimIndex)
             let dimDefItem: DimensionDefinition? = (di >= 0 && di < dimensionsDefine.count) ? dimensionsDefine[di] : nil
-            // PORT-NOTE: `dimensionsDefine` is `DimensionDefinition[]` (always object items); the
+            // `dimensionsDefine` is `DimensionDefinition[]` (always object items); the
             //   upstream `isObject(dimDefItem)` arm always holds and the `isString(dimDefItem)` arm
             //   is unreachable here.
             if let dimDefItem = dimDefItem {
@@ -578,7 +578,7 @@ public enum sourceHelper {
     }
 
     // JS `Number(val)` coercion (used by `detectValue`). Not a standalone upstream symbol.
-    // PORT-NOTE: hex strings ('0x10'), 'Infinity', BigInt, and Date coercions of JS `Number(val)` are
+    // hex strings ('0x10'), 'Infinity', BigInt, and Date coercions of JS `Number(val)` are
     //   not handled; these do not arise for the value-classification heuristic here (language diff).
     private static func jsNumber(_ val: Any?) -> Double {
         switch val {
@@ -598,7 +598,7 @@ public enum sourceHelper {
 // JS truthiness for an arbitrary option value (used for `!thisData` / `!datasetModel.get(...)`).
 // Note: arrays and objects (dictionaries) are TRUTHY in JS — a series `data: []` is truthy, so
 // `!thisData` is false and the dataset is not used by default. (Local shim; mirrors data/Source.swift.)
-private func jsTruthy(_ v: Any?) -> Bool {   // PORT-NOTE: JS truthiness shim
+private func jsTruthy(_ v: Any?) -> Bool {   // JS truthiness shim
     guard let v = v, !(v is NSNull) else { return false }
     if let b = v as? Bool { return b }
     if let d = v as? Double { return d != 0 && !d.isNaN }

@@ -12,11 +12,11 @@ import ZRenderKit
 // import { ComponentSubType, NullUndefined } from '../util/types';-> ComponentSubType (types.swift); NullUndefined -> nil (CONVENTIONS §6)
 // import type Axis from './Axis';                                 -> `Axis` (coord/Axis.swift, ported; see note below)
 // import type { AxisBaseModel } from './AxisBaseModel';           -> `AxisBaseModel` (coord/AxisBaseModel.swift, ported; see note below)
-// import { EChartsExtensionInstallRegisters } from '../extension';-> PORT-NOTE stub below (extension registrar is Phase 6b)
+// import { EChartsExtensionInstallRegisters } from '../extension';-> note stub below (extension registrar is Phase 6b)
 // import type ComponentModel from '../model/Component';           -> ComponentModel (model/Component.swift); ComponentModel['uid'] = String
 // import { getCachePerECFullUpdate, getCachePerECPrepare, GlobalModelCachePerECFullUpdate,
 //          GlobalModelCachePerECPrepare } from '../util/cycleCache';
-//   -> PORT-NOTE (deferred): requires util/cycleCache.ts — placeholders below (not yet ported)
+//   -> TODO: requires util/cycleCache.ts — placeholders below (not yet ported)
 // import { CoordinateSystem } from './CoordinateSystem';          -> `CoordinateSystem['type']` modeled as String (coord/CoordinateSystem.ts not yet ported)
 //
 // NOTE: upstream is a named-import free-function module, so it is ported as top-level free
@@ -24,7 +24,7 @@ import ZRenderKit
 //   the consumer `axisStatisticsMetricsImpl.swift`.
 
 // ============================================================================
-// PORT-NOTE: type-only / stub placeholders for the still-not-ported infra siblings (util/cycleCache.ts,
+// type-only / stub placeholders for the still-not-ported infra siblings (util/cycleCache.ts,
 //   extension.ts). `Axis`/`AxisBaseModel`/`CoordinateSystem` have since landed as real modules (see the
 //   per-symbol notes below); the remaining stubs mirror only the upstream surface used across this coord
 //   phase and MUST be removed when that infra lands. axisStatistics is the base coordinate-pipeline dependency
@@ -34,25 +34,25 @@ import ZRenderKit
 // ----------------------------------------------------------------------------
 
 // '../coord/Axis' — the real `Axis` class (coord/Axis.swift) and `AxisBaseModel` (coord/AxisBaseModel.swift)
-//   now supply `model`/`scale`/`dim`/`onBand`/`getExtent` and `uid`/`ecModel`. The former PORT-NOTE
+//   now supply `model`/`scale`/`dim`/`onBand`/`getExtent` and `uid`/`ecModel`. The former note
 //   placeholder protocols (`Axis`, `AxisModelForAxisStat`) were removed when those real modules landed.
 
 // '../util/cycleCache' — nominal per-cycle cache hosts + accessors.
 //   The real impl is cleared at the beginning of each EC_FULL_UPDATE / EC_PREPARE by echarts.ts.
 //   This placeholder keeps one stable host per `ecModel` (no per-cycle reset) so `makeInner`
 //   caching stays coherent; replace with the real util/cycleCache.swift when it lands.
-public final class GlobalModelCachePerECFullUpdate { public init() {} }    // PORT-NOTE (deferred): requires util/cycleCache
-public final class GlobalModelCachePerECPrepare { public init() {} }       // PORT-NOTE (deferred): requires util/cycleCache
-private final class CycleCacheHolderStub {                                 // PORT-NOTE (deferred): requires util/cycleCache
+public final class GlobalModelCachePerECFullUpdate { public init() {} }    // TODO: requires util/cycleCache
+public final class GlobalModelCachePerECPrepare { public init() {} }       // TODO: requires util/cycleCache
+private final class CycleCacheHolderStub {                                 // TODO: requires util/cycleCache
     var fullUpdate = GlobalModelCachePerECFullUpdate()
     var prepare = GlobalModelCachePerECPrepare()
 }
-private let _cycleCacheInnerStub: (GlobalModel) -> CycleCacheHolderStub    // PORT-NOTE (deferred): requires util/cycleCache
+private let _cycleCacheInnerStub: (GlobalModel) -> CycleCacheHolderStub    // TODO: requires util/cycleCache
     = model.makeInner { CycleCacheHolderStub() }
-public func getCachePerECFullUpdate(_ ecModel: GlobalModel) -> GlobalModelCachePerECFullUpdate { // PORT-NOTE (deferred): requires util/cycleCache
+public func getCachePerECFullUpdate(_ ecModel: GlobalModel) -> GlobalModelCachePerECFullUpdate { // TODO: requires util/cycleCache
     return _cycleCacheInnerStub(ecModel).fullUpdate
 }
-public func getCachePerECPrepare(_ ecModel: GlobalModel) -> GlobalModelCachePerECPrepare {       // PORT-NOTE (deferred): requires util/cycleCache
+public func getCachePerECPrepare(_ ecModel: GlobalModel) -> GlobalModelCachePerECPrepare {       // TODO: requires util/cycleCache
     return _cycleCacheInnerStub(ecModel).prepare
 }
 // upstream: `resetCachePerECFullUpdate(ecModel)` is called at the START of every `updateMethods.update`
@@ -69,13 +69,13 @@ public func resetCachePerECPrepare(_ ecModel: GlobalModel) {
 }
 
 // '../extension' — EChartsExtensionInstallRegisters (processor registrar). Phase 6b.
-public struct AxisStatProcessorRegistration {                              // PORT-NOTE: minimal processor-registration shape (upstream `StageHandler`)
+public struct AxisStatProcessorRegistration {                              // minimal processor-registration shape (upstream `StageHandler`)
     public var overallReset: (GlobalModel) -> Void
     public init(overallReset: @escaping (GlobalModel) -> Void) { self.overallReset = overallReset }
 }
-public struct ECPriorityProcessorStub { public let AXIS_STATISTICS: Double = 0 } // PORT-NOTE (deferred): requires extension.ts registrar (Phase 6b)
-public struct ECPriorityStub { public let PROCESSOR = ECPriorityProcessorStub() } // PORT-NOTE (deferred): requires extension.ts registrar (Phase 6b)
-open class EChartsExtensionInstallRegisters {                              // PORT-NOTE (deferred): stub registrar, requires extension.ts (Phase 6b)
+public struct ECPriorityProcessorStub { public let AXIS_STATISTICS: Double = 0 } // TODO: requires extension.ts registrar (Phase 6b)
+public struct ECPriorityStub { public let PROCESSOR = ECPriorityProcessorStub() } // TODO: requires extension.ts registrar (Phase 6b)
+open class EChartsExtensionInstallRegisters {                              // TODO: stub registrar, requires extension.ts (Phase 6b)
     open var PRIORITY: ECPriorityStub { ECPriorityStub() }
     open func registerProcessor(_ priority: Double, _ processor: AxisStatProcessorRegistration) {
         // PORT-STUB: the base registrar drops processors on the floor. The real path uses the
@@ -133,7 +133,7 @@ public final class AxisStatPerKeyPerAxis {
     // series filtered out is included.
     public var sers: [SeriesModel]
     // For query. The array index is series index.
-    // PORT-NOTE: upstream is a JS sparse array indexed by `seriesIndex`; modeled as `[SeriesModel?]`
+    // upstream is a JS sparse array indexed by `seriesIndex`; modeled as `[SeriesModel?]`
     //   (holes are `nil`), grown on write (see `setSparse`/`getSparse`).
     public var serByIdx: [SeriesModel?]
 
@@ -190,7 +190,7 @@ public struct AxisStatKeyedClient {
     // `true` by default - the <axis, series> pair is collected only if series's base axis is that axis.
     public var baseAxis: Bool?
     // `NullUndefined` by default - all coordinate systems are covered.
-    // PORT-NOTE: upstream `CoordinateSystem['type'] | NullUndefined`; modeled as `String?`.
+    // upstream `CoordinateSystem['type'] | NullUndefined`; modeled as `String?`.
     public var coordSysType: String?
 
     // `NullUndefined` return indicates this axis should be omitted.
@@ -221,11 +221,11 @@ public struct AxisStatKeyedClient {
  *
  * A <axis, series> pair can only own to one `AxisStatKey`.
  */
-// PORT-NOTE: upstream `AxisStatKey = string & {_: 'AxisStatKey'}` is a nominal-branded string;
+// upstream `AxisStatKey = string & {_: 'AxisStatKey'}` is a nominal-branded string;
 //   the brand is dropped in Swift (aliased to String).
 public typealias AxisStatKey = String
 
-// PORT-NOTE: upstream `ClientLookupKey = string & {_: 'ClientLookupKey'}` (nominal, internal); brand dropped.
+// upstream `ClientLookupKey = string & {_: 'ClientLookupKey'}` (nominal, internal); brand dropped.
 typealias ClientLookupKey = String
 
 public struct AxisStatMetrics {
@@ -465,7 +465,7 @@ private func performAxisStatisticsOnOverallReset(_ ecModel: GlobalModel) {
 }
 
 // To reduce code size from unnecessary metrics.
-// PORT-NOTE: upstream `metricType: keyof AxisStatMetrics` narrowed to String.
+// upstream `metricType: keyof AxisStatMetrics` narrowed to String.
 public func registerMetricImpl(_ metricType: String, _ impl: @escaping AxisStateMetricImpl) {
     _metricImpl[metricType] = impl
 }
@@ -482,7 +482,7 @@ public typealias AxisStateMetricImpl = (GlobalModel, AxisStatPerKeyPerAxis, Axis
  *
  * @see scaleRawExtentInfoCreate in `scaleRawExtentInfo.ts`
  */
-// PORT-NOTE: upstream `coordSysType: CoordinateSystem['type']` modeled as String.
+// upstream `coordSysType: CoordinateSystem['type']` modeled as String.
 public func associateSeriesWithAxis(
     _ axis: Axis?,
     _ seriesModel: SeriesModel,
@@ -519,7 +519,7 @@ public func associateSeriesWithAxis(
     let seriesOnAxisMap: HashMap<[SeriesModel]> = ecFullUpdateCache.axSer ?? {
         let m: HashMap<[SeriesModel]> = createHashMap(); ecFullUpdateCache.axSer = m; return m
     }()
-    // PORT-NOTE: JS arrays are reference types; Swift `[SeriesModel]` is a value type stored in the
+    // JS arrays are reference types; Swift `[SeriesModel]` is a value type stored in the
     //   HashMap, so the appended array must be written back (see `seriesOnAxisMap.set` below).
     var seriesListPerAxis = seriesOnAxisMap.get(axisModelUid) ?? seriesOnAxisMap.set(axisModelUid, [])
     if __DEV__ {
@@ -557,7 +557,7 @@ public func associateSeriesWithAxis(
         perKeyPerAxis = perKey.set(axisModelUid, created)
         // They should only be executed for each <key, axis> pair once:
         created.metrics = client.getMetrics(axis)
-        // PORT-NOTE: value-array write-back (see note above).
+        // value-array write-back (see note above).
         var keysArr = keys.get(axisModelUid) ?? keys.set(axisModelUid, [])
         keysArr.append(axisStatKey)
         keys.set(axisModelUid, keysArr)
@@ -572,7 +572,7 @@ public func associateSeriesWithAxis(
  * NOTE: Currently, the scenario is simple enough to look up clients by hash map.
  * Otherwise, a caller-provided `filter` may be an alternative if more complex requirements arise.
  */
-// PORT-NOTE: upstream `coordSysType: CoordinateSystem['type'] | NullUndefined` modeled as String?.
+// upstream `coordSysType: CoordinateSystem['type'] | NullUndefined` modeled as String?.
 private func makeClientLookupKey(
     _ seriesType: ComponentSubType,
     _ isBaseAxis: Bool?,
@@ -622,12 +622,12 @@ public func requireAxisStatistics(
 }
 
 // let clientsForCheckingStatKey: HashMap<1, AxisStatKey>; (assigned only in __DEV__)
-// PORT-NOTE: upstream leaves this undefined when !__DEV__; here it is always created (unused unless __DEV__).
+// upstream leaves this undefined when !__DEV__; here it is always created (unused unless __DEV__).
 private let clientsForCheckingStatKey: HashMap<Double> = createHashMap()
 private let clientsForLookup: HashMap<AxisStatKeyedClient> = createHashMap()
 
 // ----------------------------------------------------------------------------
-// PORT-NOTE: helpers modeling JS sparse-array (`serByIdx`) write/read (not upstream).
+// helpers modeling JS sparse-array (`serByIdx`) write/read (not upstream).
 private func setSparse(_ arr: inout [SeriesModel?], _ index: Int, _ value: SeriesModel) {
     while arr.count <= index {
         arr.append(nil)

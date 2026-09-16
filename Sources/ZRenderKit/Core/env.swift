@@ -1,7 +1,7 @@
 // Ported from zrender/src/core/env.ts — keep in sync with upstream
 import Foundation
 
-// PORT-NOTE: upstream `declare const wx: { getSystemInfoSync: Function }` — WeChat
+// upstream `declare const wx: { getSystemInfoSync: Function }` — WeChat
 // mini-program global. Not available on iOS; the `wx` detection branch below is dropped.
 
 final class Browser {
@@ -11,7 +11,7 @@ final class Browser {
     var newEdge = false
     var weChat = false
     // upstream: `version: string | number` — left undefined (Optional) until detect() sets it.
-    // PORT-NOTE: upstream union string|number; modeled as String? here. Numeric uses convert
+    // upstream union string|number; modeled as String? here. Numeric uses convert
     // with Double(version) at the boundary (see detect()).
     var version: String?
 }
@@ -30,7 +30,7 @@ final class Env {
     var transform3dSupported = false
 
     // upstream: `typeof window !== 'undefined'`
-    // PORT-NOTE: browser-only — no global `window` on iOS, so this is always false.
+    // browser-only — no global `window` on iOS, so this is always false.
     var hasGlobalWindow = false
 }
 
@@ -88,7 +88,7 @@ func configureNativeEnv(_ env: Env) {
     env.node = true
     env.svgSupported = true
 
-    // PORT-NOTE: not faithful, native deviation — upstream's node branch leaves these at the
+    // not faithful, native deviation — upstream's node branch leaves these at the
     // `Env` default `false`; we override them for the native Core Graphics backend. Keep the
     // pointer capability platform-specific: UIKit hosts use touch/coarse hit targets, while AppKit
     // hosts use a precise mouse just like desktop Web. Treating every native host as touch-capable
@@ -106,7 +106,7 @@ func configureNativeEnv(_ env: Env) {
 // (c) 2010-2013 Thomas Fuchs
 // Zepto.js may be freely distributed under the MIT license.
 
-// PORT-NOTE: dead, not faithful. `detect` parses a navigator userAgent string and probes
+// dead, not faithful. `detect` parses a navigator userAgent string and probes
 // browser globals (SVGRect, window, document, WebKitCSSMatrix). It is NEVER called on iOS
 // (configureNativeEnv takes the node branch instead), and the global-membership guards —
 // `'ontouchstart' in window`, `'onpointerdown' in window`, `typeof SVGRect !== 'undefined'`,
@@ -144,18 +144,18 @@ func detect(_ ua: String, _ env: Env) {
         browser.weChat = true
     }
 
-    // PORT-NOTE: `typeof SVGRect !== 'undefined'` — browser global, no SVG on iOS.
+    // `typeof SVGRect !== 'undefined'` — browser global, no SVG on iOS.
     env.svgSupported = false
-    // PORT-NOTE: `'ontouchstart' in window && !browser.ie && !browser.edge` — browser globals.
+    // `'ontouchstart' in window && !browser.ie && !browser.edge` — browser globals.
     env.touchEventsSupported = !browser.ie && !browser.edge
-    // PORT-NOTE: `'onpointerdown' in window && (browser.edge || (browser.ie && +browser.version >= 11))`
+    // `'onpointerdown' in window && (browser.edge || (browser.ie && +browser.version >= 11))`
     env.pointerEventsSupported = browser.edge || (browser.ie && (Double(browser.version ?? "") ?? 0) >= 11)
 
-    // PORT-NOTE: `typeof document !== 'undefined'` — browser global, no DOM on iOS.
+    // `typeof document !== 'undefined'` — browser global, no DOM on iOS.
     let domSupported = false
     env.domSupported = domSupported
     if domSupported {
-        // PORT-NOTE: browser-only style/transform feature detection through
+        // browser-only style/transform feature detection through
         // `document.documentElement.style`, `WebKitCSSMatrix`, etc. Cannot be replicated on iOS.
         //
         // const style = document.documentElement.style;
@@ -172,7 +172,7 @@ func detect(_ ua: String, _ env: Env) {
     }
 }
 
-// PORT-NOTE: helper replacing JS `String.prototype.match`. Returns an array-like where
+// helper replacing JS `String.prototype.match`. Returns an array-like where
 // index 0 is the full match and index 1+ are capture-group substrings, or nil on no match.
 private func firstMatch(_ s: String, _ pattern: String) -> [String]? {
     guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
@@ -190,4 +190,4 @@ private func firstMatch(_ s: String, _ pattern: String) -> [String]? {
 }
 
 // export default env;
-// PORT-NOTE: `env` is exposed as the module-level singleton (see `let env = Env()` above).
+// `env` is exposed as the module-level singleton (see `let env = Env()` above).

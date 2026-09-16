@@ -72,7 +72,7 @@ public enum states {
     //   augment `Element` directly (`el as ExtendedElement`). `Element` here can not host them, so they
     //   (plus the two-phase flags `hoverState`/`selected` and the `onHoverStateChange` hook and the
     //   z2 lift overrides — all from the `ECElement` interface) live in this per-element bag.
-    //   SCOPE (see the augmentation-strategy PORT-NOTE on `ECElement`, util/types.swift): this bag owns
+    //   SCOPE (see the augmentation-strategy note on `ECElement`, util/types.swift): this bag owns
     //   the HIGH-DOWN half of `ECElement` ONLY. Its NON-highDown props (`tooltipDisabled` and, when they
     //   land, `disableLabelAnimation`/`forceLabelAnimation`/`disableLabelLayout`/`disableMorphing`) live
     //   in `innerStore.ECElementProps` / `innerStore.getECElementProps` (util/innerStore.swift) — do not
@@ -246,7 +246,7 @@ public enum states {
     // when the element does not define an explicit one. Ported faithfully against `Path.pathStyle`
     // (upstream `el.style`) and the `ElementState.style` prop-bag.
     //
-    // PORT-NOTE: the synthesized `style` bag lands in `ElementState.style` (a `[String: Any]`). Whether
+    // the synthesized `style` bag lands in `ElementState.style` (a `[String: Any]`). Whether
     //   that bag is actually pushed into `Path.pathStyle` on `useState` depends on Path's keyed
     //   animation accessor for the value-type `style` sub-bag, which ZRenderKit's Element.swift marks as
     //   deferred. So the DEFAULT color-lift / opacity dim is faithful but only becomes VISIBLE once
@@ -415,7 +415,7 @@ public enum states {
     // Bridge: upstream `liftColor(fill as ColorString)` only lifts STRING colors. `Path`'s `ZRColor`
     //   enum and `color.liftColor`'s `ColorValue` enum are distinct types, so extract the string,
     //   lift it, and re-box. Gradient/pattern fills are returned unchanged (upstream casts to
-    //   ColorString, i.e. only strings are lifted). PORT-NOTE: gradient lift.
+    //   ColorString, i.e. only strings are lifted). note: gradient lift.
     static func liftZRColor(_ c: ZRenderKit.ZRColor?) -> ZRenderKit.ZRColor? {
         guard let c = c else { return nil }
         if case let .string(s) = c {
@@ -861,7 +861,7 @@ public enum states {
                 case "lineStyle": state.style = model.getLineStyle()
                 case "areaStyle": state.style = model.getAreaStyle()
                 default:
-                    // PORT-NOTE: upstream `defaultStyleGetterMap[styleType]` is undefined for other
+                    // upstream `defaultStyleGetterMap[styleType]` is undefined for other
                     //   styleTypes and would throw ("Let it throw error if getterType is not found");
                     //   we fall back to `getItemStyle` rather than trap.
                     state.style = model.getItemStyle()

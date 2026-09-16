@@ -13,7 +13,7 @@ public protocol GradientObject {
 }
 
 public protocol InnerGradientObject: GradientObject {
-    // PORT-NOTE: upstream `__canvasGradient: CanvasGradient` is a canvas-backend cache field with no
+    // upstream `__canvasGradient: CanvasGradient` is a canvas-backend cache field with no
     // native analogue — NativePainter renders gradients directly via `CGGradient`
     // (CGRenderer.makeCGGradient), so this field is intentionally omitted.
     var __width: Double { get set }

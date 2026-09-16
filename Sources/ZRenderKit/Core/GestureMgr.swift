@@ -4,16 +4,16 @@
  * Only implements needed gestures for mobile.
  */
 
-// PORT-NOTE: upstream `import * as eventUtil from './event'` — event.swift (clientToLocal) is
+// upstream `import * as eventUtil from './event'` — event.swift (clientToLocal) is
 // ported, but the DOM coordinate mapping is the native event seam (CONVENTIONS §9); the
 // UIKit bridge supplies touch points already in ZRender-local coordinates, so this file keeps a
 // local passthrough `clientToLocal` (below) rather than using event.swift's.
-// PORT-NOTE: upstream `import { ZRRawTouchEvent, ZRPinchEvent, Dictionary } from './types'` —
-// ZRRawTouchEvent / ZRPinchEvent are browser DOM event types (PORT-NOTE in types.swift). They
+// upstream `import { ZRRawTouchEvent, ZRPinchEvent, Dictionary } from './types'` —
+// ZRRawTouchEvent / ZRPinchEvent are browser DOM event types (note in types.swift). They
 // are modeled here as native seam types (`Touch`, `ZRRawTouchEvent`). `Dictionary` comes from
 // types.swift.
 
-// PORT-NOTE: browser `Touch` — native event seam. The UIKit bridge populates these; upstream
+// browser `Touch` — native event seam. The UIKit bridge populates these; upstream
 // reads `touch.clientX/clientY` and converts via `clientToLocal`.
 public struct Touch {
     public var clientX: Double
@@ -25,11 +25,11 @@ public struct Touch {
     }
 }
 
-// PORT-NOTE: browser `HTMLElement` root — native event seam (CONVENTIONS §9). Upstream passes
+// browser `HTMLElement` root — native event seam (CONVENTIONS §9). Upstream passes
 // the container element to `clientToLocal`; the native bridge owns coordinate context.
 public protocol GestureRoot: AnyObject {}
 
-// PORT-NOTE: merges browser `ZRRawTouchEvent` (which carries `touches`) and `ZRPinchEvent`
+// merges browser `ZRRawTouchEvent` (which carries `touches`) and `ZRPinchEvent`
 // (the `event as ZRPinchEvent` cast in the pinch recognizer, which writes `pinchScale`/
 // `pinchX`/`pinchY`). Modeled as a `final class` so the in-place mutation in `pinch` is
 // visible to the caller, matching the browser event object's reference semantics.
@@ -111,7 +111,7 @@ public final class GestureMgr {
     }
 }
 
-// PORT-NOTE: eventUtil.clientToLocal (zrender/src/core/event.ts) maps client coords to
+// eventUtil.clientToLocal (zrender/src/core/event.ts) maps client coords to
 // ZRender-local (zrX/zrY) via the root element's bounding box. event.swift is ported, but the
 // native UIKit bridge supplies touch points already in local coordinates, so this seam returns
 // them unchanged. See CONVENTIONS §9.
@@ -133,7 +133,7 @@ private func center(_ pointPair: [[Double]]) -> [Double] {
     ]
 }
 
-// PORT-NOTE: upstream Recognizer returns `{ type, target, event }`; modeled as a struct.
+// upstream Recognizer returns `{ type, target, event }`; modeled as a struct.
 public struct GestureInfo {
     public var type: String
     public var target: Displayable

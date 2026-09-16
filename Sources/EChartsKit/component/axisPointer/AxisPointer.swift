@@ -29,7 +29,7 @@ import Foundation
 
 // upstream: export interface AxisPointer { render(...); remove(api); dispose(api); }
 //
-//   PORT-NOTE (CONVENTIONS §2): upstream `AxisPointer` is a pure TS interface implemented by the
+//   note (CONVENTIONS §2): upstream `AxisPointer` is a pure TS interface implemented by the
 //   `BaseAxisPointer` class (and, through it, the concrete `CartesianAxisPointer` / `PolarAxisPointer`
 //   / `SingleAxisPointer`). Modeled as a Swift `protocol` (class-bound — the implementors are the
 //   reference-type pointer managers). `axisPointerModel: Model<CommonAxisPointerOption>` collapses to

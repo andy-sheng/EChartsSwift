@@ -25,9 +25,9 @@ import ZRenderKit
 //   import * as graphic from '../../util/graphic';   -> `Group`.
 //   import LineGroup from './Line';                   -> `ECLine` (chart/helper/ECLine.swift).
 //   import { getLabelStatesModels } from '../../label/labelStyle';   -> `labelStyle.getLabelStatesModels`.
-//   import { ILineDraw, ListForLineDraw } from './baseDraw';         -> PORT-NOTE: `baseDraw` NOT ported;
+//   import { ILineDraw, ListForLineDraw } from './baseDraw';         -> note: `baseDraw` NOT ported;
 //       `ListForLineDraw` is just `SeriesData` here, and `ILineDraw` collapses onto the concrete class.
-//   PORT-NOTE: incremental/progressive mode (incrementalPrepareUpdate / incrementalUpdate /
+//   incremental/progressive mode (incrementalPrepareUpdate / incrementalUpdate /
 //       eachRendered / _progressiveEls) is ported (mirroring SymbolDraw). `updateData` /
 //       `updateLayout` / `remove` (the merge-mode enter/update/leave DIFF that reuses + tweens each
 //       ECLine across a setOption) are ported faithfully.
@@ -109,7 +109,7 @@ public final class LineDraw: MarkerDraw {
         self._progressiveEls = []
 
         // upstream: function updateIncrementalAndHover(el)
-        // PORT-NOTE: HOVER_LAYER_FOR_INCREMENTAL === 2 (util/graphic.ts) is not ported as a named
+        // HOVER_LAYER_FOR_INCREMENTAL === 2 (util/graphic.ts) is not ported as a named
         //   constant; inlined here (same substitute as SymbolDraw). `isEffectObject` (el has
         //   animators) is unused for the default ECLine and follows SymbolDraw's reduction.
         func updateIncrementalAndHover(_ el: Element) -> Bool {
@@ -142,7 +142,7 @@ public final class LineDraw: MarkerDraw {
     // upstream: eachRendered(cb)
     public func eachRendered(_ cb: (_ el: Element) -> Bool) {
         // upstream: graphic.traverseElements(this._progressiveEls || this.group, cb);
-        // PORT-NOTE: `util/graphic.traverseElements` not ported. When `_progressiveEls` exists,
+        // `util/graphic.traverseElements` not ported. When `_progressiveEls` exists,
         //   traverse each (progressive mode); otherwise traverse the group via `Group.traverse`
         //   (same substitute as SymbolDraw.eachRendered).
         if let progressiveEls = self._progressiveEls {

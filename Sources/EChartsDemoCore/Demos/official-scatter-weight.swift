@@ -305,7 +305,7 @@ option = {
                 "containLabel": true
             ] as [String: Any],
             "tooltip": [
-                // PORT-NOTE: trigger: 'axis' is commented out in the official source; kept commented here too.
+                // trigger: 'axis' is commented out in the official source; kept commented here too.
                 "showDelay": 0.0,
                 "formatter": scatterWeightTooltipFormatter,
                 "axisPointer": [

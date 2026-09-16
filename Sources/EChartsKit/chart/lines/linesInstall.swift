@@ -56,7 +56,7 @@ import ZRenderKit
 //          before and after (Chord/Graph/Parallel/Sankey transition + ZZMarker), none lines-related.
 
 // export function install(registers: EChartsExtensionInstallRegisters) { ... }
-// PORT-NOTE: registration boilerplate belongs to the Orchestrate/Integrate driver (core/ECharts.swift),
+// registration boilerplate belongs to the Orchestrate/Integrate driver (core/ECharts.swift),
 //   not this render-layer file (same convention as sankeyInstall.swift). See the
 //   `-- chart/lines/install.ts (minimal) --` block there; the mapping is tabulated under INTEGRATION
 //   SURFACE below. Preserved as commented source for the diffable surface:
@@ -82,7 +82,7 @@ import ZRenderKit
 //                          read by ECLine via LineDraw for the non-polyline modes (see the import note)
 //                                                                (chart/lines/linesVisual.swift)
 //
-// PORT-NOTE (coord systems — the two stages differ, do not collapse them):
+// note (coord systems — the two stages differ, do not collapse them):
 //   `linesLayout` dispatches through the generic `CoordinateSystem.dataToPoint` requirement, so
 //   cartesian2d, geo and calendar all lay out (linesLayout.swift, the `as? CoordinateSystem` guard);
 //   only `Polar` — which conforms to `CoordinateSystemMaster` with a divergent `dataToPoint(_:clamp:)`
@@ -91,7 +91,7 @@ import ZRenderKit
 //   `-- chart/lines/install.ts (minimal) --` block and its LAYOUT comment still say "only cartesian2d"
 //   for the layout stage — that is stale w.r.t. linesLayout.swift; this file is the accurate one.
 //
-// PORT-NOTE (registrar route for linesVisual): upstream `registerVisual` appends to the module-level
+// note (registrar route for linesVisual): upstream `registerVisual` appends to the module-level
 //   `visualFuncs` array (echarts.ts:2903) handed to the Scheduler; the ported counterpart is the instance
 //   method `buildVisualHandlers()`, which still returns `[]` because the visual stage is a DIRECT call
 //   (performVisualStage/performVisualMapStage in `update()`) pending the sub-project C2 stub-outputData

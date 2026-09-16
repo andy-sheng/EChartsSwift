@@ -27,14 +27,14 @@ import ZRenderKit
 //       reading `data.getItemLayout(i)` via `ECLine.setLinePoints`), plus fromSymbol/toSymbol arrow
 //       markers + label + emphasis/blur state. `_lineDraw` below owns the straight/curved (non-polyline)
 //       lines: its group is added once (`_lineDrawAdded`) and driven by `_lineDraw.updateData(data)`.
-//       PORT-NOTE: the POLYLINE mode is still inlined (ECLine models only a 2/3-point Line/BezierCurve),
+//       the POLYLINE mode is still inlined (ECLine models only a 2/3-point Line/BezierCurve),
 //       so an N-point `Polyline` per data item is built directly.
-//   import EffectLine from '../helper/EffectLine';        -> PORT-NOTE: ported as chart/lines/EffectLine.swift.
+//   import EffectLine from '../helper/EffectLine';        -> note: ported as chart/lines/EffectLine.swift.
 //       The moving-dot / trail EFFECT is ANIMATED (CONVENTIONS §5) and is wired (see render + EffectLine.swift).
-//   import Line from '../helper/Line';                    -> PORT-NOTE: ported as chart/helper/ECLine.swift
+//   import Line from '../helper/Line';                    -> note: ported as chart/helper/ECLine.swift
 //       (renamed to avoid colliding with the ZRenderKit `Line` SHAPE); driven via LineDraw.
-//   import Polyline from '../helper/Polyline';            -> PORT-NOTE: helper/Polyline NOT ported (inline shape).
-//   import EffectPolyline from '../helper/EffectPolyline';-> PORT-NOTE: ported (in chart/lines/EffectLine.swift); effect wired.
+//   import Polyline from '../helper/Polyline';            -> note: helper/Polyline NOT ported (inline shape).
+//   import EffectPolyline from '../helper/EffectPolyline';-> note: ported (in chart/lines/EffectLine.swift); effect wired.
 //   import LargeLineDraw from '../helper/LargeLineDraw';  -> ported as chart/helper/LargeLineDraw.swift and
 //       WIRED: `_updateLineDraw`'s `isLargeDraw` branch draws the whole series into ONE `LargeLinesPath`
 //       built from the packed `linesPoints` layout that the `linesLayout` STAGE produces (see the large
@@ -47,21 +47,21 @@ import ZRenderKit
 //       deviation as ScatterView inlining pointsLayout and LineView inlining dataToPoint) — that inlining
 //       writes only per-ITEM layouts and never touches the `linesPoints` key.
 //   import {createClipPath} from '../helper/createClipPathFromCoordSys';
-//       -> PORT-NOTE: createClipPathFromCoordSys is ported; the `clip` option is not wired in this static view (no clip path set).
+//       -> note: createClipPathFromCoordSys is ported; the `clip` option is not wired in this static view (no clip path set).
 //   import ChartView from '../../view/Chart';             -> ChartView (view/Chart.swift).
 //   import LinesSeriesModel from './LinesSeries';         -> sibling LinesSeries.swift (assumed ported alongside).
 //   import GlobalModel from '../../model/Global';         -> GlobalModel.
 //   import ExtensionAPI from '../../core/ExtensionAPI';   -> ExtensionAPI.
-//   import CanvasPainter from 'zrender/src/canvas/Painter';   -> PORT-NOTE: motion-blur layer config (effect trail) is applied by the live host (EChartsView._setupLinesEffectLayers / configLayer).
+//   import CanvasPainter from 'zrender/src/canvas/Painter';   -> note: motion-blur layer config (effect trail) is applied by the live host (EChartsView._setupLinesEffectLayers / configLayer).
 //   import { StageHandlerProgressParams, StageHandlerProgressExecutor } from '../../util/types';
-//       -> PORT-NOTE (deferred): incremental/progressive pipeline (incrementalRender/updateTransform) DEFERRED for lines.
+//       -> TODO: incremental/progressive pipeline (incrementalRender/updateTransform) DEFERRED for lines.
 //   import SeriesData from '../../data/SeriesData';       -> SeriesData.
-//   import type Polar from '../../coord/polar/Polar';     -> Polar (polar lines are a PORT-NOTE deferral below).
+//   import type Polar from '../../coord/polar/Polar';     -> Polar (polar lines are a note deferral below).
 //   import type Cartesian2D from '../../coord/cartesian/Cartesian2D';   -> Cartesian2D.
 //   import Element from 'zrender/src/Element';            -> Element (eachRendered — DEFERRED).
-//   import { getIncrementalId } from '../../util/model';  -> PORT-NOTE (deferred): getIncrementalId is ported (util/modelUtil), but the incremental pipeline usage for lines is DEFERRED.
-//   import { getCurrentCanvasPainter } from '../../util/graphic';   -> PORT-NOTE: motion-blur layer config is host-managed (EChartsView.configLayer); getCurrentCanvasPainter is unused natively.
-//   import { ILineDraw } from '../helper/baseDraw';       -> PORT-NOTE: helper/baseDraw NOT ported.
+//   import { getIncrementalId } from '../../util/model';  -> TODO: getIncrementalId is ported (util/modelUtil), but the incremental pipeline usage for lines is DEFERRED.
+//   import { getCurrentCanvasPainter } from '../../util/graphic';   -> note: motion-blur layer config is host-managed (EChartsView.configLayer); getCurrentCanvasPainter is unused natively.
+//   import { ILineDraw } from '../helper/baseDraw';       -> note: helper/baseDraw NOT ported.
 
 // upstream: class LinesView extends ChartView
 open class LinesView: ChartView {
@@ -78,13 +78,13 @@ open class LinesView: ChartView {
     }
 
     // upstream fields: _lastZlevel / _finished / _lineDraw / _hasEffet / _isPolyline / _isLargeDraw.
-    //   PORT-NOTE (deferred): the incremental flags (_finished) are DEFERRED; `_isLargeDraw` IS wired.
+    //   TODO: the incremental flags (_finished) are DEFERRED; `_isLargeDraw` IS wired.
     private var _data: SeriesData?
 
     // upstream: `this._lineDraw = new LineDraw()` — the straight/curved (non-polyline) lines are now
     //   routed through the shared `chart/helper/LineDraw`, which DIFFS `data` (enter/update/leave) and
     //   reuses + tweens each ECLine across a merge-mode setOption. Its group is added to `self.group`
-    //   once (`_lineDrawAdded`). PORT-NOTE: ECLine models only a 2/3-point Line/BezierCurve, so the
+    //   once (`_lineDrawAdded`). note: ECLine models only a 2/3-point Line/BezierCurve, so the
     //   POLYLINE (N-point) mode keeps the inline persist-and-morph reuse below; geo/polar lines stay
     //   DEFERRED (only Cartesian2D is wired). The (ported) LargeLineDraw IS wired — see below.
     //   `var` (not `let`) because a draw-MODE flip must DISCARD the instance: upstream `_updateLineDraw`
@@ -137,10 +137,10 @@ open class LinesView: ChartView {
         //   projects each data-space coord through the coord system itself (like ScatterView/LineView),
         //   then adds one shape per item to `this.group` (rebuilt from scratch each render).
         //
-        // PORT-NOTE: `configLayer` motion-blur (the trail effect's `lastFrameAlpha`) is applied by the
+        // `configLayer` motion-blur (the trail effect's `lastFrameAlpha`) is applied by the
         //   live host (EChartsView._setupLinesEffectLayers); no in-view `getCurrentCanvasPainter` clear.
-        // PORT-NOTE: `_showEffect`/`trailLength` → EffectLine/EffectPolyline moving-dot render is wired (see below).
-        // PORT-NOTE: `seriesModel.get('clip')` → createClipPath(coordSys) + group.setClipPath is not wired
+        // `_showEffect`/`trailLength` → EffectLine/EffectPolyline moving-dot render is wired (see below).
+        // `seriesModel.get('clip')` → createClipPath(coordSys) + group.setClipPath is not wired
         //   in this static view (helper/createClipPathFromCoordSys IS ported).
 
         // Project through the generic coordinate-system contract, matching linesLayout. Cartesian2D,
@@ -179,7 +179,7 @@ open class LinesView: ChartView {
         let count = data.count()
 
         // The effect trail symbols are ANIMATED (looping) and rebuilt each render (their morph is a
-        //   PORT-NOTE deferral). With the group no longer wiped, remove the previous render's symbols first so
+        //   note deferral). With the group no longer wiped, remove the previous render's symbols first so
         //   they don't accumulate when the base lines are reused.
         for (_, s) in _effectSymbols { _ = group.remove(s) }
         _effectSymbols.removeAll()
@@ -208,7 +208,7 @@ open class LinesView: ChartView {
         //   updateStreamModes pass GUARANTEES to be populated before any view renders; the optional chain
         //   is belt-and-braces only (and `linesLayout` reads it the same defensive way, so a hypothetical
         //   nil would take the non-large path on BOTH sides rather than trapping in the layout stage).
-        //   PORT-NOTE (coercion delta vs the JS predicate, inherited from modelUtil.preparePipelineContext,
+        //   note (coercion delta vs the JS predicate, inherited from modelUtil.preparePipelineContext,
         //   which is the shared single source of truth for every series): it reads `large` as `as? Bool`
         //   (a truthy non-Bool such as `1` does NOT enable large mode) and defaults a missing
         //   `largeThreshold` to 0 (upstream `dataLen >= undefined` is always FALSE, i.e. never large).
@@ -451,7 +451,7 @@ open class LinesView: ChartView {
     // Finish a freshly-built line element: name it, apply the style, clear the spurious black fill
     //   (Polyline/BezierCurve close into a fillable path; useStyle→createStyle drops the intended
     //   fill:null — visual-parity trap class 1), add it to the group and record it as persisted.
-    // PORT-NOTE (deferred): fromSymbol/toSymbol arrow markers, per-line label, and emphasis/blur states DEFERRED.
+    // TODO: fromSymbol/toSymbol arrow markers, per-line label, and emphasis/blur states DEFERRED.
     private func finishBuildLine(_ el: Path, _ i: Int, _ style: PathStyleProps) {
         el.name = "line"
         el.useStyle(style)
@@ -549,11 +549,11 @@ open class LinesView: ChartView {
     }
 
     // upstream: incrementalPrepareRender / incrementalRender / eachRendered
-    //   -> PORT-NOTE: incremental/progressive pipeline is not wired in this static driver.
+    //   -> note: incremental/progressive pipeline is not wired in this static driver.
 
     // upstream: remove(ecModel, api) { this._lineDraw && this._lineDraw.remove(); this._lineDraw = null; this._clearLayer(api); }
     open override func remove(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
-        // PORT-NOTE: _clearLayer (canvas motion-blur layer clear) is host-managed (EChartsView configLayer); the trail symbols are dropped by group.removeAll() below.
+        // _clearLayer (canvas motion-blur layer clear) is host-managed (EChartsView configLayer); the trail symbols are dropped by group.removeAll() below.
         _ = self.group.removeAll()
         // group.removeAll() also detached the LineDraw group — clear its content + the re-add flag so a
         //   later render re-attaches it. Clear the polyline/effect bookkeeping too.

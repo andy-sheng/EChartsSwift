@@ -25,13 +25,9 @@
 //   5. `toolbox` and `dataZoom` are interactive; the gallery snapshots ONE static frame, so both
 //      panes show them in their initial (full-range) state.
 //
-// KNOWN NATIVE GAP (kept faithful on purpose — surfacing it is the point of this demo): with
-// `large: true` and 500k >= `largeThreshold` (400), `modelUtil.preparePipelineContext` sets
-// `pipelineContext.large`, so BarView takes `_renderLarge` — a PORT-NOTE(deferred) stub (upstream
-// `createLarge` / `LargePath` / `util/throttle` are not ported) that only updates the clip. The
-// native pane is expected to draw title, axes, dataZoom and toolbox but NO BARS until LargePath
-// lands. Dropping `large` to make the native pane "work" would hide exactly the gap we are hunting,
-// so it stays.
+// With `large: true` and 500k >= `largeThreshold` (400), the native path uses
+// `BarView._renderLarge` and `LargeBarPath` for batched bars and throttled hit testing.
+// Keep the upstream large-mode option so this demo exercises the same workload on both panes.
 import Foundation
 
 // MARK: - the upstream `generateData(5e5)`, ported

@@ -43,7 +43,7 @@ import ZRenderKit
 //      shared with `axisInfo.linkGroup`, so it must be a class (JS object semantics).
 public final class LinkGroup {
     // mapper: AxisPointerOption['link'][number]['mapper']
-    //   -> the user link `mapper` callback. PORT-NOTE (deferred): link-group value mapping (`axisTrigger`'s
+    //   -> the user link `mapper` callback. TODO: link-group value mapping (`axisTrigger`'s
     //      cross-axis linking) is deferred; the callback is stored opaquely as `Any?`.
     public var mapper: Any?
     // { [axisKey]: AxisInfo }
@@ -348,7 +348,7 @@ private func collectSeriesInfo(_ result: CollectionResult, _ ecModel: GlobalMode
         //  - Polar: `getAxis(axis.dim)` (radius/angle) — `Polar.getAxis(_ dim: DimensionName) -> Axis`
         //    (non-optional) does not witness the protocol's optional-returning requirement either, so it
         //    is narrowed here too; this makes trigger:'axis' tooltip populate seriesModels for polar series.
-        //  PORT-NOTE (deferred): other coord systems still out of scope.
+        //  TODO: other coord systems still out of scope.
         let coordSysModel: ComponentModel?
         let belongsToAxis: (Axis) -> Bool
         if let coordSys = seriesModel.coordinateSystem as? Cartesian2D {
@@ -514,7 +514,7 @@ public func makeKey(_ model: ComponentModel) -> String {
     return model.type + "||" + model.id
 }
 
-// PORT-NOTE: `viewHelper.buildLabelElOption` — the drawn crosshair label *element* build
+// `viewHelper.buildLabelElOption` — the drawn crosshair label *element* build
 //   (an `AxisPointerElementOption`) lives in `component/axisPointer/viewHelper.ts` and is ported in
 //   the sibling `viewHelper.swift` (not here in modelHelper). `axisTrigger` (this phase) consumes only
 //   the collected models (`collect` / `getAxisPointerModel` / `makeKey`) + their coordSys / value / status above.

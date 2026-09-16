@@ -11,7 +11,7 @@ import ZRenderKit
 // getBoundingRect-based collision, real `el.hide()` for the losers. The dat.GUI maps to the native
 // control panel (hideOverlap + overlapMargin). Deterministic LCG positions (no Date/random).
 //
-// PORT NOTE: the `rotate` branch (random rotation → OrientedBoundingRect collision) is omitted; this
+// the `rotate` branch (random rotation → OrientedBoundingRect collision) is omitted; this
 // renders config.rotate=false (axis-aligned), keeping placement deterministic.
 
 private func textCollideLabels(_ zr: ZRender) -> [ZRText] {

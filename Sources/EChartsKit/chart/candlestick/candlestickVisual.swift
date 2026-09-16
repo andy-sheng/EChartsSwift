@@ -65,7 +65,7 @@ public let candlestickVisual: StageHandler = {
     handler.seriesType = SERIES_TYPE_CANDLESTICK
 
     // plan: createRenderPlanner(),
-    // PORT-NOTE: `createRenderPlanner()` yields the upstream 1-arg planner `(SeriesModel) ->
+    // `createRenderPlanner()` yields the upstream 1-arg planner `(SeriesModel) ->
     //   StageHandlerPlanReturn?` (nil-for-no-reset), while `StageHandlerPlan` is the 4-arg
     //   `(SeriesModel, GlobalModel, ExtensionAPI, Payload?) -> StageHandlerPlanReturn?`; the planner is
     //   created ONCE here (as upstream, so its `makeInner` large/progressive state persists across calls)
@@ -118,7 +118,7 @@ public let candlestickVisual: StageHandler = {
 
                 // const existsStyle = data.ensureUniqueItemVisual(dataIndex, 'style');
                 // extend(existsStyle, style);
-                // PORT-NOTE: upstream `existsStyle` is the very object stored in the item visual and
+                // upstream `existsStyle` is the very object stored in the item visual and
                 //   `extend` mutates it IN PLACE. Swift dictionaries are value types, so extend a local
                 //   copy and write it back via setItemVisual (CONVENTIONS §3; same as visual/style.swift).
                 var existsStyle = (data.ensureUniqueItemVisual(dataIndex, "style") as? [String: Any]) ?? [:]

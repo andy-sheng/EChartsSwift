@@ -16,7 +16,7 @@
 //     Their width is set explicitly to the same 30 px as their height so native layout does not depend
 //     on the browser-only preloaded-image natural-size lookup; the source icons are square.
 //
-// PORT-NOTE (native option completeness): NOTHING is dropped from the Swift `option`. This example has
+// note (native option completeness): NOTHING is dropped from the Swift `option`. This example has
 // no JS-function-valued keys at all — both formatters (`tooltip.formatter` and the CityE
 // `label.formatter`) are ECharts STRING templates, and upstream's `[...].join('\n')` is evaluated at
 // definition time into that same string. So the Swift `option` is a key-for-key mirror of webOptionJS.

@@ -104,7 +104,7 @@ public func findPointFromSeries(
     let coordSys = seriesModel.coordinateSystem
 
     // upstream: if (seriesModel.getTooltipPosition) { point = seriesModel.getTooltipPosition(dataIndex) || []; }
-    //   PORT-NOTE (deferred): requires a base `SeriesModel.getTooltipPosition` witness. Upstream's is a
+    //   TODO: requires a base `SeriesModel.getTooltipPosition` witness. Upstream's is a
     //   declaration-merged optional method; concrete overrides now exist on MapSeries/RadarSeries but with
     //   divergent signatures and no common protocol to dispatch through, and neither uses a cartesian
     //   axisPointer, so this cartesian branch never reaches them. Wire a protocol witness once a
@@ -141,7 +141,7 @@ public func findPointFromSeries(
             // upstream: point = coordSys.dataToPoint(
             //     data.getValues(zrUtil.map(coordSys.dimensions, dim => data.mapDimension(dim)), dataIndex)
             // ) || [];
-            // PORT-NOTE: upstream's `zrUtil.map` is length-preserving — a `mapDimension` returning
+            // upstream's `zrUtil.map` is length-preserving — a `mapDimension` returning
             //   `undefined` keeps its slot (undefined -> NaN through `getValues`). `compactMap` instead
             //   DROPS a nil slot, which would shorten/misalign the dims array. This is safe here (and only
             //   here) because Cartesian2D's `dimensions` are always ['x','y'], both of which resolve via

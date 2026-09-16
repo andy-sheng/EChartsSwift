@@ -46,7 +46,7 @@
 //   the ported `initProps`/`updateProps` (animation/basicTransition.swift) + `model.interpolateRawValues`
 //   (util/modelUtil.swift). `labelInner`'s store carries the fields they need (`prevValue`/`value`/
 //   `interpolatedValue`/`valueAnimation`/`precision`/`statesModels`/`defaultInterpolatedText`).
-//   See the two functions' PORT-NOTEs for the synthetic-`percent` prop handling and the STATIC-oracle
+//   See the two functions' notes for the synthetic-`percent` prop handling and the STATIC-oracle
 //   deviation (settles to the final value; the live host renders intermediate frames).
 
 import Foundation
@@ -108,7 +108,7 @@ public struct TextCommonParams {
 //   `SetLabelStyleOpt.labelDataIndex` — are hard-typed `Double`. So only the map-SERIES branch
 //   (MapView's idx -> fullIndex remap, a numeric index) is expressible via `LabelFetcherFn`; the
 //   geo-component name-keyed query still needs the `labelQuery` widening described in
-//   component/helper/MapDraw.swift (see its PORT-TODO), and still resolves eagerly into
+//   component/helper/MapDraw.swift (see its TODO), and still resolves eagerly into
 //   `defaultText` for the normal state only.
 // WITNESS TRAP: the requirement's parameter list is byte-identical to
 //   `DataFormatMixin.getFormattedLabel` — do NOT narrow/relax any parameter, or conformers would
@@ -283,7 +283,7 @@ public enum labelStyle {
             let state = label.ensureState(stateName)
             // upstream: `state.style = state.style || {}; state.style.text = text;` — `ZRText`'s
             //   per-state style lives in the additive `ElementState.textStyle` side-channel (see
-            //   Element.swift PORT-NOTE), not the generic `ElementState.style` dict.
+            //   Element.swift note), not the generic `ElementState.style` dict.
             var style = state.textStyle ?? TextStyleProps()
             style.text = text
             state.textStyle = style
@@ -624,7 +624,7 @@ public enum labelStyle {
             // upstream: labelTextStyle.__marginType = LabelMarginType.minMargin;
             //   `TextStyleProps.__marginType` (ZRenderKit) stores the RAW VALUE, because the enum lives
             //   here in EChartsKit while the struct lives in ZRenderKit (which cannot depend on this
-            //   module) — see the field's PORT-NOTE in ZRenderKit/Graphic/Text.swift.
+            //   module) — see the field's note in ZRenderKit/Graphic/Text.swift.
             textStyle.__marginType = LabelMarginType.minMargin.rawValue
         }
         else if let textMarginRaw = textStyleModel.get("textMargin"), !(textMarginRaw is NSNull) {
@@ -669,7 +669,7 @@ public enum labelStyle {
     //   passing a full `TextStyleProps` where a `TextStylePropsPart` is expected type-checks, since it
     //   has a superset of fields). Swift structs have no subtyping, so this collapses to a shared
     //   generic CORE (`_setTokenTextStyleCore<U: TextStylePropsPartLike>`, using the protocol widened
-    //   in ZRenderKit's Text.swift for exactly this purpose — see the PORT-NOTE there) plus two thin
+    //   in ZRenderKit's Text.swift for exactly this purpose — see the note there) plus two thin
     //   public overloads that each handle the ONE field the two structs disagree on: `width`
     //   (`Double` on `TextStyleProps` vs `NumberOrString` on `TextStylePropsPart` — intentionally
     //   excluded from `TextStylePropsPartLike`). `ellipsis` (present only on `TextStyleProps`) is
@@ -888,8 +888,8 @@ public enum labelStyle {
     }
 
     /// Create a font string from fontStyle, fontWeight, fontSize, fontFamily.
-    // PORT-NOTE: `model/mixin/textStyle.swift`'s `TextStyleMixin.getFont()` currently reproduces this
-    //   exact body inline (`_labelStyleGetFont`, with an explicit PORT-NOTE to call this once it
+    // `model/mixin/textStyle.swift`'s `TextStyleMixin.getFont()` currently reproduces this
+    //   exact body inline (`_labelStyleGetFont`, with an explicit note to call this once it
     //   landed) because it was ported OUT OF PHASE, before `label/labelStyle.swift` existed. Left
     //   as-is here (not retrofitted) to keep this phase's diff scoped to the two files it was asked to
     //   create; a follow-up can delete `_labelStyleGetFont` and forward to `labelStyle.getFont` instead.
@@ -944,7 +944,7 @@ public enum labelStyle {
     // Drive the label's displayed text from the previous value to the target value: each animation frame
     // interpolates the raw value (via the ported `interpolateRawValues`) and re-formats the label text.
     //
-    // PORT-NOTE (`percent` prop): upstream animates a SYNTHETIC `percent` prop on the ZRText purely to
+    // note (`percent` prop): upstream animates a SYNTHETIC `percent` prop on the ZRText purely to
     //   keep the animator alive (#15916); the port has no dynamic per-element property, so `percent` is
     //   an unknown key — `initProps`/`updateProps` still create a forced animator (because a `during`
     //   callback is supplied, `animateOrSetProps` sets `force`), so the per-frame `during` fires exactly
@@ -1002,7 +1002,7 @@ public enum labelStyle {
         }
 
         // upstream: `(textEl as ZRText & {percent?}).percent = 0` — a synthetic animatable prop (see
-        //   PORT-NOTE above). Setting it here is a no-op in the port (unknown key), but harmless.
+        //   note above). Setting it here is a no-op in the port (unknown key), but harmless.
         _ = textEl.attr("percent", 0.0)
         let props: [String: Any] = ["percent": 1.0]
         if labelInnerStore.prevValue == nil {
@@ -1148,7 +1148,7 @@ private func _coerceLineDash(_ v: Any?) -> LineDash? {
 }
 
 // ---- `getFont`'s JS `||`-chain helpers (mirrors `model/mixin/textStyle.swift`'s private
-//   `_labelStyleGetFont` support functions — duplicated per this file's own PORT-NOTE above) ----
+//   `_labelStyleGetFont` support functions — duplicated per this file's own note above) ----
 
 private func _jsTruthyString(_ a: Any?, _ b: Any?, _ fallback: String) -> String {
     if let s = _jsStringOrNil(a) { return s }

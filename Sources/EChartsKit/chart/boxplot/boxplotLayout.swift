@@ -37,7 +37,7 @@ import ZRenderKit
 //   import { calcBandWidth } from '../../coord/axisBand';               -> `calcBandWidth` (coord/axisBand.swift).
 //   import { createBandWidthBasedAxisContainShapeHandler, createMetricsNonOrdinalLinearPositiveMinGap,
 //       makeAxisStatKey } from '../helper/axisSnippets';
-//       -> PORT-NOTE (deferred): requires chart/helper/axisSnippets.swift (the shared module is not
+//       -> TODO: requires chart/helper/axisSnippets.swift (the shared module is not
 //          ported; mirrored below as private stubs, same convention as barGrid.swift / barCommon.swift /
 //          candlestickLayout.swift). Remove and import the real symbols when the module lands.
 
@@ -274,7 +274,7 @@ public func registerBoxplotAxisHandlers(_ registers: EChartsExtensionInstallRegi
 
 
 // ============================================================================
-// PORT-NOTE: local port helpers (NOT in upstream boxplotLayout.ts).
+// local port helpers (NOT in upstream boxplotLayout.ts).
 // ============================================================================
 
 // `data.get(...)` returns `ParsedValue` (Any); boxplot's 5-number data is stored as `Double`. Mirrors
@@ -295,7 +295,7 @@ private func parsePercentOr0(_ option: Any?, _ percentBase: Double) -> Double {
 
 
 // ============================================================================
-// PORT-NOTE (deferred): stubs for `chart/helper/axisSnippets.ts` (PREREQ, not yet ported). Mirror the
+// TODO: stubs for `chart/helper/axisSnippets.ts` (PREREQ, not yet ported). Mirror the
 //   upstream one-liners so this file compiles; remove them and import the real symbols from
 //   chart/helper/axisSnippets.swift when it lands (as barGrid.swift / barCommon.swift do for their stubs).
 //

@@ -166,7 +166,7 @@ private func createPathProxyFromString(_ data: String?) -> PathProxy {
 
         // Following code will convert string to number. So convert type to number here
         // upstream: const p = cmdText.match(numberReg) ... ; for (...) p[i] = parseFloat(p[i]);
-        // PORT-NOTE: `parseFloat` fallback — numberReg yields clean tokens; `Double(_:)` parses
+        // `parseFloat` fallback — numberReg yields clean tokens; `Double(_:)` parses
         //   '.5' / '-2.43e-1' etc. Unparsable tokens fall back to 0 (should not occur).
         let p: [Double] = (matchAll(numberRegPattern, [], cmdText) ?? []).map { Double($0) ?? 0 }
         let pLen = p.count
@@ -429,14 +429,14 @@ private func createPathOptions(_ str: String?, _ opts: SVGPathOption?) -> InnerS
             // path.setData(pathProxy.data);
             path.appendPath(pathProxy)
             // Svg and vml renderer don't have context
-            // PORT-NOTE: const ctx = path.getContext(); if (ctx) { path.rebuildPath(ctx, 1); }
+            // const ctx = path.getContext(); if (ctx) { path.rebuildPath(ctx, 1); }
             //   getContext()/rebuildPath(ctx) are the CanvasRenderingContext2D renderer seam
             //   (CONVENTIONS §9, not ported). The native backend rebuilds from the appended proxy.
         }
         else {
             // const ctx = beProxy ? path.getContext() : path;
             // if (ctx) { pathProxy.rebuildPath(ctx, 1); }
-            // PORT-NOTE: renderer seam (CONVENTIONS §9) — getContext()/rebuildPath not ported.
+            // renderer seam (CONVENTIONS §9) — getContext()/rebuildPath not ported.
             _ = pathProxy
         }
     }
@@ -543,7 +543,7 @@ public func makeImage(_ imageStr: String, _ rect: RectLike, _ layout: String? = 
 // upstream returns `typeof SVGPath` (a NEW Path subclass synthesized at runtime). Swift has no
 //   runtime class synthesis (CONVENTIONS §2 / §8); return a factory closure that builds configured
 //   `SVGPath` instances — the call-site replacement for `const Sub = extendFromString(...); new Sub(opts)`.
-// PORT-NOTE: factory-closure stand-in for the synthesized `class Sub extends SVGPath`.
+// factory-closure stand-in for the synthesized `class Sub extends SVGPath`.
 public func extendFromString(_ str: String?, _ defaultOpts: SVGPathOption? = nil) -> (SVGPathOption?) -> SVGPath {
     let innerOpts = createPathOptions(str, defaultOpts)
     return { (opts: SVGPathOption?) -> SVGPath in
@@ -571,7 +571,7 @@ final class MergedPath: Path {
         // isPathProxy is always true in the Swift seam (ctx is a PathProxy).
         ctx.appendPath(pathList)
         // Svg and vml renderer don't have context
-        // PORT-NOTE: const ctx = path.getContext(); if (ctx) { path.rebuildPath(ctx, 1); }
+        // const ctx = path.getContext(); if (ctx) { path.rebuildPath(ctx, 1); }
         //   Path bundle not support percent draw. (renderer seam — CONVENTIONS §9, not ported).
     }
 }
@@ -614,7 +614,7 @@ public func clonePath(_ sourcePath: Path, _ opts: ClonePathOption? = nil) -> Pat
         path.setShape(sourcePath.shape)
     }
     // path.setStyle(sourcePath.style);
-    // PORT-NOTE: upstream `setStyle` MERGES `sourcePath.style` (PathStyleProps) into the fresh
+    // upstream `setStyle` MERGES `sourcePath.style` (PathStyleProps) into the fresh
     //   default style. Our rich style lives in `pathStyle`; `useStyle` assigns it (the source style
     //   is already a created/magic style, so it round-trips by value). Merge is WRONG here: a fresh
     //   Path()'s pathStyle.fill defaults to "#000", and extendPathStyle skips nil source fields, so a
@@ -627,7 +627,7 @@ public func clonePath(_ sourcePath: Path, _ opts: ClonePathOption? = nil) -> Pat
     path.useStyle(sourcePath.pathStyle)
 
     if opts.bakeTransform == true {
-        // PORT-NOTE: `path.path` is created lazily (nil until buildPath/getBoundingRect). Upstream
+        // `path.path` is created lazily (nil until buildPath/getBoundingRect). Upstream
         //   relies on it existing; morph callers build the proxy first. Faithful call kept.
         transformPath(path.path, sourcePath.getComputedTransform())
     }

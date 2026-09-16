@@ -12,7 +12,7 @@
 
 import Foundation
 
-// PORT-NOTE: upstream `r?: number | number[]` is an untagged union. Modeled as a tagged enum
+// upstream `r?: number | number[]` is an untagged union. Modeled as a tagged enum
 //   (no untagged unions in Swift — same pattern as `LineDash`/`ZRColor` in Path.swift).
 //   `.number` ⟷ `typeof r === 'number'`, `.array` ⟷ `r instanceof Array`.
 public enum RectRadius {
@@ -62,12 +62,12 @@ public struct RectShape: PathShape {
 }
 
 // upstream: export interface RectProps extends PathProps { shape?: Partial<RectShape> }
-// PORT-NOTE: typed-interface fidelity dropped — PathProps is the dynamic `[String: Any]` prop bag
+// typed-interface fidelity dropped — PathProps is the dynamic `[String: Any]` prop bag
 //   (== DisplayableProps); the `shape?` field is set via the `"shape"` key (see Path._init).
 public typealias RectProps = PathProps
 
 // Avoid create repeatly.
-// PORT-NOTE: upstream `const subPixelOptimizeOutputShape = {}` is a reused mutable scratch object.
+// upstream `const subPixelOptimizeOutputShape = {}` is a reused mutable scratch object.
 //   Per CONVENTIONS §3 our `subPixelOptimizeRect` is value-returning, so no shared scratch is
 //   needed; the optimization is purely a JS GC concern with no observable behavior.
 

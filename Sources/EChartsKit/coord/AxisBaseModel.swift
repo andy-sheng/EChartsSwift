@@ -23,13 +23,13 @@
  */
 import Foundation
 // import { AxisBaseOptionCommon } from './axisCommonTypes';           -> AxisBaseOptionCommon
-//     (coord/axisCommonTypes.swift; PORT-NOTE: option interfaces not yet ported — the generic
+//     (coord/axisCommonTypes.swift; note: option interfaces not yet ported — the generic
 //     `Opt` is dropped per CONVENTIONS §2, the option tree is the dynamic `Any` bag on Model)
 // import ComponentModel from '../model/Component';                     -> ComponentModel (model/Component.swift)
 // import { AxisModelCommonMixin } from './axisModelCommonMixin';       -> AxisModelCommonMixin (coord/axisModelCommonMixin.swift, T2 protocol)
 // import { AxisModelExtendedInCreator } from './axisModelCreator';     -> AxisModelExtendedInCreator
-//     (coord/axisModelCreator.swift; PORT-NOTE: ported — conformance intentionally kept commented, see below)
-// import Axis from './Axis';                                          -> Axis (coord/Axis.swift; PORT-NOTE: ported — `axis` still typed `Any`, see below)
+//     (coord/axisModelCreator.swift; note: ported — conformance intentionally kept commented, see below)
+// import Axis from './Axis';                                          -> Axis (coord/Axis.swift; note: ported — `axis` still typed `Any`, see below)
 
 // upstream:
 // export interface AxisBaseModel<T extends AxisBaseOptionCommon = AxisBaseOptionCommon>
@@ -40,7 +40,7 @@ import Foundation
 //     axis: Axis;
 // }
 //
-// PORT-NOTE: upstream `AxisBaseModel` is a pure TS interface that merges the `ComponentModel`
+// upstream `AxisBaseModel` is a pure TS interface that merges the `ComponentModel`
 //   class with the `AxisModelCommonMixin` (interface+class declaration-merge) and the
 //   `AxisModelExtendedInCreator` interface; the concrete class is produced by `axisModelCreator`.
 //   Per CONVENTIONS §2 (classes → reference types where upstream subclasses), it is ported as an
@@ -49,7 +49,7 @@ import Foundation
 //   it. It conforms to the `AxisModelCommonMixin` protocol (which supplies `needIncludeZero()` /
 //   `getCoordSysModel()` via its protocol extension).
 //
-// PORT-NOTE: `AxisModelExtendedInCreator` (coord/axisModelCreator.swift) is ported; its method set —
+// `AxisModelExtendedInCreator` (coord/axisModelCreator.swift) is ported; its method set —
 //   `getCategories(rawData?)`, `getOrdinalMeta()`, `updateAxisBreaks(payload)` — is deliberately not
 //   redeclared here (those members belong to `axisModelCreator.swift`, not this file). The
 //   `, AxisModelExtendedInCreator` conformance is left commented out on the class below.
@@ -57,7 +57,7 @@ open class AxisBaseModel: ComponentModel, AxisModelCommonMixin /*, AxisModelExte
 
     // axis: Axis;
     //
-    // PORT-NOTE: upstream types this `Axis` (coord/Axis.swift). Still modeled as `Any`, backed
+    // upstream types this `Axis` (coord/Axis.swift). Still modeled as `Any`, backed
     //   by an optional so it can be assigned during axis creation while satisfying the
     //   `AxisModelCommonMixin.axis: Any` requirement (a non-optional getter). Could be re-narrowed
     //   to `Axis` now that coord/Axis.swift has landed.
@@ -72,7 +72,7 @@ open class AxisBaseModel: ComponentModel, AxisModelCommonMixin /*, AxisModelExte
     //   declared here as an `open` base member (dynamically dispatched) so consumers typed against
     //   `AxisBaseModel` (e.g. scaleRawExtentInfo) resolve to the subclass override at runtime; the
     //   base default returns nil (non-category / not-yet-populated axes).
-    // PORT-NOTE: full `AxisModelExtendedInCreator` conformance (getOrdinalMeta / updateAxisBreaks) is
+    // full `AxisModelExtendedInCreator` conformance (getOrdinalMeta / updateAxisBreaks) is
     //   provided by the generated `AxisModel`; only `getCategories` is needed on the base surface here.
     open func getCategories(_ rawData: Bool? = nil) -> [OrdinalRawValue]? {
         _ = rawData

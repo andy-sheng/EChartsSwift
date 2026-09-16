@@ -8,7 +8,7 @@
 // `setPlatformAPI` (upstream's `setPlatformAPI(Partial<Platform>)` per-key merge), so `createCanvas` /
 // `measureText` / `getTime` keep their existing implementations untouched.
 //
-// PORT-NOTE (deferred): this covers only the string arm zrender handles synchronously (file / data
+// TODO: this covers only the string arm zrender handles synchronously (file / data
 // URI). Remote-URL async loading + the `onload`/`onerror` dispatch onto `ZRImage.__image`
 // (`globalImageCache` LRU + `createOrUpdateImage`/`imageOnLoad`/`isImageReady` in
 // zrender/src/graphic/helper/image.ts) is a SEPARATE unported follow-up; the callbacks below fire

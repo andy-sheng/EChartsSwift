@@ -39,7 +39,7 @@ public let boxplotTransform: ExternalDataTransform = ExternalDataTransform(
     transform: { params in
         let upstream = params.upstream
 
-        // PORT-NOTE: this throw is propagated by applySingleDataTransform -> applyDataTransform up to
+        // this throw is propagated by applySingleDataTransform -> applyDataTransform up to
         //   sourceManager.swift, whose catch calls `doThrow(...)` (fatalError) — upstream a bad option
         //   only rejects that chart with a JS Error. Same convention as the sibling built-in transforms.
         if upstream.sourceFormat != SOURCE_FORMAT_ARRAY_ROWS {
@@ -65,7 +65,7 @@ public let boxplotTransform: ExternalDataTransform = ExternalDataTransform(
             ?? []
         let raw: [[Double]] = rawRows
             .map { row in row.map { boxplotToDouble($0) ?? Double.nan } }
-            // PORT-NOTE: a genuinely EMPTY row yields `undefined`/NaN bounds in JS but is an
+            // a genuinely EMPTY row yields `undefined`/NaN bounds in JS but is an
             //   index-out-of-range fatal error in Swift, so it is skipped rather than crashing.
             .filter { !$0.isEmpty }
 

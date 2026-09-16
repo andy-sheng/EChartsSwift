@@ -321,7 +321,7 @@ final class ZZTooltipComponentItemTests: XCTestCase {
     }
 
     // (6b) The formatter lands on `CommonTooltipOption<Any>` (`ecData.tooltipConfig.option.common`),
-    //   whose own PORT-NOTE tells a user to spell the closure `TooltipFormatterCallback<FormatterParams>`
+    //   whose own note tells a user to spell the closure `TooltipFormatterCallback<FormatterParams>`
     //   — i.e. at `Any` here. Swift dynamic casts between function types are EXACT, so that documented
     //   spelling must be accepted too or the formatter is silently ignored.
     func testFunctionFormatterSpelledAtAnyIsAlsoAccepted() {

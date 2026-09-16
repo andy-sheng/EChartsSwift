@@ -677,7 +677,7 @@ private func pbCreateOrUpdateRepeatSymbols(
         }
         else {
             let captured = path
-            // PORT-NOTE: weak captures — this closure is retained by an Animator owned by `captured`,
+            // weak captures — this closure is retained by an Animator owned by `captured`,
             //   which is a child of `bundle`, so strong captures would form a retain cycle for the
             //   lifetime of the shrink animation (leaking if it never completes, e.g. on dispose).
             pbUpdateAttr(path, nil, ["scaleX": 0.0, "scaleY": 0.0], symbolMeta, isUpdate,
@@ -788,7 +788,7 @@ private func pbCreateOrUpdateBarRect(
         s.lineWidth = 0
         barRect.useStyle(s)
         // (barRect as ECElement).disableMorphing = true;
-        //   PORT-NOTE: `ECElement` is an augmentation interface that Swift cannot add stored props for;
+        //   `ECElement` is an augmentation interface that Swift cannot add stored props for;
         //   the flag lives in the `makeInner` side store (animation/morphTransitionHelper.swift), which
         //   `getPathList` reads — so this invisible layout rect is excluded from universalTransition
         //   morph endpoints, exactly as upstream.
@@ -890,7 +890,7 @@ private func pbGetItemModel(_ data: SeriesData, _ dataIndex: Int) -> Model {
     // upstream getAnimationDelayParams(this, path):
     //   { index: path.__pictorialAnimationIndex, count: path.__pictorialRepeatTimes }
     //   The order is the same as the z-order, see `symbolRepeatDiretion`.
-    // PORT-NOTE: animationModel is also passed to non-symbol elements (the clip path, barRect), which
+    // animationModel is also passed to non-symbol elements (the clip path, barRect), which
     //   are never registered in the anim side store. Upstream reads the un-set fields off such a path
     //   as `undefined` (→ NaN when a function-valued animationDelay reads params.index/count); the port
     //   substitutes 0/0 here (the record's defaults). Divergence only surfaces for a user-supplied
@@ -988,7 +988,7 @@ private func pbRemoveBar(
     // upstream: graphic.removeElement(path, {scaleX: 0, scaleY: 0}, animationModel, dataIndex,
     //             function () { bar.parent && bar.parent.remove(bar); });
     for path in paths {
-        // PORT-NOTE: `[weak bar]` — the closure is retained by an Animator owned by `path`, and
+        // `[weak bar]` — the closure is retained by an Animator owned by `path`, and
         //   `path` is a descendant of `bar` (bar -> __pictorialBundle -> path), so a strong capture
         //   is a retain cycle that only breaks when the leave animation completes. Upstream relies
         //   on GC; under ARC a disposed zr (animation never completing) would leak the subtree.
@@ -1043,7 +1043,7 @@ private func pbUpdateAttr(
     }
 }
 
-// PORT-NOTE: the `extend({image, x, y, width, height}, style)` bridge that used to live here as
+// the `extend({image, x, y, width, height}, style)` bridge that used to live here as
 //   `pbImageStyleFromDict` is the SAME upstream expression as Symbol._updateCommon's image branch;
 //   the single definition now lives next to it as `symbolImageStyleFromDict`
 //   (chart/helper/SymbolElement.swift) and is used by both call sites.
@@ -1079,7 +1079,7 @@ private func pbUpdateCommon(_ bar: PictorialBarElement, _ opt: PBCreateOpts, _ s
         //   image branch is live: keep the image + its geometry, overlay the item visual style.
         if let imagePath = path as? ZRImage {
             imagePath.useStyle(symbolImageStyleFromDict(imagePath.imageStyle, symbolMeta.style))
-            // PORT-TODO [ZRenderKit/Image.ZRImage.stateStyleSync]: the emphasis / blur / select state styles set below write the inherited
+            // TODO [ZRenderKit/Image.ZRImage.stateStyleSync]: the emphasis / blur / select state styles set below write the inherited
             //   `Displayable.style` (CommonStyleProps), but ZRImage renders from its own
             //   `imageStyle` and `_syncCommonStyle` is one-way (imageStyle -> style). State styles
             //   applied to a ZRImage are therefore inert (hover opacity on an `image://` pictorial
@@ -1130,7 +1130,7 @@ private func pbUpdateCommon(_ bar: PictorialBarElement, _ opt: PBCreateOpts, _ s
     labelOpt.labelDataIndex = Double(dataIndex)
     labelOpt.defaultText = labelHelper.getDefaultLabel(opt.seriesModel.getData(), Double(dataIndex))
     labelOpt.inheritColor = inheritColorString(styleDict?["fill"])
-    // PORT-NOTE: `pbDouble`, not `as? Double` — the visual style can box opacity as an Int, which
+    // `pbDouble`, not `as? Double` — the visual style can box opacity as an Int, which
     //   `as? Double` silently drops (upstream passes `symbolMeta.style.opacity` through unconditionally).
     labelOpt.defaultOpacity = pbDouble(styleDict?["opacity"])
     labelOpt.defaultOutsidePosition = barPositionOutside

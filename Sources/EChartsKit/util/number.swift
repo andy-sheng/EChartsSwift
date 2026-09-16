@@ -239,7 +239,7 @@ public enum number {
      *              Since: ` quantityExponent(val) = floor(log10(abs(val))) `
      *              Hence: ` precision ~= floor(EXP52B10 - 1 - quantityExponent(val))
      */
-    // PORT-NOTE: upstream `round(x, precision, returnStr)` overloads vary the return type by the
+    // upstream `round(x, precision, returnStr)` overloads vary the return type by the
     //  runtime boolean `returnStr`, which Swift cannot express. They are split into `round` (->Double,
     //  returnStr omitted/false) and `roundStr` (->String, returnStr: true). Call sites
     //  `round(x, p, true)` become `roundStr(x, p)`.
@@ -930,7 +930,7 @@ public enum number {
     public static func numericToNumber(_ val: Any?) -> Double {
         let valFloat = parseFloatLeading(jsString(val))
         // upstream: `valFloat == val` is a loose (==) comparison between a number and `unknown`.
-        // PORT-NOTE: only number/string/bool/null loose-equality is modeled; exotic coercions
+        // only number/string/bool/null loose-equality is modeled; exotic coercions
         //  (objects via ToPrimitive) are not reproduced. Semantically equivalent for internal usage,
         //  which never passes objects to `numericToNumber`.
         let looseEq: Bool

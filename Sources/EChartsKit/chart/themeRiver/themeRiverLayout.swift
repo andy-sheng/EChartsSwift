@@ -36,7 +36,7 @@ import ZRenderKit
 //       -> `model.createSimpleOverallStageHandler` (util/modelUtil.swift).
 
 // export interface ThemeRiverLayoutInfo { rect: RectLike; boundaryGap: ThemeRiverSeriesOption['boundaryGap'] }
-//   PORT-NOTE: modeled as a `[String: Any]` layout bag ("rect": BoundingRect, "boundaryGap": [Double])
+//   modeled as a `[String: Any]` layout bag ("rect": BoundingRect, "boundaryGap": [Double])
 //   written via `data.setLayout('layoutInfo', …)`, mirroring the funnel/pie layout convention.
 
 // export const themeRiverLayoutStageHandler = createSimpleOverallStageHandler(SERIES_TYPE_THEME_RIVER, themeRiverLayout);
@@ -65,7 +65,7 @@ public func themeRiverLayout(
         let data = seriesModel.getData()
 
         // const single = seriesModel.coordinateSystem;
-        //   PORT-NOTE: coord/single/Single.swift is ported; `coordinateSystem` is the inherited `Any?`
+        //   coord/single/Single.swift is ported; `coordinateSystem` is the inherited `Any?`
         //   slot, downcast to `Single` here. `Single` exposes getRect() -> BoundingRect,
         //   getAxis() -> SingleAxis (with `.orient`), dataToPoint(_ value) -> [Double].
         let single = seriesModel.coordinateSystem as! Single
@@ -93,7 +93,7 @@ public func themeRiverLayout(
         //   `boundaryGap` is written back into `layoutInfo` after the parse (CONVENTIONS §3).
 
         // if (axis.orient === 'horizontal') {
-        //   PORT-NOTE: `axis.orient` is a SingleAxis field (LayoutOrient); `single.getAxis()` returns
+        //   `axis.orient` is a SingleAxis field (LayoutOrient); `single.getAxis()` returns
         //   that SingleAxis, so `.orient` resolves against the ported SingleAxis.
         if axis.orient == .horizontal {
             // boundaryGap[0] = numberUtil.parsePercent(boundaryGap[0], rect.height);

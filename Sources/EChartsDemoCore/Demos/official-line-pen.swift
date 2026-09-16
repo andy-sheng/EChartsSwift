@@ -12,7 +12,7 @@
 //     would throw and abort the script before echarts.init runs.
 //   - TS type annotations (`function (params: any)`) stripped from the tooltip formatter — the
 //     reference pane is a classic script, where they are a SyntaxError.
-//   - Native pane: tooltip.formatter omitted (JS closure; see PORT-NOTE). Everything the static
+//   - Native pane: tooltip.formatter omitted (JS closure; see note). Everything the static
 //     frame actually shows — title, grid, both value axes with axisLine.onZero:false, and the
 //     smooth 20px-symbol line — is ported.
 extension EChartsDemoRegistry {
@@ -75,7 +75,7 @@ option = {
             "title": [
                 "text": "Click to Add Points"
             ] as [String: Any],
-            // PORT-NOTE: tooltip.formatter omitted — the JS closure rendered the hovered point as
+            // tooltip.formatter omitted — the JS closure rendered the hovered point as
             // `x.toFixed(2) + ', ' + y.toFixed(2)` (defaulting to [0, 0] when params.data was absent).
             "tooltip": [:] as [String: Any],
             "grid": [

@@ -359,7 +359,7 @@ public enum format {
         //   matching time zone. `getMonth()+1` -> Swift `.month` is already 1-based.
         var cal = Foundation.Calendar(identifier: .gregorian)
         cal.timeZone = (isUTC == true) ? TimeZone(identifier: "UTC")! : TimeZone.current
-        // PORT-NOTE: an invalid Date (NaN) is guarded to epoch to avoid a Calendar trap; upstream would
+        // an invalid Date (NaN) is guarded to epoch to avoid a Calendar trap; upstream would
         //   emit NaN-derived strings here. `formatTime` is deprecated, so this edge is tolerated.
         let safeDate = date.timeIntervalSince1970.isNaN ? Date(timeIntervalSince1970: 0) : date
         let c = cal.dateComponents([.year, .month, .day, .hour, .minute, .second, .nanosecond], from: safeDate)
@@ -421,7 +421,7 @@ public enum format {
         }
     }
 
-    // PORT-NOTE: upstream's `color: ZRColor` parameter is *runtime*-optional — every call site passes a
+    // upstream's `color: ZRColor` parameter is *runtime*-optional — every call site passes a
     //   possibly-`undefined` value (e.g. `convertToColorString(params.color)`, TooltipView.ts:698) and
     //   relies on the `isString(color) ? color : … || defaultColor` chain collapsing `undefined` to
     //   `defaultColor`. Swift's `ZRColor?` does not implicitly convert, so this Optional-accepting
@@ -432,7 +432,7 @@ public enum format {
     }
 
     // upstream: `export { truncateText } from 'zrender/src/graphic/helper/parseText';`
-    // PORT-NOTE: zrender `graphic/helper/parseText` is not yet split into a standalone module — its
+    // zrender `graphic/helper/parseText` is not yet split into a standalone module — its
     //   `truncateText` is ported inside Text.swift (`parseText.truncateText`). This re-export forwards to
     //   it. The untyped `options` bag ({minChar, placeholder, maxIterations}) is not unpacked here (no
     //   ported caller passes it); defaults are used, matching the common `truncateText(text, w, font)` call.
@@ -451,11 +451,11 @@ public enum format {
      * @param link url
      * @param target blank or self
      */
-    // PORT-NOTE: browser-only (`window.open`), CONVENTIONS §9 (renderer/host seam). No-op natively.
+    // browser-only (`window.open`), CONVENTIONS §9 (renderer/host seam). No-op natively.
     public static func windowOpen(_ link: String, _ target: String) {
         _ = link
         _ = target
-        // PORT-NOTE (host seam): wire to the native host (e.g. UIApplication.open / NSWorkspace.open)
+        // note (host seam): wire to the native host (e.g. UIApplication.open / NSWorkspace.open)
         //   when a host-open channel is available; browser-only `window.open` has no direct equivalent.
     }
 
@@ -463,7 +463,7 @@ public enum format {
     // upstream: `export { getTextRect } from '../legacy/getTextRect';`
     // Ported faithfully from legacy/getTextRect.ts: build a ZRText from the style and return its
     //   bounding rect (mirrors TextStyleMixin.getTextRect in model/mixin/textStyle.swift).
-    // PORT-NOTE: `padding` / `rich` arrive as an untyped `Any?` bag; they are forwarded only if already
+    // `padding` / `rich` arrive as an untyped `Any?` bag; they are forwarded only if already
     //   typed (`NumberOrNumberArray` / `[String: TextStylePropsPart]`) — same conservative coercion as
     //   TextStyleMixin.getTextRect. No ported caller passes a raw padding/rich to this legacy re-export.
     public static func getTextRect(
@@ -525,7 +525,7 @@ public enum format {
     }
 
     // zrUtil.trim — `str.replace(/^[\s﻿\xA0]+|[\s﻿\xA0]+$/g, '')`.
-    // PORT-NOTE: forward to `util.trim` once it is ported to ZRenderKit.util.
+    // forward to `util.trim` once it is ported to ZRenderKit.util.
     static func _trim(_ str: String) -> String {
         var set = CharacterSet.whitespacesAndNewlines
         set.insert(charactersIn: "\u{FEFF}\u{00A0}")
@@ -533,7 +533,7 @@ public enum format {
     }
 
     // JS `String.prototype.replace(searchString, replacement)` — replaces the FIRST occurrence only.
-    // PORT-NOTE: JS string-replacement treats `$&`, `$1`, ... specially; this does a literal range
+    // JS string-replacement treats `$&`, `$1`, ... specially; this does a literal range
     //   replacement (no `$` substitution). This is sufficient here: every replacement value passed in
     //   (padded numbers / encoded HTML / plain option strings) is a literal with no `$` metacharacters.
     static func _replaceFirst(_ s: String, _ target: String, _ replacement: String) -> String {

@@ -38,7 +38,7 @@ public enum SSRItemType: String {   // upstream: type SSRItemType = 'chart' | 'l
 // those mutations must persist on the host element, so value semantics would be wrong (CONVENTIONS §4).
 public final class ECData {
     public var dataIndex: Double?
-    // PORT-NOTE: `weak` (upstream relies on GC). This is a BACK-reference from a graphic element to
+    // `weak` (upstream relies on GC). This is a BACK-reference from a graphic element to
     //   the model that owns it, and a strong edge closes a permanent retain cycle: `makeInner`'s
     //   backing `WeakMap` is an NSMapTable with weak KEYS but STRONG VALUES, so this bag is retained
     //   while its Element key lives; the marker views assign `dataModel = mlModel/mpModel/maModel`,
@@ -71,7 +71,7 @@ public final class ECData {
     public struct TooltipConfig {
         // Target item name to locate tooltip.
         public var name: String
-        // PORT-NOTE: upstream `ComponentItemTooltipOption<unknown>`; depends on sibling
+        // upstream `ComponentItemTooltipOption<unknown>`; depends on sibling
         //   types.swift modeling `ComponentItemTooltipOption` as a generic.
         public var option: ComponentItemTooltipOption<Any>
         public init(name: String, option: ComponentItemTooltipOption<Any>) {
@@ -88,13 +88,13 @@ public final class ECData {
 // upstream call sites `getECData(el)` / `setCommonECData(...)` → `innerStore.getECData(el)` / `innerStore.setCommonECData(...)`.
 public enum innerStore {
 
-    // PORT-NOTE: upstream `makeInner<ECData, Element>()` lazily creates an empty `{}` bag per host.
+    // upstream `makeInner<ECData, Element>()` lazily creates an empty `{}` bag per host.
     //   Swift generics cannot construct `T` without a factory, so we assume the sibling
     //   `model.makeInner(_:)` API takes a factory closure: `(@escaping () -> T) -> (Host) -> T`.
     public static let getECData: (Element) -> ECData = model.makeInner { ECData() }
 
     // ------------------------------------------------------------------------
-    // PORT-NOTE (adaptation, NO upstream symbol — nothing to grep for upstream). Upstream augments
+    // note (adaptation, NO upstream symbol — nothing to grep for upstream). Upstream augments
     //   zrender's `Element` IN PLACE (`(el as ECElement).tooltipDisabled = true`, CustomView.ts:1052)
     //   because TS declaration-merges `interface ECElement extends Element`. In THIS port `ECElement`
     //   (util/types.swift) is a plain protocol that NO concrete scene-graph type conforms to, so its

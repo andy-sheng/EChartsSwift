@@ -21,7 +21,7 @@
 //      (`{type:'radial', x:.., y:.., r:.., colorStops:[...]}`) instead of
 //      `new echarts.graphic.RadialGradient(0.1, 0.6, 1, [...])` — echarts accepts both, and it is the
 //      only form a `[String: Any]` can carry. webOptionJS keeps the `new echarts.graphic...` call verbatim.
-//   4. The Swift option omits the one JS closure ('Data C's `label.formatter`) — see the PORT-NOTE where
+//   4. The Swift option omits the one JS closure ('Data C's `label.formatter`) — see the note where
 //      it would have gone. The label still shows (`show: true`), just with the default text.
 // No data fetch, no map, no timer/animation in the source — everything else is carried verbatim.
 extension EChartsDemoRegistry {
@@ -239,7 +239,7 @@ option = {
                             ] as [String: Any],
                             "label": [
                                 "show": true
-                                // PORT-NOTE: formatter omitted — the JS closure returned `params.value`
+                                // formatter omitted — the JS closure returned `params.value`
                                 //   (the item's whole value array, stringified by echarts into a
                                 //   comma-joined list) as the point label. Native uses the default label
                                 //   text instead.

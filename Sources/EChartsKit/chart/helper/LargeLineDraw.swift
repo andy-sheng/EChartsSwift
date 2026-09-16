@@ -46,7 +46,7 @@ import ZRenderKit
 //
 // upstream: `baseDraw` / `ILineDraw` is NOT ported (same as the LineDraw precedent) → this is a
 //   plain `public final class` with no protocol conformance. Wiring LargeLineDraw into LinesView is
-//   a separate follow-up (LinesView currently keeps only PORT-NOTE deferrals for large mode).
+//   a separate follow-up (LinesView currently keeps only note deferrals for large mode).
 
 // upstream: class LargeLinesPathShape { polyline = false; curveness = 0; segs: ArrayLike<number> = []; }
 //   The packed `segs` are the projected `linesPoints` (upstream a Float32Array; here a [Double]).
@@ -93,7 +93,7 @@ public final class LargeLinesPath: Path {
     }
 
     // upstream: beforeBrush(param) { if (param && !param.contentRetained) { this.reset(); } }
-    //   PORT-TODO: `Displayable.beforeBrush` is `public` (not `open`) so it cannot be overridden from
+    //   TODO: `Displayable.beforeBrush` is `public` (not `open`) so it cannot be overridden from
     //   this module — and the progressive brush hook is inert here anyway (no incremental pipeline),
     //   exactly as sibling LargeSymbolPath omits the override. `reset()` is kept for provenance.
 

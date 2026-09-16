@@ -61,7 +61,7 @@ open class ComponentView: ViewRootGroup {
     //   var C = B.extend({xxx: 5});
     //   var c = new C();
     //   console.log(c.xxx); // expect 5 but always 1.
-    // PORT-NOTE: the caveat above is about upstream's prototype `extend` machinery, which Swift
+    // the caveat above is about upstream's prototype `extend` machinery, which Swift
     //   replaces with native subclassing (clazz.enableClassExtend is a no-op); it does not apply
     //   here, but the comment is preserved as part of the diffable surface.
 
@@ -75,7 +75,7 @@ open class ComponentView: ViewRootGroup {
     // ----------------------
     // Injectable properties
     // ----------------------
-    // PORT-NOTE: upstream declares these non-optional but assigns them after construction
+    // upstream declares these non-optional but assigns them after construction
     //   (injected by the render pipeline). Modeled as Optionals so the base class need not
     //   initialize them, matching the "not initialized in declaration place" caveat above.
     public var __model: ComponentModel?
@@ -85,7 +85,7 @@ open class ComponentView: ViewRootGroup {
     // upstream augmentation `interface ViewRootGroup extends Group { __ecComponentInfo?: {...} }`.
     //   The view's `group` is a `ViewRootGroup`; the marker lives on that group instance. Since a
     //   bare `Group` from ZRenderKit does not carry this slot, it is held on the view and the view
-    //   conforms to `ViewRootGroup`. PORT-NOTE: confirm augmentation strategy (see util/types.swift).
+    //   conforms to `ViewRootGroup`. note: confirm augmentation strategy (see util/types.swift).
     public var __ecComponentInfo: ViewRootGroupComponentInfo?
 
     public init() {
@@ -125,7 +125,7 @@ open class ComponentView: ViewRootGroup {
      * It will traverse the new added element in progressive rendering.
      * And traverse all in normal rendering.
      */
-    // PORT-NOTE: upstream `cb: (el: Element) => boolean | void`; ZRenderKit `Group.traverse` takes
+    // upstream `cb: (el: Element) => boolean | void`; ZRenderKit `Group.traverse` takes
     //   `(Element) -> Bool` (a truthy return short-circuits the branch). The `void` arm is dropped —
     //   callers that do not short-circuit return `false`.
     open func eachRendered(_ cb: (_ el: Element) -> Bool) {
@@ -156,7 +156,7 @@ open class ComponentView: ViewRootGroup {
      * Pass only when return `true`.
      * Implement it if needed.
      */
-    // PORT-NOTE: `packedEvent: ECActionEvent | ECElementEvent` union modeled as `Any`.
+    // `packedEvent: ECActionEvent | ECElementEvent` union modeled as `Any`.
     //   Upstream this is an OPTIONAL member (`filterForExposedEvent?`), and `ECEventProcessor.filter`
     //   short-circuits with `!view.filterForExposedEvent || view.filterForExposedEvent(...)` — i.e. a
     //   view that does not implement it lets every queried event THROUGH. A Swift `open func` is always
@@ -197,7 +197,7 @@ open class ComponentView: ViewRootGroup {
         return _classManager.registerClass(clz)
     }
 
-    // PORT-NOTE: `getClass` is part of the mounted `ClassManager` surface used by the view registry
+    // `getClass` is part of the mounted `ClassManager` surface used by the view registry
     //   (echarts.ts looks views up by type). Exposed here for completeness (upstream reaches it via
     //   the same `enableClassManagement` mount).
     public static func getClass(
@@ -217,7 +217,7 @@ open class ComponentView: ViewRootGroup {
 //   clazzUtil.enableClassExtend(ComponentView as ComponentViewConstructor);
 //   clazzUtil.enableClassManagement(ComponentView as ComponentViewConstructor);
 //
-// PORT-NOTE: no Swift equivalent for the `typeof ComponentView & ExtendableConstructor & ClassManager`
+// no Swift equivalent for the `typeof ComponentView & ExtendableConstructor & ClassManager`
 //   intersection. `enableClassExtend` is a no-op (native subclassing); the class-management surface
 //   is provided by `ComponentView._classManager` + the static `registerClass`/`getClass` forwarders
 //   above (initialized at first access).

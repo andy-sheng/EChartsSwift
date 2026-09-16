@@ -16,7 +16,7 @@ private let PATH_COLOR: [String] = ["textStyle", "color"]
 //     'align' | 'verticalAlign' | 'padding' | 'lineHeight' | 'baseline' | 'rich'
 //     | 'width' | 'height' | 'overflow'
 // > & LabelFontOption;
-// PORT-NOTE: these TS `Pick<...>` types only narrow the generic `Model<Opt>` type parameter, which
+// these TS `Pick<...>` types only narrow the generic `Model<Opt>` type parameter, which
 //   we drop (the Swift `Model` is non-generic). They have no faithful Swift analogue; the per-key set
 //   they describe is the `textStyleParams` list below and the explicit getShallow reads in getFont().
 
@@ -56,7 +56,7 @@ extension TextStyleMixin where Self: Model {
             return color
         }
         if !(isEmphasis ?? false), let ecModel = ecModel {
-            // PORT-NOTE: GlobalModel.get(path) conventional signature — PATH_COLOR is the ['textStyle','color'] path.
+            // GlobalModel.get(path) conventional signature — PATH_COLOR is the ['textStyle','color'] path.
             return ecModel.get(PATH_COLOR) as? ColorString
         }
         return nil
@@ -74,7 +74,7 @@ extension TextStyleMixin where Self: Model {
         //       fontSize: this.getShallow('fontSize'),
         //       fontFamily: this.getShallow('fontFamily')
         //   }, this.ecModel);
-        // PORT-NOTE: `getFont` is now ported in label/labelStyle.swift (labelStyle.getFont). Its body
+        // `getFont` is now ported in label/labelStyle.swift (labelStyle.getFont). Its body
         //   is also reproduced inline in `_labelStyleGetFont` below (kept from when this file predated
         //   label/labelStyle.swift); this could call `labelStyle.getFont(opt, self.ecModel)` directly.
         return _labelStyleGetFont(
@@ -99,7 +99,7 @@ extension TextStyleMixin where Self: Model {
         //   for (let i = 0; i < textStyleParams.length; i++) {
         //       (style as any)[textStyleParams[i]] = this.getShallow(textStyleParams[i]);
         //   }
-        // PORT-NOTE: upstream sets the style fields by dynamic string key (`(style as any)[k] = ...`).
+        // upstream sets the style fields by dynamic string key (`(style as any)[k] = ...`).
         //   `TextStyleProps` is a fixed-field Swift struct, so the per-key loop is unrolled below into
         //   explicit, type-coerced assignments (the dynamic option bag stores raw String/Double/[Double];
         //   each is coerced into the typed field). Order matches `textStyleParams`.
@@ -110,7 +110,7 @@ extension TextStyleMixin where Self: Model {
         style.fontFamily = self.getShallow("fontFamily") as? String
         style.padding = _coerceNumberOrNumberArray(self.getShallow("padding"))
         style.lineHeight = self.getShallow("lineHeight") as? Double
-        // PORT-NOTE: `rich` is a nested option object (`{ [name]: TextStylePropsPart }`); coercing the
+        // `rich` is a nested option object (`{ [name]: TextStylePropsPart }`); coercing the
         //   dynamic [String: Any] bag into typed `[String: TextStylePropsPart]` is non-mechanical, so it
         //   is passed through only if already typed.
         style.rich = self.getShallow("rich") as? [String: TextStylePropsPart]
@@ -130,7 +130,7 @@ extension TextStyleMixin where Self: Model {
 // export default TextStyleMixin;
 
 // ============================================================================
-// PORT-NOTE: inline reproduction of `getFont` from '../../label/labelStyle'.
+// inline reproduction of `getFont` from '../../label/labelStyle'.
 //   Mirrors labelStyle.getFont faithfully; label/labelStyle.swift is now ported, so this could be
 //   deleted in favor of calling it directly.
 //
@@ -152,7 +152,7 @@ private func _labelStyleGetFont(
     fontFamily: Any?,
     _ ecModel: GlobalModel?
 ) -> String {
-    // PORT-NOTE: GlobalModel.getModel(path) conventional signature, returns a Model (or nil when ecModel nil).
+    // GlobalModel.getModel(path) conventional signature, returns a Model (or nil when ecModel nil).
     let gTextStyleModel: Model? = ecModel?.getModel("textStyle")
     // FIXME in node-canvas fontWeight is before fontStyle
     let parts = [
@@ -198,7 +198,7 @@ private func _jsNumberToString(_ n: Double) -> String {
 }
 
 // ============================================================================
-// PORT-NOTE: dynamic-option (`getShallow` -> Any?) → typed-TextStyleProps-field coercions.
+// dynamic-option (`getShallow` -> Any?) → typed-TextStyleProps-field coercions.
 //   The option tree stores raw primitives (String/Double/[Double]); ZRText.useStyle needs the typed
 //   `TextStyleProps`. Upstream copies values untyped via the string-key loop. Each coercion accepts an
 //   already-typed value first, then falls back to coercing the raw primitive. Best-effort.

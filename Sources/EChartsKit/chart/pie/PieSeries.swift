@@ -88,7 +88,7 @@ open class PieSeriesModel: SeriesModel {
         )
 
         // this._defaultLabelLine(option);
-        // PORT-NOTE: upstream `option` in `init` IS `this.option` (same reference), which `super.init`
+        // upstream `option` in `init` IS `this.option` (same reference), which `super.init`
         //   has already merged with defaults/theme (label + labelLine subtrees present). The `[String: Any]`
         //   bag is a value type, so read-modify-write-back through `self.option` (not the raw `option`
         //   parameter, which is the pre-merge partial). `defaultEmphasis` bridges the bag via

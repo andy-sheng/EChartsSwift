@@ -51,17 +51,17 @@ import ZRenderKit
 public class BreakScaleMapper: ScaleMapper {
 
     // upstream: readonly breaks: ParsedAxisBreakList;
-    public var breaks: ParsedAxisBreakList { [] }   // PORT-NOTE: overridden by BreakScaleMapperImpl in scale/breakImpl.swift
+    public var breaks: ParsedAxisBreakList { [] }   // overridden by BreakScaleMapperImpl in scale/breakImpl.swift
 
     public func hasBreaks() -> Bool {
-        return false                                // PORT-NOTE: overridden by BreakScaleMapperImpl in scale/breakImpl.swift
+        return false                                // overridden by BreakScaleMapperImpl in scale/breakImpl.swift
     }
 
     public func calcNiceTickMultiple(
         _ tickVal: Double,
         _ estimateNiceMultiple: (_ tickVal: Double, _ brkEnd: Double) -> Double
     ) -> Double {
-        return 0                                    // PORT-NOTE: overridden by BreakScaleMapperImpl in scale/breakImpl.swift
+        return 0                                    // overridden by BreakScaleMapperImpl in scale/breakImpl.swift
     }
 
     public override init() { super.init() }
@@ -116,7 +116,7 @@ public struct ParseAxisBreakOptionInwardTransformOut {
  *   labels will displayed.
  */
 // upstream: export type ParamPruneByBreak = 'auto' | 'no' | 'preserve_extent_bound' | NullUndefined;
-// PORT-NOTE: the TS string-literal union (incl. its `NullUndefined` arm) is modeled as `String`
+// the TS string-literal union (incl. its `NullUndefined` arm) is modeled as `String`
 //   (optional at use sites), so call sites pass raw strings like `"auto"` (CONVENTIONS §6).
 public typealias ParamPruneByBreak = String
 
@@ -129,7 +129,7 @@ public protocol BreakScaleHelper {
         _ initialExtent: [Double]?
     ) -> BreakScaleMapper
     // upstream: pruneTicksByBreak<TItem extends ScaleTick | number>(...): void  (mutates `ticks`).
-    // PORT-NOTE: the `TItem extends ScaleTick | number` constraint is a TS union and cannot be
+    // the `TItem extends ScaleTick | number` constraint is a TS union and cannot be
     //   expressed as a Swift generic constraint; left unconstrained. `ticks` is `inout` (the upstream
     //   `void` return mutates the array in place — CONVENTIONS §3).
     func pruneTicksByBreak<TItem>(
@@ -152,12 +152,12 @@ public protocol BreakScaleHelper {
         // raw user input breaks, retrieved from axis model.
         _ breakOptionList: [AxisBreakOption]?,
         // upstream: scale: {parse: Scale['parse']} (a structural subset of `Scale`).
-        // PORT-NOTE: upstream narrows to the structural `{parse}`; Swift's IUO `Scale.parse` stored
+        // upstream narrows to the structural `{parse}`; Swift's IUO `Scale.parse` stored
         //   property cannot satisfy a non-optional protocol requirement, so we accept the concrete
         //   `Scale` (the only type passed in practice).
         _ scale: Scale,
         // upstream: opt?: { noNegative: boolean }
-        // PORT-NOTE: upstream's inline opt requires `noNegative`; reuse `ParseBreakOptionOpt` (optional field).
+        // upstream's inline opt requires `noNegative`; reuse `ParseBreakOptionOpt` (optional field).
         _ opt: ParseBreakOptionOpt?
     ) -> AxisBreakParsingResult
     func identifyAxisBreak(
@@ -169,7 +169,7 @@ public protocol BreakScaleHelper {
     ) -> String
     // upstream: retrieveAxisBreakPairs<TItem, TReturnIdx extends boolean>(...): TReturnIdx extends false
     //   ? TItem[][] : number[][]
-    // PORT-NOTE: the conditional return type (`TItem[][] | number[][]` keyed on `returnIdx`) cannot be
+    // the conditional return type (`TItem[][] | number[][]` keyed on `returnIdx`) cannot be
     //   expressed in Swift; returns `[[Any]]` and the `TReturnIdx` type parameter is dropped.
     func retrieveAxisBreakPairs<TItem>(
         _ itemList: [TItem],
@@ -232,7 +232,7 @@ public func getScaleBreakHelper() -> BreakScaleHelper? {
 
 public func simplyParseBreakOption(
     // upstream: scale: {parse: Scale['parse']} (a structural subset of `Scale`).
-    // PORT-NOTE: upstream narrows to `{parse}`; we accept the concrete `Scale` (see
+    // upstream narrows to `{parse}`; we accept the concrete `Scale` (see
     //   `BreakScaleHelper.parseAxisBreakOption`).
     _ scale: Scale,
     _ opt: SimplyParseBreakOptionOpt
@@ -279,7 +279,7 @@ public enum `break` {
 
 
 // ============================================================================
-// Forward-declaration placeholder (PORT-NOTE).
+// Forward-declaration placeholder (note).
 //
 // Declared here only so `break.swift` compiles where the real owner has not yet landed (mirrors the
 // precedent in `Element.swift`). When the real file lands, DELETE this placeholder:
@@ -294,7 +294,7 @@ public enum `break` {
 // upstream: coord/axisCommonTypes.ts
 //   `AxisLabelFormatterExtraParams = {/* others if any */} & AxisLabelFormatterExtraBreakPart`.
 //   The break part (`AxisLabelFormatterExtraBreakPartBreak`) is already in Tier1 `util/types.swift`.
-// PORT-NOTE: forward-declared placeholder; replace with the real type in coord/axisCommonTypes.swift.
+// forward-declared placeholder; replace with the real type in coord/axisCommonTypes.swift.
 public struct AxisLabelFormatterExtraParams {
     public var `break`: AxisLabelFormatterExtraBreakPartBreak?
     public init(`break`: AxisLabelFormatterExtraBreakPartBreak? = nil) {

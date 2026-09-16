@@ -80,12 +80,12 @@ open class EffectScatterView: ChartView {
         //   The render below inlines that for every coord system wired here — cartesian2d, polar, geo,
         //   calendar and singleAxis (the upstream `dimLen === 1` branch). Each branch returns a
         //   `(Int) -> [Double]` that yields the [x, y] pixel for datum i.
-        //   PORT-NOTE (deferred): matrix coord system only (not ported) — it falls to the else early-return.
+        //   TODO: matrix coord system only (not ported) — it falls to the else early-return.
         let pointAt: (Int) -> [Double]
         if let coord = seriesModel.coordinateSystem as? Cartesian2D {
             let baseAxis = coord.getBaseAxis()
             let valueAxis = coord.getOtherAxis(baseAxis)
-            // PORT-NOTE: `mapDimension` is force-unwrapped — a series' base/value dims are always present.
+            // `mapDimension` is force-unwrapped — a series' base/value dims are always present.
             //   Same unmarked idiom as LineView/ScatterView (their identical `mapDimension(...)!` derivation).
             //   Stacked series: `pointsLayout` substitutes a stacked dim with the `stackResultDimension`
             //   (layout/points.swift, the two `isDimensionStacked` guards) BEFORE `dataToPoint`. The
@@ -148,7 +148,7 @@ open class EffectScatterView: ChartView {
             }
         }
         else {
-            // PORT-NOTE (deferred): matrix coord system not ported.
+            // TODO: matrix coord system not ported.
             return
         }
 
@@ -172,7 +172,7 @@ open class EffectScatterView: ChartView {
         opt.getSymbolPoint = { i in pointAt(i) }
         symbolDraw.updateData(data, opt)
 
-        // PORT-NOTE (deviation, not a gap): the pointsLayout stage (layout/points.swift) IS registered and run
+        // note (deviation, not a gap): the pointsLayout stage (layout/points.swift) IS registered and run
         //   by the driver (its `setItemLayout` feeds the brush selector); this view inlines the equivalent
         //   `dataToPoint` math as getSymbolPoint above — same mapped dims AND the same stackResultDimension
         //   substitution — instead of reading it back (same as ScatterView).

@@ -7,7 +7,7 @@
 // DEVIATIONS:
 //   - web pane: the official source verbatim, minus the TypeScript annotation on the tooltip
 //     formatter's `params` and the trailing `export {};` (a classic script cannot parse either).
-//   - native pane: `tooltip.formatter` is a JS closure and is omitted (see PORT-NOTE); everything
+//   - native pane: `tooltip.formatter` is a JS closure and is omitted (see note); everything
 //     else — both series, the path symbols, the per-datum symbolSize — is ported as-is. The example
 //     is static (no fetch, no timers), so no `drive`.
 //
@@ -147,7 +147,7 @@ option = {
                 "axisPointer": [
                     "type": "none"
                 ] as [String: Any]
-                // PORT-NOTE: tooltip.formatter omitted — a JS closure returning
+                // tooltip.formatter omitted — a JS closure returning
                 // `params[0].name + ': ' + params[0].value` (the category name and its velocity).
             ] as [String: Any],
             "xAxis": [

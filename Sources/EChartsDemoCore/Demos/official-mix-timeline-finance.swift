@@ -14,7 +14,7 @@
 //     the harness's intent, restored, not a change to the chart.
 //   - The data is inlined in the source already (no fetch); the Swift pane precomputes `dataFormatter`'s
 //     output (per-province {name, value} items + the per-year industry sums the pie eats) at file scope.
-//   - PORT-NOTEs below: the three JS closures (timeline label formatter, the 2011 item's tooltip
+//   - notes below: the three JS closures (timeline label formatter, the 2011 item's tooltip
 //     formatter, the grid axisPointer label formatter) cannot cross into the Swift option.
 import EChartsKit
 
@@ -500,7 +500,7 @@ option.baseOption.animation = false;
                         "trigger": "axis",
                         "axisPointer": [
                             "type": "shadow",
-                            // PORT-NOTE: axisPointer.label.formatter omitted — JS closure
+                            // axisPointer.label.formatter omitted — JS closure
                             //   `params => params.value.replace('\n', '')`, which strips the leading newline
                             //   the xAxis labels use to stagger every other province name.
                             "label": ["show": true] as [String: Any]
@@ -558,7 +558,7 @@ private let financeTimelineData: [Any] = [
     "2008-01-01",
     "2009-01-01",
     "2010-01-01",
-    // PORT-NOTE: this item's tooltip omitted — its formatter is a JS closure
+    // this item's tooltip omitted — its formatter is a JS closure
     //   `params => params.name + 'GDP达到又一个高度'` (the 2005 tick keeps its string-template tooltip).
     [
         "value": "2011-01-01",

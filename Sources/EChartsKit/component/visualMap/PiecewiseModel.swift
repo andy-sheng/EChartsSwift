@@ -37,12 +37,12 @@ import ZRenderKit
 //      objects (`Required<InnerVisualPiece>[]`), which carry extra fields (visual/value/text/index)
 //      that `number.IntervalItem` can not hold. So the reform is re-implemented locally over the
 //      `InnerVisualPiece` dicts (see `reformIntervals(_:)`), mirroring `number.reformIntervals`
-//      line-for-line. PORT-NOTE: keep in sync with util/number.swift#reformIntervals.
+//      line-for-line. note: keep in sync with util/number.swift#reformIntervals.
 // import { VisualOptionPiecewise, BuiltinVisualProperty } from '../../util/types';  -> (type-only).
 // import { Dictionary } from 'zrender/src/core/types';                    -> Dictionary<T> = [String: T].
 // import { inheritDefaultOption } from '../../util/component';            -> `component.inheritDefaultOption`.
 //
-// PORT-NOTE (sibling-base coupling): this model `extends VisualMapModel`. Members provided by the
+// note (sibling-base coupling): this model `extends VisualMapModel`. Members provided by the
 //   sibling base and referenced here exactly as upstream:
 //     - `resetExtent()`, `getExtent() -> [Double]`
 //     - `resetVisual(_ supplementVisualOption: @escaping (VisualMapModel, [String: Any], String) -> Void)`
@@ -212,7 +212,7 @@ open class PiecewiseModel: VisualMapModel {
         }
 
         // zrUtil.each(visualTypesInPieces, function (v, visualType) {
-        // PORT-NOTE: JS iterates `visualTypesInPieces` in insertion order; Swift dict order is
+        // JS iterates `visualTypesInPieces` in insertion order; Swift dict order is
         //   unspecified. The result set of applied default visuals is order-independent, so this is
         //   safe, but the write order into `option[state]` may differ.
         for (visualType, _) in visualTypesInPieces {
@@ -464,7 +464,7 @@ open class PiecewiseModel: VisualMapModel {
                     representValue = (pieceInterval[0] + pieceInterval[1]) / 2
                 }
                 else {
-                    // PORT-NOTE: JS would produce NaN from `undefined + undefined`; empty interval only
+                    // JS would produce NaN from `undefined + undefined`; empty interval only
                     //   occurs for a malformed piece.
                     representValue = Double.nan
                 }
@@ -560,7 +560,7 @@ open class PiecewiseModel: VisualMapModel {
         return component.inheritDefaultOption(
             (VisualMapModel.defaultOption as? [String: Any]) ?? [:],
             [
-                // PORT-NOTE: upstream value is `null`; NSNull() retains the key in the [String: Any] bag.
+                // upstream value is `null`; NSNull() retains the key in the [String: Any] bag.
                 "selected": NSNull(),
                 "minOpen": false,           // Whether include values that smaller than `min`.
                 "maxOpen": false,           // Whether include values that bigger than `max`.
@@ -765,7 +765,7 @@ open class PiecewiseModel: VisualMapModel {
                 }
 
                 // if (__DEV__) { if (interval[0] > interval[1]) console.warn(...); }
-                // PORT-NOTE: __DEV__ warn (illegal piece: lower bound > upper bound) dropped.
+                // __DEV__ warn (illegal piece: lower bound > upper bound) dropped.
 
                 // if (interval[0] === interval[1] && close[0] && close[1]) {
                 if interval[0] == interval[1] && close[0] != 0 && close[1] != 0 {
@@ -831,7 +831,7 @@ open class PiecewiseModel: VisualMapModel {
 
     // Local re-implementation of `number.reformIntervals` over `InnerVisualPiece` dicts (so the extra
     // piece fields travel with their interval). Mirrors util/number.swift#reformIntervals line-for-line.
-    // PORT-NOTE: keep in sync with util/number.swift#reformIntervals.
+    // keep in sync with util/number.swift#reformIntervals.
     private func reformIntervals(_ listIn: [[String: Any]]) -> [[String: Any]] {
         func iv(_ p: [String: Any]) -> [Double] { return asDoubleArrayOpt(p["interval"]) ?? [0, 0] }
         func cl(_ p: [String: Any]) -> [Double] { return asDoubleArrayOpt(p["close"]) ?? [0, 0] }
@@ -970,7 +970,7 @@ private func jsParseInt(_ v: Any?) -> Double {
 }
 
 // JS `+x.toFixed(p)`: round to `p` decimals (as fixed-point) and parse back to a number.
-// PORT-NOTE: `Number.prototype.toFixed` rounding (round-half-to-even-ish, implementation-defined)
+// `Number.prototype.toFixed` rounding (round-half-to-even-ish, implementation-defined)
 //   is approximated by `%.*f` (round-half-away). Used only for the precision auto-adaption loop;
 //   the residual sub-ULP difference is not observable in that convergence loop.
 private func jsToFixedNumber(_ x: Double, _ p: Double) -> Double {

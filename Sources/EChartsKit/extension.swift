@@ -2,7 +2,7 @@
 import Foundation
 import ZRenderKit
 
-// PORT-NOTE: Swift metatype identity replaces identity of the JS extension object.
+// Swift metatype identity replaces identity of the JS extension object.
 public protocol EChartsExtension {
     static func install(_ registers: EChartsExtensionInstallRegisters)
 }
@@ -28,6 +28,6 @@ extension echarts {
         extensions.append(identity)
         ext.install(extensionRegisters)
     }
-    // PORT-TODO: JS function installers and registrars other than the existing processor
+    // TODO: JS function installers and registrars other than the existing processor
     // registrar and registerPainter are not yet exposed by this native extension entry point.
 }

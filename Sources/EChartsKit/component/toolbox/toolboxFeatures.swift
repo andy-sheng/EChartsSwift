@@ -370,7 +370,7 @@ open class ToolboxMagicTypeFeature: ToolboxFeature {
         payload.other["currentType"] = currentType
         payload.other["newOption"] = newOption
         payload.other["featureName"] = "magicType"
-        // PORT-NOTE (deferred): `newTitle` (the stack↔tiled title flip merged into the feature option,
+        // TODO: `newTitle` (the stack↔tiled title flip merged into the feature option,
         //   FIX#11236) requires the consuming side ToolboxView payload.newTitle merge (ToolboxView.ts:152,
         //   `featureOpt.title = payload.newTitle`), which is not ported — so emitting newTitle here would
         //   be inert (no live title update). Wire once ToolboxView consumes payload.newTitle.

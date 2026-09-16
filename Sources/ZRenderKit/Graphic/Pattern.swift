@@ -2,12 +2,12 @@
 
 // upstream: import { ImageLike } from '../core/types';
 // upstream: import { SVGVNode } from '../svg/core';
-// PORT-NOTE: ImageLike is a browser image-source union (HTMLImageElement | ... ), routed through
+// ImageLike is a browser image-source union (HTMLImageElement | ... ), routed through
 // the Renderer/Painter seam (CONVENTIONS §9) as the opaque `ImageLike` alias. `Pattern.image`'s
 // upstream `ImageLike | string` union is modeled by the `ImageSource` enum (Image.swift:54).
 // Remaining `String` slots below (`svgElement`, `ImagePatternObject.image`) still stand in for the
 // SSR/string arm only — those are separate symbols, retyped separately.
-// PORT-NOTE: SVGVNode — svg renderer virtual node; svg backend is not ported (CONVENTIONS §9).
+// SVGVNode — svg renderer virtual node; svg backend is not ported (CONVENTIONS §9).
 
 public enum ImagePatternRepeat: String {
     case `repeat`
@@ -29,7 +29,7 @@ public protocol PatternObjectBase {
 }
 
 public protocol ImagePatternObject: PatternObjectBase {
-    // PORT-NOTE: image: ImageLike | string — only the `string` arm is typed for now.
+    // image: ImageLike | string — only the `string` arm is typed for now.
     var image: String { get set }
     var `repeat`: ImagePatternRepeat? { get set }
 
@@ -44,7 +44,7 @@ public protocol ImagePatternObject: PatternObjectBase {
 }
 
 public protocol InnerImagePatternObject: ImagePatternObject {
-    // PORT-NOTE: __image?: ImageLike — cached image created in the canvas painter; backend
+    // __image?: ImageLike — cached image created in the canvas painter; backend
     // seam (CONVENTIONS §9). Deferred to Phase 2.
 }
 
@@ -53,12 +53,12 @@ public protocol SVGPatternObject: PatternObjectBase {
      * svg vnode can only be used in svg renderer currently.
      * svgWidth, svgHeight defines width and height used for pattern.
      */
-    // PORT-NOTE: svgElement?: SVGVNode — svg backend not ported (CONVENTIONS §9).
+    // svgElement?: SVGVNode — svg backend not ported (CONVENTIONS §9).
     var svgWidth: Double? { get set }
     var svgHeight: Double? { get set }
 }
 
-// PORT-NOTE: PatternObject = ImagePatternObject | SVGPatternObject — a structural union;
+// PatternObject = ImagePatternObject | SVGPatternObject — a structural union;
 // modeled in Swift as the two separate protocols above. A union enum (or a `fill` enum case)
 // will be introduced where PathStyleProps consumes it.
 
@@ -76,7 +76,7 @@ public class Pattern {
      *
      * Will be string if using SSR rendering.
      */
-    // PORT-NOTE: svgElement: SVGElement | string — only the `string` arm is typed for now.
+    // svgElement: SVGElement | string — only the `string` arm is typed for now.
     public var svgElement: String?
 
     public var `repeat`: ImagePatternRepeat

@@ -25,7 +25,7 @@ import ZRenderKit
 
 // import type Calendar from './Calendar';                              -> Calendar (coord/calendar/Calendar.swift; coord-sys master)
 //
-// PORT-NOTE: `Calendar` (coord/calendar/Calendar.swift) is the coordinate-system master (registered via
+// `Calendar` (coord/calendar/Calendar.swift) is the coordinate-system master (registered via
 //   CoordinateSystemManager.register("calendar", ...)) and is ported. The surface referenced below
 //   (getRect(), getRangeInfo(), getCellWidth(), getCellHeight(), dataToPoint(_ , _), dataToLayout(_ , _))
 //   mirrors upstream Calendar.ts.

@@ -94,7 +94,7 @@ func viewGroupParseScaleLimit(_ v: Any?) -> RoamOptionMixin.ScaleLimit? {
 //         return viewCoordSys;
 //     }
 //   (component/helper/roamHelper.ts:186-212)
-//   PORT-NOTE: `RoamHostComponentOrSeries` (component OR series) → `ComponentModel` (SeriesModel's base).
+//   `RoamHostComponentOrSeries` (component OR series) → `ComponentModel` (SeriesModel's base).
 //   `viewCoordSysSetRoamOptionFromModel` is realized as the port's value-taking `viewCoordSysSetRoamOption`
 //   fed from the host model's `center` / `zoom` / `scaleLimit` shallow options — exactly what upstream's
 //   *FromModel reads.

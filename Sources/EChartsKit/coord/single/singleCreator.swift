@@ -37,7 +37,7 @@ import ZRenderKit
 //   import { SINGLE_REFERRING } from '../../util/model';                  -> `model.SINGLE_REFERRING` (util/modelUtil.swift).
 //   import { associateSeriesWithAxis } from '../axisStatistics';         -> associateSeriesWithAxis (coord/axisStatistics.swift).
 //
-// PORT-NOTE: `Single` (coord/single/Single.swift; the coord-sys master) + `singleDimensions` are ported
+// `Single` (coord/single/Single.swift; the coord-sys master) + `singleDimensions` are ported
 //   alongside this file in the same phase. `Single` exposes: name, resize(axisModel, api), getAxis()
 //   (-> SingleAxis, an Axis), dataToPoint(_), getRect(). Re-narrow if the sibling surface differs.
 

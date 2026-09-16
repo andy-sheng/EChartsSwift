@@ -11,7 +11,7 @@
 //     `val => val[2] * 2` — symbolVisual.seriesSymbolTask evaluates function-valued symbol props per
 //     datum, so the bubble-size encoding matches the web pane.
 //   - NATIVE pane still omits the two JS closures with no native carrier (tooltip formatter,
-//     animationDelay) — see the PORT-NOTEs. Neither affects the static frame.
+//     animationDelay) — see the notes. Neither affects the static frame.
 //   - The `data` literal is pre-mapped in Swift ([day, hour, count] → [hour, day, count]) exactly as
 //     the example's `.map` does at load time; the web pane still runs the original `.map`.
 import EChartsKit
@@ -113,7 +113,7 @@ option = {
             ] as [String: Any],
             "tooltip": [
                 "position": "top"
-                // PORT-NOTE: tooltip.formatter omitted — JS closure returning
+                // tooltip.formatter omitted — JS closure returning
                 // "<count> commits in <hour> of <day>", indexing the hours/days label arrays with
                 // params.value[0] / params.value[1].
             ] as [String: Any],

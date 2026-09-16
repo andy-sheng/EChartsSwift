@@ -45,7 +45,7 @@ private let STATE_LIST: [String] = ["inBrush", "outOfBrush"]
 //     [DISPATCH_FLAG]: boolean;
 //     [DISPATCH_METHOD]: typeof doDispatch;
 // }
-//   PORT-NOTE: upstream stamps the throttled dispatch method and the re-entrancy flag onto the LIVE
+//   upstream stamps the throttled dispatch method and the re-entrancy flag onto the LIVE
 //   ZRender instance (that is the whole point: one throttle window + one guard per chart instance),
 //   so those slots die WITH the zr. Swift cannot add stored properties to `ZRender`, so the slot lives
 //   in a module-level dictionary keyed by `ObjectIdentifier(zr)`. Three hazards that idiom introduces
@@ -147,7 +147,7 @@ public final class BrushSelectedItem {
 //         payload.key === 'brush' ? payload.brushOption : {brushType: false}
 //     );
 //
-// PORT-NOTE (stage order): upstream runs the VISUAL stages BEFORE `renderComponents`, so by the time
+// note (stage order): upstream runs the VISUAL stages BEFORE `renderComponents`, so by the time
 //   BrushView renders, `brushModel.brushOption` is already fresh and its controller arms on the SAME
 //   frame the `takeGlobalCursor` action arrives. This driver renders the components FIRST and runs the
 //   brush visual near the end of `render()` (it must follow the LAYOUT stages — the selectors read each
@@ -483,7 +483,7 @@ private func dispatchAction(
 
     // if (!zr[DISPATCH_METHOD]) { zr[DISPATCH_METHOD] = doDispatch; }
     //   -> the "origin method" below IS `doDispatch`; `createOrUpdate` seeds it on first use.
-    //   Identity re-validation (see the `_dispatchSlotStore` PORT-NOTE): a slot found under a RECYCLED
+    //   Identity re-validation (see the `_dispatchSlotStore` note): a slot found under a RECYCLED
     //   ObjectIdentifier belongs to a dead chart — clear its pending timer and start fresh.
     let slot: BrushDispatchSlot
     if let existing = _dispatchSlotStore[zrKey], existing.zr === zr {
@@ -541,7 +541,7 @@ private func doDispatch(_ api: ExtensionAPI, _ brushSelected: [BrushSelectedItem
         return
     }
     //
-    // PORT-NOTE: `Payload.batch` is typed `[PayloadItem]?` in this port (util/types.swift) and cannot
+    // `Payload.batch` is typed `[PayloadItem]?` in this port (util/types.swift) and cannot
     //   carry the brushSelected items; the batch rides in the dynamic `other` bag instead. That IS the
     //   channel the ported event system reads — `ECharts.doDispatchAction` copies `payload.other` into the
     //   emitted `ECActionEvent.eventData` — so a `chart.on("brushselected")` handler sees
@@ -560,7 +560,7 @@ private func doDispatch(_ api: ExtensionAPI, _ brushSelected: [BrushSelectedItem
 }
 
 // function checkInRange(seriesModel, rangeInfoList, data, dataIndex)
-//   PORT-NOTE: `seriesModel` is replaced by its already-resolved `brushSelector` (upstream reads
+//   `seriesModel` is replaced by its already-resolved `brushSelector` (upstream reads
 //   `seriesModel.brushSelector` — an optional declaration-merged method — on every call).
 private func checkInRange(
     _ brushSelector: BrushSelectorFn,

@@ -30,13 +30,13 @@ import ZRenderKit
 // import Group from 'zrender/src/graphic/Group';                    -> ZRenderKit `Group`
 // import { enterBlur, leaveBlur } from '../../util/states';         -> util/states.swift (enterBlur/leaveBlur ported; the blur toggling usage is deferred, see below)
 // import { traverseUpdateZ, retrieveZInfo } from '../../util/graphic';
-//   -> PORT-NOTE: `retrieveZInfo` IS ported (component/helper/RoamController.swift). `traverseUpdateZ` is
+//   -> note: `retrieveZInfo` IS ported (component/helper/RoamController.swift). `traverseUpdateZ` is
 //      not yet a reusable util/graphic function (only ECharts.swift has a private `doUpdateZ`), so it is
 //      reproduced privately at the bottom of this file — a faithful copy of upstream's traverseUpdateZ/
 //      doUpdateZ — and the marker-group z/zlevel pass (updateZ below) now propagates. Dedupe once landed.
 
 // const inner = makeInner<{ keep: boolean }, MarkerDraw>();
-// PORT-NOTE: `makeInner` requires reference (`AnyObject`) value & host types. The `{ keep: boolean }`
+// `makeInner` requires reference (`AnyObject`) value & host types. The `{ keep: boolean }`
 //   bag is wrapped in a reference `MarkerDrawKeep`; `MarkerDraw` is the reference host (protocol).
 final class MarkerDrawKeep {
     var keep: Bool = false
@@ -64,7 +64,7 @@ open class MarkerView: ComponentView {
      * Markline grouped by series
      */
     // markerGroupMap: HashMap<MarkerDraw>;
-    // PORT-NOTE: not initialized at declaration place (upstream caveat); set in `init()`.
+    // not initialized at declaration place (upstream caveat); set in `init()`.
     public var markerGroupMap: HashMap<MarkerDraw>!
 
     // init() { this.markerGroupMap = createHashMap(); }
@@ -130,7 +130,7 @@ open class MarkerView: ComponentView {
     }
 
     // abstract renderSeries(seriesModel, markerModel, ecModel, api): void
-    // PORT-NOTE: abstract method — the per-type subclass (MarkPointView/MarkLineView/MarkAreaView,
+    // abstract method — the per-type subclass (MarkPointView/MarkLineView/MarkAreaView,
     //   dependent stage) must override.
     open func renderSeries(
         _ seriesModel: SeriesModel,
@@ -161,7 +161,7 @@ private func updateZ(
         if let markerModel = markerModel, let markerDraw = markerDraw {
             // const { z, zlevel } = retrieveZInfo(markerModel);
             // traverseUpdateZ(markerDraw.group, z, zlevel);
-            // PORT-NOTE: `retrieveZInfo` is the ported helper from component/helper/RoamController.swift
+            // `retrieveZInfo` is the ported helper from component/helper/RoamController.swift
             //   (RoamZInfo.z/.zlevel mirror util/graphic.retrieveZInfo). `traverseUpdateZ` is not yet a
             //   shared util/graphic function, so it is reproduced privately below (a faithful copy of
             //   upstream util/graphic.ts `traverseUpdateZ`/`doUpdateZ`); dedupe once it lands as a shared fn.
@@ -179,7 +179,7 @@ private func traverseUpdateZ(_ el: Element, _ z: Double, _ zlevel: Double) {
 // upstream util/graphic.ts `doUpdateZ(el, z, zlevel, maxZ2)`. Sets `z`/`zlevel` on every displayable
 //   (preserving `z2`, the intra-view order the painter tie-breaks on) and on each host's attached label /
 //   text guide line, lifting the label `z2` above the subtree glyphs so it paints over what it annotates.
-//   PORT-NOTE: `ignoreModelZ` (an ExtendedElement flag) is not ported → not checked here (same caveat as
+//   `ignoreModelZ` (an ExtendedElement flag) is not ported → not checked here (same caveat as
 //   ECharts.swift's private `doUpdateZ`).
 @discardableResult
 private func doUpdateZ(_ el: Element, _ z: Double, _ zlevel: Double, _ maxZ2In: Double) -> Double {

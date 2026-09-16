@@ -33,7 +33,7 @@ import ZRenderKit
 //     selectors: BrushCommonSelectorsForSeries
 // }
 //
-// PORT-NOTE: upstream `BrushSelectableArea` is the area PARAM BAG itself (a plain object), decorated
+// upstream `BrushSelectableArea` is the area PARAM BAG itself (a plain object), decorated
 //   in-place with `boundingRect` + `selectors` (`zrUtil.defaults({boundingRect}, area)`). The bag is
 //   `[String: Any]` here (CONVENTIONS §2) and Swift dictionaries are value types, so the decorated area
 //   is a reference-typed wrapper AROUND the bag: `area` keeps the raw param bag (the diffable surface
@@ -92,7 +92,7 @@ struct BrushSelectorOnBrushType {
  */
 // export interface BrushCommonSelectorsForSeries { point(itemLayout): boolean; rect(itemLayout): boolean; }
 //
-// PORT-NOTE: upstream builds an object literal whose two closures capture `selectors` (themselves) and
+// upstream builds an object literal whose two closures capture `selectors` (themselves) and
 //   `area`. Reproducing that literally in Swift creates a strong self-reference cycle between the
 //   closures and the object. The dispatch is therefore done in the methods, binding `brushType` + `area`
 //   as stored properties (`area` unowned — the area OWNS the selectors, exactly as upstream). Behavior
@@ -121,7 +121,7 @@ public final class BrushCommonSelectorsForSeries {
 }
 
 /// The type of the OPTIONAL `SeriesModel#brushSelector` member (upstream model/Series.ts declares it in
-/// the declaration-merged `interface SeriesModel`; see the PORT-NOTE there):
+/// the declaration-merged `interface SeriesModel`; see the note there):
 ///   brushSelector(dataIndex, data, selectors, area): boolean
 public typealias BrushSelectorFn = (
     _ dataIndex: Int,
@@ -213,7 +213,7 @@ let selector: [BrushType: BrushSelectorOnBrushType] = [
 func getLineSelectors(_ xyIndex: Int) -> BrushSelectorOnBrushType {
     // const xy = ['x', 'y'] as const;
     // const wh = ['width', 'height'] as const;
-    //   PORT-NOTE: the `itemLayout[xy[xyIndex]]` / `itemLayout[wh[xyIndex]]` string indexing of a
+    //   the `itemLayout[xy[xyIndex]]` / `itemLayout[wh[xyIndex]]` string indexing of a
     //   `RectLike` is a keyPath pick in Swift; done with the two accessors below.
     func xyOf(_ rect: RectLike) -> Double { return xyIndex == 0 ? rect.x : rect.y }
     func whOf(_ rect: RectLike) -> Double { return xyIndex == 0 ? rect.width : rect.height }

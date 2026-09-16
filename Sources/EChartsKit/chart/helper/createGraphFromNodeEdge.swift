@@ -38,7 +38,7 @@ import ZRenderKit
 
 // export default function createGraphFromNodeEdge(...): Graph  -> free function (CONVENTIONS §2).
 //
-// PORT-NOTE: upstream `nodes: OptionSourceDataOriginal<OptionDataValue, OptionDataItemObject<OptionDataValue>>`
+// upstream `nodes: OptionSourceDataOriginal<OptionDataValue, OptionDataItemObject<OptionDataValue>>`
 //   and `edges: OptionSourceDataOriginal<OptionDataValue, GraphEdgeItemObject<OptionDataValue>>`. Both
 //   `OptionSourceDataOriginal` collapse to `[Any]` here (== `[OptionDataItemOriginal]`); each element is
 //   read as a `[String: Any]` option bag (`.id` / `.name` for nodes, `.source` / `.target` / `.id` for edges).
@@ -97,7 +97,7 @@ public func createGraphFromNodeEdge(
         // `value` dimension, but graph need `value` dimension. It's better to
         // uniform this behavior.
         if util.indexOf(coordDimensions, "value") < 0 {
-            // PORT NOTE: faithful to the upstream bug — `Array.prototype.concat` returns a NEW array
+            // faithful to the upstream bug — `Array.prototype.concat` returns a NEW array
             //   but the result is never assigned back, so this branch is a no-op. Replicated as a
             //   discarded expression to keep the diff surface identical.
             _ = coordDimensions + ["value"]  // coordDimensions.concat(['value']);

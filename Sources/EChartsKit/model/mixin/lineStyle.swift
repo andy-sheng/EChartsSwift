@@ -28,11 +28,11 @@ private let getLineStyle = makeStyleMapper(LINE_STYLE_KEY_MAP)
 // type LineStyleKeys = 'lineWidth' | 'stroke' | 'opacity' | 'shadowBlur'
 //     | 'shadowOffsetX' | 'shadowOffsetY' | 'shadowColor' | 'lineDash'
 //     | 'lineDashOffset' | 'lineCap' | 'lineJoin' | 'miterLimit';
-// PORT-NOTE: this TS string-literal union has no faithful Swift analogue; it only narrows
+// this TS string-literal union has no faithful Swift analogue; it only narrows
 //   the `Pick<PathStyleProps, LineStyleKeys>` below, which we collapse to the dynamic bag.
 
 // export type LineStyleProps = Pick<PathStyleProps, LineStyleKeys>;
-// PORT-NOTE: `PathStyleProps` is a Swift struct (value type, fixed fields) and cannot be
+// `PathStyleProps` is a Swift struct (value type, fixed fields) and cannot be
 //   produced from arbitrary string keys mechanically; mirror makeStyleMapper's decision and
 //   surface the dynamic `Dictionary<Any>` ([String: Any]) bag it returns.
 public typealias LineStyleProps = Dictionary<Any>
@@ -46,7 +46,7 @@ extension Model {
 
     public func getLineStyle(
         _ excludes: [String]? = nil
-        // PORT-NOTE: upstream excludes is `readonly (keyof LineStyleOption)[]`; keyof narrowing
+        // upstream excludes is `readonly (keyof LineStyleOption)[]`; keyof narrowing
         //   has no Swift analogue, so it is the plain `[String]?` key list here.
     ) -> LineStyleProps {
         // upstream: `return getLineStyle(this, excludes);` — module-qualify to select the

@@ -73,7 +73,7 @@ public protocol EChartsDemoChart: AnyObject {
     /// `params.dataIndex`, `params.name`, `params.value`, `params.componentType`, … plus
     /// `params["…"]` for the keys that only live in the flat JS object (an action event's payload
     /// fields: `batch`, `areas`, `selected`, `axesInfo`). A field this port cannot fill is `nil` —
-    /// see the PORT-NOTEs on `ECharts._initZrEvents` (marker events pack from the host series;
+    /// see the notes on `ECharts._initZrEvents` (marker events pack from the host series;
     /// custom-series `el`-derived params are not packed).
     func on(_ event: String, _ handler: @escaping @MainActor (ECEventParams) -> Void)
 }

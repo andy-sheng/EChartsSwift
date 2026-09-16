@@ -28,7 +28,7 @@ import ZRenderKit
 //   import { PathProps, PathStyleProps } from 'zrender/src/graphic/Path';      -> ZRenderKit (type-only).
 //   import { ZRenderType } from 'zrender/src/zrender';                   -> `Any?` (getZr() return; ZRenderType facade).
 //   import { BarGridLayoutOptionForCustomSeries, BarGridLayoutResultForCustomSeries } from '../../layout/barGrid';
-//       -> PORT-NOTE: layout/barGrid.swift is ported (BarGridLayoutOptionForCustomSeries / ...Result); the `barLayout` API here is still typed `Any`.
+//       -> note: layout/barGrid.swift is ported (BarGridLayoutOptionForCustomSeries / ...Result); the `barLayout` API here is still typed `Any`.
 //   import { ...many... } from '../../util/types';                        -> util/types.swift (type-only; the dynamic
 //       option tree is the `[String: Any]` bag per CONVENTIONS §2).
 //   import Element from 'zrender/src/Element';                            -> ZRenderKit.Element.
@@ -45,11 +45,11 @@ import ZRenderKit
 //   import { GroupProps } from 'zrender/src/graphic/Group';               -> ZRenderKit (type-only).
 //   import { TransitionOptionMixin, TransitionBaseDuringAPI, TransitionDuringAPI }
 //       from '../../animation/customGraphicTransition';
-//       -> PORT-NOTE (deferred): requires animation/customGraphicTransition (NOT ported — enter/update/leave
+//       -> TODO: requires animation/customGraphicTransition (NOT ported — enter/update/leave
 //          transition, per the CUSTOM port brief). The `during` / transition option shapes are documentation-only.
 //   import { TransformProp } from 'zrender/src/core/Transformable';       -> ZRenderKit (type-only).
 //   import { ElementKeyframeAnimationOption } from '../../animation/customGraphicKeyframeAnimation';
-//       -> PORT-NOTE (deferred): requires animation/customGraphicKeyframeAnimation (keyframe animation NOT ported).
+//       -> TODO: requires animation/customGraphicKeyframeAnimation (keyframe animation NOT ported).
 
 // export type CustomExtraElementInfo = Dictionary<unknown>;
 public typealias CustomExtraElementInfo = [String: Any]
@@ -84,7 +84,7 @@ public let NON_STYLE_VISUAL_PROPS: [String: Double] = [
 // (`CustomElementOption`, `CustomRootElementOption`) name that bag so call sites read faithfully.
 // ============================================================================
 //
-// type ShapeMorphingOption = { morph?: boolean };  // only available on path. PORT-NOTE (deferred): shape morphing.
+// type ShapeMorphingOption = { morph?: boolean };  // only available on path. TODO: shape morphing.
 //
 // interface CustomBaseElementOption extends Partial<Pick<Element,
 //     TransformProp | 'silent' | 'ignore' | 'textConfig'>> {
@@ -96,7 +96,7 @@ public let NON_STYLE_VISUAL_PROPS: [String: Double] = [
 //     clipPath?: CustomBaseZRPathOption | false; // `false` means remove the clipPath
 //     tooltipDisabled?: boolean; // `false` means not show tooltip
 //     extra?: Dictionary<unknown> & TransitionOptionMixin;
-//     during?(params: TransitionBaseDuringAPI): void;   // updateDuringAnimation. PORT-NOTE (deferred): requires customGraphicTransition.
+//     during?(params: TransitionBaseDuringAPI): void;   // updateDuringAnimation. TODO: requires customGraphicTransition.
 //     enterAnimation?: AnimationOption
 //     updateAnimation?: AnimationOption
 //     leaveAnimation?: AnimationOption
@@ -224,7 +224,7 @@ public protocol CustomSeriesRenderItemAPI: CustomSeriesRenderItemCoordinateSyste
     // NOTE: Not using Pick<ExtensionAPI> here because we don't want to bundle ExtensionAPI into the d.ts
     func getWidth() -> Double
     func getHeight() -> Double
-    // getZr(): ZRenderType  -> PORT-NOTE: ZRenderType facade typed `Any?`.
+    // getZr(): ZRenderType  -> note: ZRenderType facade typed `Any?`.
     func getZr() -> Any?
     func getDevicePixelRatio() -> Double
 
@@ -242,7 +242,7 @@ public protocol CustomSeriesRenderItemAPI: CustomSeriesRenderItemCoordinateSyste
     func visual(_ visualType: String, _ dataIndexInside: Double?) -> Any?
 
     // barLayout(opt: BarGridLayoutOptionForCustomSeries): BarGridLayoutResultForCustomSeries;
-    //   PORT-NOTE: layout/barGrid custom types are ported (barGrid.swift); opt/result kept `Any` here.
+    //   layout/barGrid custom types are ported (barGrid.swift); opt/result kept `Any` here.
     func barLayout(_ opt: Any?) -> Any?
 
     // currentSeriesIndices(): number[];
@@ -384,7 +384,7 @@ open class CustomSeriesModel: SeriesModel {
     public override class var type: ComponentFullType { return "series.custom" }
 
     // static dependencies = ['grid', 'polar', 'geo', 'singleAxis', 'calendar', 'matrix'];
-    //   PORT-NOTE (deferred): only grid/cartesian2d + polar coord systems are renderable now (geo/singleAxis/
+    //   TODO: only grid/cartesian2d + polar coord systems are renderable now (geo/singleAxis/
     //   calendar/matrix not ported); the list is kept verbatim so registration/topo order matches upstream.
     public override class var dependencies: [String] {
         return ["grid", "polar", "geo", "singleAxis", "calendar", "matrix"]

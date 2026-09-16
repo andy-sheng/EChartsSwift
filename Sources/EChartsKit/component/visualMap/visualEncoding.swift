@@ -48,7 +48,7 @@ import ZRenderKit
 //   `registers.registerVisual(registers.PRIORITY.VISUAL.COMPONENT, handler)` — i.e. AFTER each series'
 //   own visual stage, so they overwrite the palette color with the value->visual encoding.
 //
-// PORT-NOTE: the reset bodies below run the real encoding, using the now-ported VisualMapModel +
+// the reset bodies below run the real encoding, using the now-ported VisualMapModel +
 //   visualSolution + VisualMapping subsystems (see imports). The `StageHandler`
 //   objects are still produced so the Orchestrate driver can register them at
 //   PRIORITY.VISUAL.COMPONENT once those land.
@@ -173,7 +173,7 @@ private func getColorVisual(
 // performance and export for heatmap?
 // value can be Infinity or -Infinity
 //
-// PORT-NOTE: `getColorVisual` (implemented above) maps one parsed value in a given
+// `getColorVisual` (implemented above) maps one parsed value in a given
 //   valueState to a color, by running each of the mapping's visual types through
 //   `mapping.applyVisual(value, getVisual, setVisual)` over a local `resultVisual` bag seeded with the
 //   series' default color (`getVisualFromData(data, 'color')`). It is the callback `getVisualMeta` uses

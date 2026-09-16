@@ -35,11 +35,11 @@ import ZRenderKit
 //   import { inheritDefaultOption } from '../../util/component';     -> `component.inheritDefaultOption` (util/componentUtil.swift).
 //   import SeriesData from '../../data/SeriesData';                 -> SeriesData (data/SeriesData.swift).
 //   import { BrushCommonSelectorsForSeries } from '../../component/brush/selector';
-//       -> PORT-NOTE: BrushCommonSelectorsForSeries is ported (component/brush/brushVisual.swift); the
+//       -> note: BrushCommonSelectorsForSeries is ported (component/brush/brushVisual.swift); the
 //          bar `brushSelector` override is centralized there (seriesBrushSelector, bar → rect) rather
 //          than restored on this subclass (see the note below).
 //   import tokens from '../../visual/tokens';
-//       -> PORT-NOTE: visual/tokens.swift is ported (`tokens.color.primary`), but the value is still
+//       -> note: visual/tokens.swift is ported (`tokens.color.primary`), but the value is still
 //          inlined verbatim as its resolved constant in `defaultOption` (same convention as
 //          coord/cartesian/GridModel.swift); re-wiring to the real `tokens` namespace is still pending.
 //            tokens.color.primary = color.neutral80 = '#3c3c41'
@@ -123,7 +123,7 @@ open class BarSeriesModel: BaseBarSeriesModel {
         // });
         // `!!this.get('realtimeSort', true) || null` -> `true` when realtimeSort is truthy, else `nil`
         //   (JS `false || null === null`). realtimeSort defaults to a Bool in defaultOption.
-        // PORT-NOTE: `!!` truthiness modeled via a Bool cast; realtimeSort is a Bool in defaultOption,
+        // `!!` truthiness modeled via a Bool cast; realtimeSort is a Bool in defaultOption,
         //   so non-Bool values (not producible from the option schema) are ignored — JS/Swift diff only.
         let createInvertedIndices: Bool? = ((self.get("realtimeSort", true) as? Bool) ?? false) ? true : nil
         return createSeriesData(nil, self, CreateSeriesDataOpt(
@@ -165,7 +165,7 @@ open class BarSeriesModel: BaseBarSeriesModel {
     //   brushSelector(dataIndex: number, data: SeriesData, selectors: BrushCommonSelectorsForSeries): boolean {
     //       return selectors.rect(data.getItemLayout(dataIndex));
     //   }
-    //   PORT-NOTE: bar's item layout is stored as the `["x":,"y":,"width":,"height":]` bag
+    //   bar's item layout is stored as the `["x":,"y":,"width":,"height":]` bag
     //   (layout/barGrid.swift) where upstream stores a `RectLike` object; `brushItemLayoutAsRect`
     //   accepts either.
     open override var brushSelector: BrushSelectorFn? {
@@ -188,13 +188,13 @@ open class BarSeriesModel: BaseBarSeriesModel {
                 "showBackground": false,
                 "backgroundStyle": [
                     "color": "rgba(180, 180, 180, 0.2)",
-                    // PORT-NOTE: upstream value is `null`; NSNull() retains the key in the [String: Any] bag.
+                    // upstream value is `null`; NSNull() retains the key in the [String: Any] bag.
                     "borderColor": NSNull(),
                     "borderWidth": 0,
                     "borderType": "solid",
                     "borderRadius": 0,
                     "shadowBlur": 0,
-                    // PORT-NOTE: upstream value is `null`; NSNull() retains the key.
+                    // upstream value is `null`; NSNull() retains the key.
                     "shadowColor": NSNull(),
                     "shadowOffsetX": 0,
                     "shadowOffsetY": 0,
@@ -203,7 +203,7 @@ open class BarSeriesModel: BaseBarSeriesModel {
 
                 "select": [
                     "itemStyle": [
-                        // PORT-NOTE: tokens.color.primary inlined as resolved constant (color.neutral80);
+                        // tokens.color.primary inlined as resolved constant (color.neutral80);
                         //   visual/tokens.swift is ported — re-wire to `tokens.color.primary` still pending.
                         "borderColor": "#3c3c41",   // tokens.color.primary
                         "borderWidth": 2

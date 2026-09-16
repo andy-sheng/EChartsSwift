@@ -79,7 +79,7 @@ open class EffectScatterSeriesModel: SeriesModel {
     public override class var type: ComponentFullType { return "series.effectScatter" }
 
     // upstream: static readonly dependencies = ['grid', 'polar'];
-    //   PORT-NOTE: only grid/cartesian2d is renderable now (polar coord system is wired via the ported
+    //   only grid/cartesian2d is renderable now (polar coord system is wired via the ported
     //   Polar, but the effectScatter static render below only guards cartesian2d + polar); the dependency
     //   list is kept verbatim so registration/topo order matches.
     public override class var dependencies: [String] {
@@ -131,7 +131,7 @@ open class EffectScatterSeriesModel: SeriesModel {
             "clip": true,
 
             // Ripple effect config
-            // PORT-NOTE: rippleEffect is the ANIMATED expanding-ring config consumed by helper/EffectSymbol
+            // rippleEffect is the ANIMATED expanding-ring config consumed by helper/EffectSymbol
             //   (period/scale/brushType/number) — EffectSymbolElement.swift has landed and EffectScatterView
             //   routes through SymbolDraw(EffectSymbol), which renders these rings.
             "rippleEffect": [

@@ -77,7 +77,7 @@ public enum cartesianAxisHelper {
         _ rect: LayoutRect, _ axisModel: CartesianAxisModel, _ opt: LayoutOpt? = nil
     ) -> CartesianAxisLayout {
         let opt = opt ?? LayoutOpt()
-        // PORT-NOTE: `CartesianAxisModel.axis` is typed `Any` (Swift cannot narrow the mixin's
+        // `CartesianAxisModel.axis` is typed `Any` (Swift cannot narrow the mixin's
         //   `axis` getter to `Axis2D`); downcast to `Axis2D` here to match upstream's typed member.
         let axis = axisModel.axis as! Axis2D
         var layout = CartesianAxisLayout()
@@ -120,7 +120,7 @@ public enum cartesianAxisHelper {
         layout.labelDirection = dirMap[rawAxisPosition]!
         layout.labelOffset = otherAxisOnZeroOf != nil ? posBound[idx[rawAxisPosition]!] - posBound[idx["onZero"]!] : 0
 
-        // PORT-NOTE: upstream truthiness on the option value; a boolean option is expected here, so
+        // upstream truthiness on the option value; a boolean option is expected here, so
         //   `(... as? Bool) == true` reproduces `undefined -> false`, `true -> true`.
         if (axisModel.get(["axisTick", "inside"]) as? Bool) == true {
             layout.tickDirection = -layout.tickDirection
@@ -131,7 +131,7 @@ public enum cartesianAxisHelper {
 
         // Special label rotation
         let labelRotate = axisModel.get(["axisLabel", "rotate"]) as? Double
-        // PORT-NOTE: upstream `-labelRotate` on `undefined` yields NaN; here a nil `labelRotate`
+        // upstream `-labelRotate` on `undefined` yields NaN; here a nil `labelRotate`
         //   stays nil (negation only applied when present).
         layout.labelRotate = axisPosition == "top" ? labelRotate.map { -$0 } : labelRotate
 
@@ -177,7 +177,7 @@ public enum cartesianAxisHelper {
 
             if __DEV__ {
                 if axisModel == nil {
-                    // PORT-NOTE: upstream `throw new Error(...)`; surfaced as fatalError (no throwing signature). __DEV__-only.
+                    // upstream `throw new Error(...)`; surfaced as fatalError (no throwing signature). __DEV__-only.
                     let axisIndexOrId = util.retrieve3(
                         seriesModel.get(axisType + "Index"),
                         seriesModel.get(axisType + "Id"),
@@ -210,7 +210,7 @@ public enum cartesianAxisHelper {
         var axisTickAutoShow = false
         // Not show axisTick or axisLine if other axis is category / time
         for i in 0..<cartesians.count {
-            // PORT-NOTE: `axisModel.axis` is typed `Any` (see `layout`); downcast to `Axis2D`.
+            // `axisModel.axis` is typed `Any` (see `layout`); downcast to `Axis2D`.
             if helper.isIntervalOrLogScale(cartesians[i].getOtherAxis(axisModel.axis as! Axis2D).scale) {
                 // Still show axis tick or axisLine if other axis is value / log
                 axisLineAutoShow = true
@@ -236,7 +236,7 @@ public enum cartesianAxisHelper {
 
         if __DEV__ {
             let oldRaw = axisBuilder.__getRawCfg()
-            // PORT-NOTE (deferred): upstream iterates `zrUtil.keys(newRaw)` and asserts each prop
+            // TODO: upstream iterates `zrUtil.keys(newRaw)` and asserts each prop
             //   (except 'position'/'labelOffset') equals `oldRaw[prop]`. This is a __DEV__-only
             //   invariant check; `AxisBuilderCfg` is a Swift struct without dynamic keyed access, so
             //   the per-key comparison would require Mirror reflection. Not implemented (dev-only assert).
@@ -258,7 +258,7 @@ public typealias CartesianAxisHashKey = String
 
 
 // ============================================================================
-// PORT-NOTE: FORWARD-REFERENCE TYPES
+// FORWARD-REFERENCE TYPES
 // Upstream `coord/cartesian/cartesianAxisHelper.ts` imports these from sibling files. Of those,
 // `coord/cartesian/Cartesian2D` and `component/axis/AxisBuilder` are now fully ported (their former
 // placeholders here were removed — see the note at the end of this file). Only `util/layout`'s
@@ -271,7 +271,7 @@ public typealias CartesianAxisHashKey = String
 
 // '../../util/layout' — LayoutRect: upstream `interface LayoutRect extends BoundingRect`.
 //   Only `.x` / `.y` / `.width` / `.height` are read here, all provided by ZRenderKit's BoundingRect.
-public typealias LayoutRect = BoundingRect  // PORT-NOTE: replace with real util/layout.swift LayoutRect
+public typealias LayoutRect = BoundingRect  // replace with real util/layout.swift LayoutRect
 
 // './Cartesian2D' — Cartesian2D: upstream `class Cartesian2D extends Cartesian<Axis2D> implements
 //   CoordinateSystem`. Now provided by the real `coord/cartesian/Cartesian2D.swift`; the former

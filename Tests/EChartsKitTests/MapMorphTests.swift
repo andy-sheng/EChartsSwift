@@ -5,7 +5,7 @@
 // value change (`_morphGeoJSON`). When MapView switched over to the shared `MapDraw` (the real upstream
 // owner of the region backdrop), that invention was retired: upstream `MapDraw._buildGeoJSON`
 // (MapDraw.ts:297) does `regionsGroup.removeAll()` and rebuilds EVERY region path on every draw, so the
-// paths are neither identity-reused nor colour-tweened. See the switchover PORT-NOTE at the top of
+// paths are neither identity-reused nor colour-tweened. See the switchover note at the top of
 // MapView.swift.
 //
 // These tests now assert the upstream semantics: (1) a same-region-set value change REBUILDS the region

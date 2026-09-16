@@ -68,7 +68,7 @@ open class ThemeRiverSeriesModel: SeriesModel {
     public var nameMap: HashMap<Double> = createHashMap()
 
     // coordinateSystem: Single;
-    //   PORT-NOTE: upstream types `coordinateSystem: Single`; coord/single/Single.swift is ported, but the
+    //   upstream types `coordinateSystem: Single`; coord/single/Single.swift is ported, but the
     //   inherited `open var coordinateSystem: Any?` slot (model/Series.swift) is used unchanged here and cast
     //   to `Single` in themeRiverLayout.
 
@@ -311,7 +311,7 @@ open class ThemeRiverSeriesModel: SeriesModel {
      * Get data indices for show tooltip content
      */
     // getAxisTooltipData(dim: string | string[], value: number, baseAxis: SingleAxis)
-    //   PORT-NOTE: `baseAxis: SingleAxis` (coord/single/SingleAxis.swift, ported) typed loosely as `Any?` here.
+    //   `baseAxis: SingleAxis` (coord/single/SingleAxis.swift, ported) typed loosely as `Any?` here.
     open func getAxisTooltipData(_ dimIn: Any?, _ value: Double, _ baseAxis: Any?) -> (dataIndices: [Int], nestestValue: Double?) {
         // if (!zrUtil.isArray(dim)) { dim = dim ? [dim] : []; }
         var dim: [String]

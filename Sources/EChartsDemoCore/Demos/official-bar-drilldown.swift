@@ -105,7 +105,7 @@ const drilldownData = [
                     "divideShape": "clone"
                 ] as [String: Any]
             ] as [String: Any]
-            // PORT-NOTE: the click-driven drilldown `setOption` (and its "Back" `graphic` text with an
+            // the click-driven drilldown `setOption` (and its "Back" `graphic` text with an
             // `onclick` closure) has no place in a static option — see the header DEVIATIONS.
         ])
 }

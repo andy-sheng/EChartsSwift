@@ -297,7 +297,7 @@ public final class SymbolDraw {
         //   type makes the coercion unnecessary.
 
         // upstream: function updateIncrementalAndHover(el)
-        // PORT-NOTE: HOVER_LAYER_FOR_INCREMENTAL === 2 (util/graphic.ts) is not ported as a named
+        // HOVER_LAYER_FOR_INCREMENTAL === 2 (util/graphic.ts) is not ported as a named
         //   constant; inlined here.
         func updateIncrementalAndHover(_ el: Element) -> Bool {
             if !el.isGroup {
@@ -324,7 +324,7 @@ public final class SymbolDraw {
     /// upstream: eachRendered(cb)
     public func eachRendered(_ cb: (_ el: Element) -> Bool) {
         // upstream: graphic.traverseElements(this._progressiveEls || this.group, cb);
-        // PORT-NOTE: `util/graphic.traverseElements` not ported. When `_progressiveEls` exists,
+        // `util/graphic.traverseElements` not ported. When `_progressiveEls` exists,
         //   traverse each (large/progressive mode); otherwise traverse the group via `Group.traverse`
         //   (visits children only — same substitute as BarView.eachRendered).
         if let progressiveEls = self._progressiveEls {

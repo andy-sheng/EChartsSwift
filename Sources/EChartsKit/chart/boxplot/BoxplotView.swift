@@ -147,7 +147,7 @@ open class BoxplotView: ChartView {
     }
 
     // upstream: remove(ecModel: GlobalModel)
-    // PORT-NOTE: the ported ChartView.remove signature is `(ecModel, api)`; the `api` param is unused
+    // the ported ChartView.remove signature is `(ecModel, api)`; the `api` param is unused
     //   here (dropped upstream). Faithful body below.
     open override func remove(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
         let group = self.group
@@ -186,7 +186,7 @@ public struct BoxPathShape: PathShape {
 }
 
 // upstream: interface BoxPathProps extends PathProps { shape?: Partial<BoxPathShape> }
-// PORT-NOTE: the typed-props interface collapses onto the dynamic PathProps bag (see Sector.swift).
+// the typed-props interface collapses onto the dynamic PathProps bag (see Sector.swift).
 public typealias BoxPathProps = PathProps
 
 // upstream: class BoxPath extends Path<BoxPathProps>

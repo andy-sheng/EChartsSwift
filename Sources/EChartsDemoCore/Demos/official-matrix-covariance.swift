@@ -18,7 +18,7 @@
 //     720x560 canvas. Canvas height is 560 (not the gallery default) so the 500px-tall matrix fits
 //     under its default `top: '10%'`.
 //   - tooltip.valueFormatter is a JS closure: kept verbatim in the web pane, omitted in the native
-//     option (see PORT-NOTE). Tooltips do not appear in the static render either way.
+//     option (see note). Tooltips do not appear in the static render either way.
 //   - NATIVE PANE IS PARTIAL — the same gap official-matrix-simple carries, and nothing about this
 //     option causes it. EChartsKit registers the matrix coord + MatrixView, so the native pane draws
 //     the table backdrop (the two-level headers, dividers, border) and the visualMap bar — but NOT the
@@ -161,7 +161,7 @@ option = {
             ] as [String: Any],
             "tooltip": [
                 "show": true
-                // PORT-NOTE: tooltip.valueFormatter omitted — `value => Math.round(value)`, which
+                // tooltip.valueFormatter omitted — `value => Math.round(value)`, which
                 // rounds the raw covariance to an integer in the tooltip body.
             ] as [String: Any],
             "visualMap": [
@@ -177,7 +177,7 @@ option = {
                     "color": matrixCovarianceColors
                 ] as [String: Any]
             ] as [String: Any],
-            // PORT-NOTE: draws the matrix BACKDROP ONLY today — HeatmapView.render has no matrix branch
+            // draws the matrix BACKDROP ONLY today — HeatmapView.render has no matrix branch
             // (cartesian2d / calendar / geo only), so these 625 cells render nothing on the native pane.
             // The option is complete and correct; it lights up when that branch lands. See header.
             "series": [

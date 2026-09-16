@@ -2,7 +2,7 @@
 //   (`setLabelValueAnimation` + `animateLabelValue`) ported to label/labelStyle.swift, plus the
 //   `model.interpolateRawValues` helper that drives each intermediate frame.
 //
-// STATIC-ORACLE NOTE (see labelStyle.swift PORT-NOTE): with animation DISABLED (or an animator
+// STATIC-ORACLE NOTE (see labelStyle.swift note): with animation DISABLED (or an animator
 //   advanced to completion), the label settles to the FINAL formatted value in one `during(1)` call —
 //   the live host renders the intermediate frames. These headless tests drive the settle path.
 import XCTest

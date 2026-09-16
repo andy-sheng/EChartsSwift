@@ -12,7 +12,7 @@
 //     The native `option` unrolls that same `.map()` into `graphicLoadingBars`, one dict per i in 0..<7.
 //   - NATIVE PANE: the bars render, the BOUNCE DOES NOT (yet). `graphic`, `type: 'group'` + `children`,
 //     and `left/top: 'center'` (layout.positionElement) are all ported — but GraphicView deliberately
-//     does NOT apply keyframes (PORT-NOTE at component/graphic/GraphicView.swift:277 — "requires
+//     does NOT apply keyframes (note at component/graphic/GraphicView.swift:277 — "requires
 //     keyframe animation: applyKeyframeAnimation(el, elOption.keyframeAnimation, graphicModel)"). So
 //     the native pane draws the 7 bars in their base state (scaleY 1, full height): the spinner AT
 //     REST, a legitimate frame of the example rather than a broken canvas — which is why this one
@@ -41,7 +41,7 @@ private let graphicLoadingBars: [[String: Any]] = (0..<7).map { i in
         "style": [
             "fill": "#5470c6"
         ] as [String: Any],
-        // PORT-NOTE: nothing is dropped here — no key of this option is JS-function-valued, so the
+        // nothing is dropped here — no key of this option is JS-function-valued, so the
         // Swift option mirrors the JS one exactly. But `keyframeAnimation` is currently INERT
         // natively: GraphicView reads elOption and never calls applyKeyframeAnimation
         // (GraphicView.swift:277). Kept verbatim so the demo needs no edit once that lands; the

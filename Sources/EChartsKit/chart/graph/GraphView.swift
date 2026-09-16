@@ -33,7 +33,7 @@ import ZRenderKit
 //   import { isRoamPayloadHasZoom, updateRoamControllerSimply } from '../../component/helper/roamHelper';
 //       -> roamHelper (component/helper/roamHelper*.swift); not wired in GraphView (roam DEFERRED).
 //   import * as graphic from '../../util/graphic';                 -> `Group` / `Line` / `BezierCurve` (ZRenderKit).
-//       PORT-NOTE: graphic.updateProps/removeElement (animation/basicTransition.swift) exist; the static render sets
+//       graphic.updateProps/removeElement (animation/basicTransition.swift) exist; the static render sets
 //       final geometry directly (same deviation as FunnelView/PieView/SunburstView/TreeView).
 //   import adjustEdge from './adjustEdge';                         -> adjustEdge (chart/graph/adjustEdge.swift, ported).
 //       adjustEdge trims each edge's endpoints back to the node symbol boundary (so an arrow head does
@@ -48,7 +48,7 @@ import ZRenderKit
 //       -> sibling GraphSeries.swift (assumed ported alongside data/Graph.swift).
 //   import View, { applyViewCoordSysTransToElement, getOwnRoamViewCoordSys,
 //            VIEW_COORD_SYS_TRANS_OVERALL, viewCoordSysCopyOverallMatrix } from '../../coord/View';
-//       -> PORT-NOTE: coord/View NOT ported (roam / view coord-system transform DEFERRED).
+//       -> note: coord/View NOT ported (roam / view coord-system transform DEFERRED).
 //   import Symbol from '../helper/Symbol';                         -> SymbolElement (chart/helper/SymbolElement.swift).
 //   import SeriesData from '../../data/SeriesData';                -> SeriesData.
 //   import Line from '../helper/Line';                             -> ported as chart/helper/ECLine.swift
@@ -58,7 +58,7 @@ import ZRenderKit
 //   import { simpleLayoutEdge } from './simpleLayoutHelper';       -> sibling simpleLayoutHelper.swift (used by drag; DEFERRED).
 //   import { circularLayout, rotateNodeLabel } from './circularLayoutHelper';  -> sibling circularLayoutHelper.swift.
 //   import { clone, extend } from 'zrender/src/core/util';         -> ZRenderKit.util (only used by thumbnail; DEFERRED).
-//   import ECLinePath from '../helper/LinePath';                   -> PORT-NOTE: no ECLinePath TYPE exists in
+//   import ECLinePath from '../helper/LinePath';                   -> note: no ECLinePath TYPE exists in
 //       this port. Its behaviour is modelled inside chart/helper/ECLine.swift by the `Line` (straight) /
 //       `BezierCurve` (quadratic) pair — see `createLine` / `setLineShapePoints` / `setCurveShapePoints`
 //       plus the `setChildPercent` / `pointAtOf` / `tangentAtOf` helpers. Upstream references ECLinePath
@@ -66,11 +66,11 @@ import ZRenderKit
 //       with thumbnailBridge (note below) — so there is nothing for this file to reference.
 //   import { NullUndefined, RoamHostView, RoamPayload } from '../../util/types';  -> util/types.swift (type-only).
 //   import { getThumbnailBridge, ThumbnailBridge } from '../../component/helper/thumbnailBridge';
-//       -> PORT-NOTE (deferred): requires component/helper/thumbnailBridge (not ported; thumbnail deferred).
-//   import { ListForSymbolDraw } from '../helper/baseDraw';        -> PORT-NOTE (deferred): requires chart/helper/baseDraw (not ported).
+//       -> TODO: requires component/helper/thumbnailBridge (not ported; thumbnail deferred).
+//   import { ListForSymbolDraw } from '../helper/baseDraw';        -> TODO: requires chart/helper/baseDraw (not ported).
 
 // upstream: class GraphView extends ChartView implements RoamHostView
-//   PORT-NOTE (deferred): RoamHostView (`__updateOnOwnRoam`) NOT implemented — roam deferred per CONVENTIONS §5.
+//   TODO: RoamHostView (`__updateOnOwnRoam`) NOT implemented — roam deferred per CONVENTIONS §5.
 open class GraphView: ChartView {
 
     // upstream: static readonly type = SERIES_TYPE_GRAPH;  /  readonly type = SERIES_TYPE_GRAPH;
@@ -81,11 +81,11 @@ open class GraphView: ChartView {
     }
 
     // upstream: private _symbolDraw: SymbolDraw;  private _lineDraw: LineDraw;
-    //   PORT-NOTE: SymbolDraw is ported (used by render); a graph-edge LineDraw is not. The static render adds node symbols + edges to
+    //   SymbolDraw is ported (used by render); a graph-edge LineDraw is not. The static render adds node symbols + edges to
     //   `_mainGroup` directly (rebuilt each pass), so the two sub-draw groups collapse into one.
 
-    // PORT-NOTE: private _controller: RoamController;  — RoamController is ported but not wired in GraphView (roam DEFERRED).
-    // PORT-NOTE (deferred): private _firstRender / _active — only used by roam + thumbnail (deferred).
+    // private _controller: RoamController;  — RoamController is ported but not wired in GraphView (roam DEFERRED).
+    // TODO: private _firstRender / _active — only used by roam + thumbnail (deferred).
     // upstream: private _layoutTimeout: number;  private _layouting: boolean;
     //   `setTimeout(step, 16)` → a main-queue `DispatchWorkItem` (this port's established `setTimeout`
     //   idiom — see util/throttle.swift and component/timeline/SliderTimelineView.swift), so
@@ -106,7 +106,7 @@ open class GraphView: ChartView {
     //   node symbols and edge shapes instead of `group.removeAll()`-rebuilding them. The port persists
     //   the SymbolDraw (its own enter/update/leave diff) and an `_edgeGroup` holding the inline edge
     //   Line/BezierCurve elements, keyed by data index in `_edgeEls` and MORPHED (updateProps) in place.
-    //   PORT-NOTE: the edges are NOT routed through the shared `chart/helper/LineDraw` class — the graph
+    //   the edges are NOT routed through the shared `chart/helper/LineDraw` class — the graph
     //   bakes the (deferred) view-coord transform into each endpoint per-render via `fitPoint`, and edge
     //   labels come from the `edgeLabel` parent-redirect, neither of which the faithful ECLine models;
     //   so the edge geometry/label code is kept inline and only its lifecycle (reuse vs rebuild) changes.
@@ -145,7 +145,7 @@ open class GraphView: ChartView {
     //     this._firstRender = true;
     // }
     open override func init_(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
-        // PORT-NOTE (deferred): RoamController + _firstRender deferred. The SymbolDraw (node) group and
+        // TODO: RoamController + _firstRender deferred. The SymbolDraw (node) group and
         //   the edge group are added to `_mainGroup` ONCE here (upstream `mainGroup.add(symbolDraw.group);
         //   mainGroup.add(lineDraw.group)`) and PERSIST across renders — the render diffs into them.
         _ = self._mainGroup.add(self._symbolDraw.group)
@@ -161,7 +161,7 @@ open class GraphView: ChartView {
         let seriesModel = seriesModelBase as! GraphSeriesModel
 
         // const ownCoordSys = getOwnRoamViewCoordSys(seriesModel);
-        //   PORT-NOTE: getOwnRoamViewCoordSys / applyViewCoordSysTransToElement / roam controller /
+        //   getOwnRoamViewCoordSys / applyViewCoordSysTransToElement / roam controller /
         //   thumbnail — the whole view-coord-system transform + roam block is DEFERRED (coord/View not
         //   ported). The node/edge layout positions are already in the series' local pixel space (set by
         //   circularLayout / simpleLayout), so the static render places `_mainGroup` at the origin.
@@ -188,7 +188,7 @@ open class GraphView: ChartView {
         // STATIC render deviation: upstream delegates to `symbolDraw.updateData(data)` (per-node symbol
         //   enter/update/leave diff, reusing SymbolClz instances) and `lineDraw.updateData(edgeData)`
         //   (per-edge Line diff). SymbolClz/ECLinePath fromSymbol arrows + draggable + node/link scale +
-        //   circular label rotation + thumbnail + forceLayout iteration are DEFERRED (see PORT-NOTEs).
+        //   circular label rotation + thumbnail + forceLayout iteration are DEFERRED (see notes).
         //   The node symbols DIFF through the persistent `_symbolDraw`; the edges are index-keyed reused
         //   in `_edgeGroup`. Both read the layout positions the layout stage stored on the two SeriesData
         //   stores. `_mainGroup` is NOT wiped — reuse is what keeps a merge-mode setOption from resetting.
@@ -230,7 +230,7 @@ open class GraphView: ChartView {
         // upstream: `symbolDraw.updateData(data)`. Each node → a Symbol (Group) whose child path carries
         //   the node colour (item visual style.fill), the node label, emphasis hover-scale and the
         //   entrance scale-in. Node layouts are in DATA space → fitPoint maps them to the pixel view.
-        //   PORT-NOTE: `focus === 'adjacency'` adjacency focus IS wired — in the post-loop below (search
+        //   `focus === 'adjacency'` adjacency focus IS wired — in the post-loop below (search
         //   `emphasis.focus:'adjacency'`) using getAdjacentDataIndices (data/Graph.swift).
         var nodeOpt = SymbolDrawUpdateOpt()
         nodeOpt.getSymbolPoint = { i in
@@ -485,11 +485,11 @@ open class GraphView: ChartView {
             }
         })
 
-        // this._updateNodeAndLinkScale();  — PORT-NOTE (deferred): setSymbolScale (roam) deferred.
-        // updateRoamControllerSimply(...);  — PORT-NOTE (deferred): roam not wired in GraphView (infra ported).
-        // data.graph.eachNode(... draggable ...);  — PORT-NOTE (deferred): node drag requires states/actions.
+        // this._updateNodeAndLinkScale();  — TODO: setSymbolScale (roam) deferred.
+        // updateRoamControllerSimply(...);  — TODO: roam not wired in GraphView (infra ported).
+        // data.graph.eachNode(... draggable ...);  — TODO: node drag requires states/actions.
         //   (The emphasis-focus part of this upstream loop IS wired — see the adjacency post-loop above.)
-        // data.graph.eachEdge(... emphasis focus 'adjacency' ...);  — PORT-NOTE: adjacency focus IS wired above (see the eachEdge post-loop).
+        // data.graph.eachEdge(... emphasis focus 'adjacency' ...);  — note: adjacency focus IS wired above (see the eachEdge post-loop).
 
         // upstream GraphView.ts:227-233 — node label rotation. `rotateNodeLabel`
         //   (circularLayoutHelper.swift) sets each node symbol's text config rotation: in a `circular`
@@ -506,23 +506,23 @@ open class GraphView: ChartView {
 
         // upstream: `if (!isForceLayout) { this._renderThumbnail(seriesModel, api, this._symbolDraw, this._lineDraw); }`
         //   — the `isForceLayout` gate is restored (force layout renders its thumbnail from
-        //   `_startForceLayoutIteration` instead), but the call itself is PORT-NOTE (deferred): the
+        //   `_startForceLayoutIteration` instead), but the call itself is TODO: the
         //   thumbnail requires component/helper/thumbnailBridge (not ported).
-        // PORT-TODO: if (!isForceLayout) this._renderThumbnail(seriesModel, api, this._symbolDraw,
+        // TODO: if (!isForceLayout) this._renderThumbnail(seriesModel, api, this._symbolDraw,
         //   this._lineDraw) — needs component/helper/thumbnailBridge.
         _ = isForceLayout
 
-        // this._firstRender = false;  — PORT-NOTE (deferred): roam state deferred.
+        // this._firstRender = false;  — TODO: roam state deferred.
     }
 
     // upstream: dispose() { this.remove(); this._controller && this._controller.dispose(); }
     open override func dispose(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
-        // PORT-NOTE: no RoamController is wired in GraphView, so there is nothing to dispose (roam DEFERRED).
+        // no RoamController is wired in GraphView, so there is nothing to dispose (roam DEFERRED).
         self.remove(ecModel, api)
     }
 
-    // upstream: __updateOnOwnRoam(payload, seriesModel, api)  — PORT-NOTE (deferred): roam deferred.
-    // upstream: _updateNodeAndLinkScale()  — PORT-NOTE (deferred): setSymbolScale (roam) deferred.
+    // upstream: __updateOnOwnRoam(payload, seriesModel, api)  — TODO: roam deferred.
+    // upstream: _updateNodeAndLinkScale()  — TODO: setSymbolScale (roam) deferred.
 
     // upstream:
     //   updateLayout(seriesModel: GraphSeriesModel) {
@@ -534,7 +534,7 @@ open class GraphView: ChartView {
     // Repositions the EXISTING node symbols / edge shapes against the (mutated) layouts, without
     //   re-running the visual + style pass — this is what each force-layout iteration calls per frame.
     //   `this._lineDraw.updateLayout()` → `_updateEdgeLayout` below, because this view inlines its edge
-    //   geometry in `_edgeGroup` instead of driving the shared LineDraw (see the class PORT-NOTE).
+    //   geometry in `_edgeGroup` instead of driving the shared LineDraw (see the class note).
     open func updateLayout(_ seriesModel: GraphSeriesModel) {
         // upstream: `if (!this._active) { return; }` — a step that lands after remove()/dispose() must
         //   NOT re-materialize symbols into the group remove() just emptied.
@@ -563,7 +563,7 @@ open class GraphView: ChartView {
             let p1 = fitPoint(pts.0)
             let p2 = fitPoint(pts.1)
             if !p1.x.isFinite || !p1.y.isFinite || !p2.x.isFinite || !p2.y.isFinite { continue }
-            // PORT-NOTE (deviation): upstream's `Line.updateLayout` → `setLinePoints` does NOT stop
+            // note (deviation): upstream's `Line.updateLayout` → `setLinePoints` does NOT stop
             //   animators. Here the geometry is written directly, so an in-flight shape tween from the
             //   previous render's `updateProps` would fight the force iteration frame by frame; drop it
             //   first. (With force layout `isAnimationEnabled()` is false, so usually there is none.)
@@ -617,7 +617,7 @@ open class GraphView: ChartView {
     open override func remove(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
         // upstream: `clearTimeout(this._layoutTimeout); this._layouting = false; this._layoutTimeout = null;`
         //   — the pending force-layout step is cancelled so a removed view stops iterating.
-        //   PORT-NOTE (deferred): RoamController.disable deferred.
+        //   TODO: RoamController.disable deferred.
         self._active = false
         self._layoutTimeout?.cancel()
         self._layouting = false
@@ -640,7 +640,7 @@ open class GraphView: ChartView {
     }
 
     // upstream: _getThumbnailInfo / _updateThumbnailWindow / _renderThumbnail
-    //   -> PORT-NOTE (deferred): thumbnail requires component/helper/thumbnailBridge (not ported).
+    //   -> TODO: thumbnail requires component/helper/thumbnailBridge (not ported).
 }
 
 // export default GraphView;  -> `open class GraphView` above.
@@ -728,7 +728,7 @@ extension GraphView {
                     if stopped || !firstRendered {
                         firstRendered = true
                         // self._renderThumbnail(self._model, api, self._symbolDraw, self._lineDraw)
-                        //   PORT-NOTE (deferred): thumbnail requires component/helper/thumbnailBridge.
+                        //   TODO: thumbnail requires component/helper/thumbnailBridge.
                     }
                     self._layouting = !stopped
                     if self._layouting {

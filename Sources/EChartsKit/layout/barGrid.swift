@@ -50,18 +50,18 @@ import ZRenderKit
 //     -> BaseBarSeriesSubType / getStartValue / requireAxisStatisticsForBaseBar (layout/barCommon.swift)
 //   import { COORD_SYS_TYPE_CARTESIAN_2D } from '../coord/cartesian/GridModel';   -> COORD_SYS_TYPE_CARTESIAN_2D
 //   import { createBandWidthBasedAxisContainShapeHandler, makeAxisStatKey2 } from '../chart/helper/axisSnippets';
-//     -> PORT-NOTE (deferred): chart/helper/axisSnippets.ts NOT yet ported (PREREQ). The stubs at the
+//     -> TODO: chart/helper/axisSnippets.ts NOT yet ported (PREREQ). The stubs at the
 //        bottom mirror the upstream one-liners so this file compiles; remove them and import the real
 //        symbols once chart/helper/axisSnippets.swift lands.
 
 
-// PORT-NOTE: `makeCallOnlyOnce()` is generic (`<Host: AnyObject>`); specialize to the registrar type,
+// `makeCallOnlyOnce()` is generic (`<Host: AnyObject>`); specialize to the registrar type,
 //   matching coord/axisStatistics.swift.
 private let callOnlyOnce: (EChartsExtensionInstallRegisters, () -> Void) -> Void = model.makeCallOnlyOnce()
 
 private let STACK_PREFIX = "__ec_stack_"
 
-// PORT-NOTE: `getSeriesStackId(seriesModel: BaseBarSeriesModel)`; `BaseBarSeries`/`BarSeries` are not
+// `getSeriesStackId(seriesModel: BaseBarSeriesModel)`; `BaseBarSeries`/`BarSeries` are not
 //   ported (bar-only scope), so `SeriesModel` is used directly — it exposes `get`/`seriesIndex`.
 private func getSeriesStackId(_ seriesModel: SeriesModel) -> StackId {
     // ((seriesModel as BarSeriesModel).get('stack') || STACK_PREFIX + seriesModel.seriesIndex) as StackId
@@ -87,7 +87,7 @@ private struct BarGridLayoutAxisSeriesInfo {
     var stackId: StackId
 }
 
-// PORT-NOTE: upstream `type StackId = string & {_: 'barGridStackId'}` is a nominal-branded string; the
+// upstream `type StackId = string & {_: 'barGridStackId'}` is a nominal-branded string; the
 //   brand is dropped in Swift (aliased to String).
 private typealias StackId = String
 
@@ -193,7 +193,7 @@ public func computeBarLayoutForCustomSeries(_ opt: BarGridLayoutOption) -> BarGr
     var i = 0
     while Double(i) < opt.count {   // upstream: `i < opt.count || 0`
         // upstream: defaults({stackId: STACK_PREFIX + i}, opt) as BarGridLayoutAxisSeriesInfo
-        // PORT-NOTE: `defaults` merges `opt`'s (number | string) bar-size fields into a series-info whose
+        // `defaults` merges `opt`'s (number | string) bar-size fields into a series-info whose
         //   fields are typed `number`; upstream carries the raw value through the unsafe cast, which loses
         //   percent strings (`Number("50%")` -> NaN in the later arithmetic). Since the `barLayout` custom
         //   series API (CustomView.barLayout) explicitly accepts `number | string` bar sizes, resolve them
@@ -532,7 +532,7 @@ public func createProgressiveLayout(_ seriesType: String) -> StageHandler {
         var exec = StageHandlerProgressExecutor()
         exec.progress = { params, data in
             let count = params.count
-            // PORT-NOTE: large mode is simplified — arrays are always materialized (empty when
+            // large mode is simplified — arrays are always materialized (empty when
             //   inactive) rather than JS's `isLarge && createFloat32Array(...)` short-circuit; stacking
             //   is not supported in large mode (per upstream TODO).
             var largePoints = isLarge ? vendor.createFloat32Array(count * 3) : []
@@ -725,7 +725,7 @@ public func registerBarGridAxisHandlers(_ registers: EChartsExtensionInstallRegi
 
 
 // ============================================================================
-// PORT-NOTE: local port helpers (NOT in upstream barGrid.ts).
+// local port helpers (NOT in upstream barGrid.ts).
 // ============================================================================
 
 // `store.get(...)` returns `ParsedValue` (Any); numeric bar data is stored as `Double`. Mirrors the
@@ -749,7 +749,7 @@ private func barGridTruthy(_ v: Any?) -> Bool {
 
 
 // ============================================================================
-// PORT-NOTE (deferred): stubs for `chart/helper/axisSnippets.ts` (PREREQ, not yet ported). Mirror the
+// TODO: stubs for `chart/helper/axisSnippets.ts` (PREREQ, not yet ported). Mirror the
 //   upstream one-liners so this file compiles; remove them and import the real symbols from
 //   chart/helper/axisSnippets.swift when it lands (as barCommon.swift does for its stub).
 //

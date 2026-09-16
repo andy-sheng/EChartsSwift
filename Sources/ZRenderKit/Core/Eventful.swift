@@ -8,7 +8,7 @@ import Foundation
 //  - Upstream `Eventful<EvtDef>` is generic purely for TS compile-time event-name /
 //    event-param type checking. Swift has no faithful analogue, so the `EvtDef` type
 //    parameter is dropped: event names become `String` and event params `[Any?]`.
-//    // PORT-NOTE: EvtDef compile-time event typing not modeled.
+//    // note: EvtDef compile-time event typing not modeled.
 //  - Upstream callbacks are `(...args) => boolean | void`; the bound `this`
 //    (introduced by `WithThisType` at the `on` overloads) is modeled here as an
 //    explicit leading `thisCtx` parameter so `triggerWithContext`'s receiver binding
@@ -204,7 +204,7 @@ public final class Eventful {
             self._$handlers![event] = []
         }
 
-        // PORT-NOTE (language difference): upstream dedups via `_h[event][i].h === handler`,
+        // note (language difference): upstream dedups via `_h[event][i].h === handler`,
         // but Swift closures have no comparable identity (EventCallback is a plain closure
         // typealias), so the dedup loop cannot be ported. Re-binding the same closure will
         // currently register it twice. Permanent until an explicit handler-token scheme exists.

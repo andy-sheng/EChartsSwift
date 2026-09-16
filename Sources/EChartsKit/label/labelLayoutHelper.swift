@@ -47,7 +47,7 @@ public enum labelLayoutHelper {
     /// (its x / y / rotation). The pie `marginDefault` ([1, 0, 1, 0] = top/bottom 1px) applies ONLY when
     /// the label carries no `__marginType` (i.e. neither `textMargin` nor `minMargin` was set).
     ///
-    /// PORT-NOTE: upstream reuses a module-level `_tmpLabelGeometry: Partial<LabelGeometry>` scratch;
+    /// upstream reuses a module-level `_tmpLabelGeometry: Partial<LabelGeometry>` scratch;
     ///   the ported `LabelLayoutData` takes its `label` as a `let` at init, so the scratch cannot be
     ///   reused across labels and a fresh one is built per call.
     public static func computeLabelGlobalRect(_ out: BoundingRect, _ label: ZRText) {
@@ -300,7 +300,7 @@ public enum labelLayoutHelper {
 
     /// upstream: `const _tmpLabelMargin: number[] = [0, 0, 0, 0];` — the module-level scratch buffer
     ///   `computeLabelGeometry` fills each call.
-    /// PORT-NOTE: `static var` on a caseless enum is the direct analogue of the module-level `const`
+    /// `static var` on a caseless enum is the direct analogue of the module-level `const`
     ///   (mutated in place, never reallocated). Single-threaded like upstream's render pass.
     fileprivate static var _tmpLabelMargin: [Double] = [0, 0, 0, 0]
 
@@ -388,7 +388,7 @@ public enum labelLayoutHelper {
     ///   `newBaseWithDefaults` (each prop only where it is `null` there), then calls
     ///   `ensureLabelLayoutWithGeometry`.
     ///
-    /// PORT-NOTE: `newBaseWithDefaults` is upstream a `Partial<LabelLayoutData>`; the only props any
+    /// `newBaseWithDefaults` is upstream a `Partial<LabelLayoutData>`; the only props any
     ///   caller actually sets on it are the three margin overrides (AxisBuilder passes `{marginForce}`),
     ///   so it is modeled as the `ComputeLabelGeometryOpt` bag. Every other `LABEL_LAYOUT_BASE_PROPS`
     ///   entry is unconditionally copied from `source`, which is what the upstream `== null` fill does
@@ -725,7 +725,7 @@ public final class LabelLayoutData: labelLayoutHelper.ShiftLayoutItem {
 }
 
 /// upstream: `interface SavedLabelAttr` (LabelManager.ts). Only the fields the ported stage reads are
-/// carried. PORT-NOTE (deferred): the drag / attached-text-config fields require the deferred
+/// carried. TODO: the drag / attached-text-config fields require the deferred
 /// `draggable` / `labelLinePoints` support in `LabelManager.swift`.
 public struct SavedLabelAttr {
     public var ignore: Bool

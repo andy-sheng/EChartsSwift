@@ -102,7 +102,7 @@ public final class Pipeline {
 // upstream: export type PipelineContext = { progressiveRender, modDataCount, large }
 //   `PipelineContext` is hosted in util/model.swift (it is the return type of
 //   `model.preparePipelineContext`, ported before this file); referenced here to avoid a
-//   redeclaration. PORT-NOTE: relocate `PipelineContext` here once util/model.swift no longer needs
+//   redeclaration. note: relocate `PipelineContext` here once util/model.swift no longer needs
 //   the forward reference.
 
 // upstream: type TaskRecord = { seriesTaskMap?: HashMap<SeriesTask>, overallTask?: OverallTask }
@@ -282,7 +282,7 @@ public final class Scheduler {
     // upstream: updateStreamModes(seriesModel: SeriesModel<SeriesOption & SeriesLargeOptionMixin>, view)
     //   The generic `Opt` is dropped (CONVENTIONS §2).
     public func updateStreamModes(_ seriesModel: SeriesModel, _ view: ChartView) {
-        // PORT-NOTE: upstream never reaches updateStreamModes without a pipeline — `_pipe` creates one
+        // upstream never reaches updateStreamModes without a pipeline — `_pipe` creates one
         //   for every series during `prepareStageTasks`, run on EVERY update. This port instead drives
         //   updateStreamModes from a separate pass keyed on chartView existence (ECharts.update), and
         //   `restorePipelines` is NOT re-run after a toolbox magic-type swap (line↔bar) mints a new
@@ -302,7 +302,7 @@ public final class Scheduler {
         // upstream: const context = seriesModel.__preparePipelineContext
         //     ? seriesModel.__preparePipelineContext(view, pipeline)
         //     : preparePipelineContext(seriesModel, view, pipeline);
-        // PORT-NOTE: the upstream ternary is a feature-detect on an optional declaration-merged method.
+        // the upstream ternary is a feature-detect on an optional declaration-merged method.
         //   Swift cannot feature-detect, so base `SeriesModel.__preparePipelineContext` implements the
         //   "absent" branch (`model.preparePipelineContext(...)`) and concrete series override it
         //   (e.g. BarSeries sets `large = true` under progressiveRender). The unconditional call below
@@ -343,7 +343,7 @@ public final class Scheduler {
                 tail: nil,
                 threshold: seriesModel.getProgressiveThreshold(),
                 // upstream: progressive && !(seriesModel.preventIncremental && seriesModel.preventIncremental())
-                // PORT-NOTE: `preventIncremental` is optional upstream (hence the `&&` feature-detect);
+                // `preventIncremental` is optional upstream (hence the `&&` feature-detect);
                 //   base `SeriesModel.preventIncremental` returns `false` (the "absent" branch), and
                 //   concrete series override it (e.g. LinesSeries returns true when `effect.show`), so
                 //   the unconditional dynamic call below matches upstream.
@@ -386,12 +386,12 @@ public final class Scheduler {
         //   context.api = api;
         //   renderTask.__block = !view.incrementalPrepareRender;
         //   this._pipe(model, renderTask);
-        // PORT-NOTE (deferred): ChartView now has `renderTask` and `incrementalPrepareRender`
+        // TODO: ChartView now has `renderTask` and `incrementalPrepareRender`
         //   (view/Chart.swift), so the faithful body above is portable, but nothing performs the piped
         //   render task yet — the render/progressive pipeline consumer (sub-project C2) is not wired.
         //   Piping the render task here would have no effect and could perturb pipeline iteration, so
         //   this stays a no-op until C2 lands. (Also `!view.incrementalPrepareRender` is not
-        //   feature-detectable in Swift; see the ChartView PORT-NOTE.)
+        //   feature-detectable in Swift; see the ChartView note.)
         _ = (view, model, ecModel, api)
     }
 
@@ -512,7 +512,7 @@ public final class Scheduler {
         _ payload: Payload?
     ) {
         // upstream: payload !== 'remain' && (task.context.payload = payload)
-        // PORT-NOTE: the `'remain'` sentinel (a string union member) lets core/echarts.ts keep the
+        // the `'remain'` sentinel (a string union member) lets core/echarts.ts keep the
         //   previous payload. In this port `payload` is a strongly-typed `Payload?`, so the sentinel is
         //   not representable; the "keep previous" case is not exercised and the branch is dropped.
         task.context.payload = payload
@@ -688,7 +688,7 @@ public final class Scheduler {
 
         // upstream: (stageHandler as StageHandlerInternal).uid = getUID('stageHandler');
         //           visualType && ((stageHandler as StageHandlerInternal).visualType = visualType);
-        // PORT-NOTE: `__prio` is assigned by the registry (echarts.ts registerVisual/registerLayout);
+        // `__prio` is assigned by the registry (echarts.ts registerVisual/registerLayout);
         //   defaulted to 0 here. Harmless: the ported `_performStageTasks` iterates registration/array
         //   order, not `__prio`, so the value is currently unused by execution ordering.
         var internalHandler = StageHandlerInternal(
@@ -795,7 +795,7 @@ func seriesTaskCount(_ this: SeriesTask, _ context: SeriesTaskContext) -> Double
  * progressive rendering disabled. We try to detect the series type, to narrow down
  * the block range to only the series type they concern, but not all series.
  */
-// PORT-NOTE (unportable): upstream detects the series type by running `legacyFunc` against mock
+// note (unportable): upstream detects the series type by running `legacyFunc` against mock
 //   `GlobalModel`/`ExtensionAPI` instances whose every prototype method is replaced by `noop`
 //   (`for (let name in Clz.prototype) target[name] = noop;`) and capturing the `eachSeriesByType`/
 //   `eachRawSeriesByType`/`eachComponent` argument. Swift cannot iterate a type's method table nor
@@ -806,7 +806,7 @@ func detectSeriseType(_ legacyFunc: StageHandlerOverallReset) -> String? {
     return nil
 }
 
-// upstream module-level mock scaffolding (see the PORT-NOTE above):
+// upstream module-level mock scaffolding (see the note above):
 //   const ecModelMock: GlobalModel = {} as GlobalModel;
 //   const apiMock: ExtensionAPI = {} as ExtensionAPI;
 //   let seriesType;

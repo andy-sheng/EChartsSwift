@@ -7,7 +7,7 @@
 //   - series.data is pre-sorted ascending by value in the native pane (the official source calls
 //     `.sort((a, b) => a.value - b.value)` on the literal); webOptionJS keeps the `.sort(...)` call
 //     verbatim. Same resulting order: Video Ads, Union Ads, Email, Direct, Search Engine.
-//   - series.animationDelay (a JS closure) is dropped from the native option — see PORT-NOTE. Both
+//   - series.animationDelay (a JS closure) is dropped from the native option — see note. Both
 //     panes render one static, animation-free frame anyway, so entry animation is not observable.
 import EChartsKit
 

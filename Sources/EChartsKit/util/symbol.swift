@@ -5,18 +5,18 @@
 // upstream imports (resolved to the ported modules):
 // import { each, isArray, retrieve2 } from 'zrender/src/core/util';    -> `util.each` / `util.isArray` / `util.retrieve2` (ZRenderKit)
 // import * as graphic from './graphic';                                -> ZRenderKit shapes (Line/Rect/Circle) + Path
-// import BoundingRect from 'zrender/src/core/BoundingRect';            -> ZRenderKit.BoundingRect (image:// / path:// branches — PORT-NOTE)
+// import BoundingRect from 'zrender/src/core/BoundingRect';            -> ZRenderKit.BoundingRect (image:// / path:// branches — note)
 // import { calculateTextPosition } from 'zrender/src/contain/text';    -> ZRenderKit.text.calculateTextPosition
 // import { Dictionary } from 'zrender/src/core/types';                 -> `[String: T]`
 // import { SymbolOptionMixin, ZRColor } from './types';                -> ZRColor is zrender's ZRColor (== ZRenderKit.ZRColor), the type the
 //                                                                         PathStyleProps fill/stroke fields carry (NOT EChartsKit.ZRColor); see NOTE below.
 // import { parsePercent } from './number';                             -> `number.parsePercent` (EChartsKit)
-// import tokens from '../visual/tokens';                               -> PORT-NOTE: `tokens.color.neutral00` inlined verbatim below (visual/tokens.swift is ported).
+// import tokens from '../visual/tokens';                               -> note: `tokens.color.neutral00` inlined verbatim below (visual/tokens.swift is ported).
 
 import Foundation
 import ZRenderKit
 
-// PORT-NOTE: `tokens.color.neutral00` is the neutral white
+// `tokens.color.neutral00` is the neutral white
 //   used as the empty-brush inner fill; inlined verbatim (== "#fff"), the same way BarSeries inlined
 //   `tokens.color.primary`.
 private let tokensColorNeutral00 = "#fff"
@@ -34,7 +34,7 @@ private let tokensColorNeutral00 = "#fff"
 //       setColor: (color: ZRColor, innerColor?: ZRColor) => void
 //       getColor: () => ZRColor
 //   };
-// PORT-NOTE: TS intersection type `graphic.Path & { ... }` — Swift protocols cannot inherit a class,
+// TS intersection type `graphic.Path & { ... }` — Swift protocols cannot inherit a class,
 //   so `ECSymbol` is a plain protocol declaring only the three added members. `SymbolPath` (the
 //   `SymbolClz` conformer) is a real `Path` subclass AND conforms to `ECSymbol`; the image:// /
 //   path:// branches (which return `graphic.Image` / a `makePath` Path) are deferred.
@@ -45,7 +45,7 @@ public protocol ECSymbol: AnyObject {
 }
 
 // upstream: type SymbolCtor = { new(): ECSymbol };
-//   PORT-NOTE: Swift cannot `new Ctor()` a metatype uniformly across the mixed shape classes; the
+//   Swift cannot `new Ctor()` a metatype uniformly across the mixed shape classes; the
 //   `symbolCtors` map is modeled as factory closures `[String: () -> Path]` (documented deviation).
 // upstream: type SymbolShapeMaker = (x, y, w, h, shape: Dictionary<any>) => void;
 //   ADAPTATION: upstream mutates the shared proxy's `.shape` object in place; our `Path.shape` is a
@@ -439,7 +439,7 @@ public final class SymbolPath: Path, ECSymbol {
 
     // upstream: ECSymbol declares `getColor: () => ZRColor` but symbol.ts never assigns it here (it is
     //   supplied by callers, e.g. chart/helper/Symbol). Provide a faithful reader off the style bag.
-    // PORT-NOTE: upstream `getColor` is set externally; returns the fill (or stroke) currently painted.
+    // upstream `getColor` is set externally; returns the fill (or stroke) currently painted.
     public func getColor() -> ZRenderKit.ZRColor {
         return self.pathStyle.fill ?? self.pathStyle.stroke ?? .string(tokensColorNeutral00)
     }
@@ -491,7 +491,7 @@ public enum symbol {
      */
     // TODO Use function to build symbol path.
     // upstream: const symbolCtors: Dictionary<SymbolCtor> = { line, rect, roundRect, square, circle,
-    //   diamond, pin, arrow, triangle }. PORT-NOTE: modeled as factory closures (see SymbolCtor note).
+    //   diamond, pin, arrow, triangle }. note: modeled as factory closures (see SymbolCtor note).
     fileprivate static let symbolCtors: [String: () -> Path] = [
         "line": { Line() },
 
@@ -605,7 +605,7 @@ public enum symbol {
     // upstream:
     //   export const symbolBuildProxies: Dictionary<ECSymbol> = {};
     //   each(symbolCtors, function (Ctor, name) { symbolBuildProxies[name] = new Ctor(); });
-    // PORT-NOTE: no `util.each` dict overload — iterate the dict directly (order-independent).
+    // no `util.each` dict overload — iterate the dict directly (order-independent).
     public static let symbolBuildProxies: [String: Path] = {
         var proxies: [String: Path] = [:]
         for (name, Ctor) in symbolCtors {
@@ -680,7 +680,7 @@ public enum symbol {
         return symbolPath
     }
 
-    // Fallback builder for the deferred image:// / path:// branches (see createSymbol PORT-NOTEs).
+    // Fallback builder for the deferred image:// / path:// branches (see createSymbol notes).
     private static func makeFallbackSymbol(_ symbolType: String, _ x: Double, _ y: Double, _ w: Double, _ h: Double) -> ECSymbol {
         var shape = SymbolShape()
         shape.symbolType = symbolType

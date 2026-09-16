@@ -42,7 +42,7 @@ public let graphCategoryVisualStageHandler = model.createSimpleOverallStageHandl
     { ecModel, _, _ in categoryVisual(ecModel) }
 )
 
-// PORT-NOTE: upstream `paletteScope` is the object literal `{}` (`Dictionary<ColorString>`), used only
+// upstream `paletteScope` is the object literal `{}` (`Dictionary<ColorString>`), used only
 //   as a WeakMap identity key by getColorFromPalette (see model/mixin/palette.swift). Modeled as an
 //   empty reference type so it can key the per-scope palette store (mirrors SunburstPaletteScope).
 private final class GraphCategoryPaletteScope {}

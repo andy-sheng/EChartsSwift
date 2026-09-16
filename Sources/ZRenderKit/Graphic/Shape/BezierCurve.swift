@@ -69,7 +69,7 @@ private func someVectorAt(_ shape: BezierCurveShape, _ t: Double, _ isTangent: B
     let cpx2 = shape.cpx2
     let cpy2 = shape.cpy2
     if cpx2 != nil || cpy2 != nil {
-        // PORT-NOTE: upstream passes `shape.cpx2`/`shape.cpy2` (number | undefined) straight into the
+        // upstream passes `shape.cpx2`/`shape.cpy2` (number | undefined) straight into the
         //   cubic helpers; a `null` operand becomes NaN in JS arithmetic. Replicated via `?? .nan`.
         return [
             (isTangent ? curve.cubicDerivativeAt : curve.cubicAt)(shape.x1, shape.cpx1, shape.cpx2 ?? Double.nan, shape.x2, t),

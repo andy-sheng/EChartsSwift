@@ -27,7 +27,7 @@ import ZRenderKit
 // upstream: import { parseDate, numericToNumber } from '../../util/number';
 //   -> EChartsKit `number` namespace (number.parseDate / number.numericToNumber).
 // upstream: import { createHashMap, trim, hasOwn, isString, isNumber } from 'zrender/src/core/util';
-//   -> createHashMap -> a Swift `Dictionary` (CONVENTIONS §2 / zrender util PORT-NOTE).
+//   -> createHashMap -> a Swift `Dictionary` (CONVENTIONS §2 / zrender util note).
 //      trim -> `String.trimmingCharacters(in: .whitespacesAndNewlines)`.
 //      hasOwn(obj, k) -> `dict[k] != nil` (CONVENTIONS §8).
 //      isString / isNumber -> ZRenderKit `util.isString` / `util.isNumber`.
@@ -100,7 +100,7 @@ extension dataValueHelper {
 
 
 
-public typealias RawValueParserType = String   // PORT-NOTE: upstream union 'number' | 'time' | 'trim'
+public typealias RawValueParserType = String   // upstream union 'number' | 'time' | 'trim'
 public typealias RawValueParser = (_ val: Any?) -> Any?
 
 extension dataValueHelper {
@@ -138,7 +138,7 @@ public protocol FilterComparator {
     func evaluate(_ val: Any?) -> Bool
 }
 
-// PORT-NOTE: upstream types `lval`/`rval` as `unknown`, but in this file the map is only
+// upstream types `lval`/`rval` as `unknown`, but in this file the map is only
 //            ever invoked with numbers (numericToNumber results), so it is typed
 //            (Double, Double) -> Bool.
 private let ORDER_COMPARISON_OP_MAP: [OrderRelationOperator: (Double, Double) -> Bool] = [
@@ -248,8 +248,8 @@ private final class FilterEqualityComparator: FilterComparator {
     }
 }
 
-public typealias OrderRelationOperator = String   // PORT-NOTE: upstream union 'lt' | 'lte' | 'gt' | 'gte'
-public typealias RelationalOperator = String       // PORT-NOTE: upstream OrderRelationOperator | 'eq' | 'ne'
+public typealias OrderRelationOperator = String   // upstream union 'lt' | 'lte' | 'gt' | 'gte'
+public typealias RelationalOperator = String       // upstream OrderRelationOperator | 'eq' | 'ne'
 
 /**
  * [FILTER_COMPARISON_RULE]
@@ -399,7 +399,7 @@ extension dataValueHelper {
 
 
 // ============================================================================
-// PORT-NOTE: JS dynamic-operator helpers.
+// JS dynamic-operator helpers.
 // Upstream relies on JS's runtime-polymorphic `typeof`, `===`, `<` and `>` over `unknown`
 // values. Swift has no such polymorphism, so these reproduce the exact value kinds that
 // can actually reach the comparators here (number / string / boolean / null).
@@ -408,7 +408,7 @@ extension dataValueHelper {
 /// JS `typeof x`.
 private func jsTypeof(_ val: Any?) -> String {
     switch val {
-    // PORT-NOTE: JS distinguishes `typeof undefined === 'undefined'` from
+    // JS distinguishes `typeof undefined === 'undefined'` from
     //            `typeof null === 'object'`; null/undefined collapse to `nil` (CONVENTIONS §6).
     case nil: return "undefined"
     case is Bool: return "boolean"
@@ -434,7 +434,7 @@ private func jsLess(_ a: Any, _ b: Any) -> Bool {
     if let x = a as? Double, let y = b as? Double {
         return x < y
     }
-    // PORT-NOTE: JS compares strings by UTF-16 code units; Swift `String` uses Unicode-aware
+    // JS compares strings by UTF-16 code units; Swift `String` uses Unicode-aware
     //            ordering (matches for ASCII tags, the intended use case).
     if let x = a as? String, let y = b as? String {
         return x < y

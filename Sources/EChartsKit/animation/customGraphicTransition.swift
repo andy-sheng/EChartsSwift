@@ -164,7 +164,7 @@ public func applyUpdateTransition(
     if el.type == "compound" {
         // We cannot directly clone shape for compoundPath, because it makes the path to be an object
         //   instead of a Path instance, and thus missing `buildPath` method.
-        // PORT-TODO: compound-path branch. Upstream writes a `.shape` dict directly onto each child
+        // TODO: compound-path branch. Upstream writes a `.shape` dict directly onto each child
         //   `Path` element (`prepareShapeOrExtraAllPropsFinal('shape', optionPaths[i], paths[i])`),
         //   relying on Path's dynamic-object `shape`. Path.shape is a typed value-struct here, so the
         //   per-child final-shape application needs a typed bridge (as in CustomView.applyShape). Rare
@@ -262,7 +262,7 @@ public func applyLeaveTransition(
         // TODO TODO use leave after leaveAnimation in series is introduced
         // TODO Data index?
         var config = getElementAnimationConfig(.update, el, elOption, animatableModel, 0)
-        // PORT-NOTE (divergence, intentional): `el` and `parent` are captured WEAKLY. The config is handed
+        // note (divergence, intentional): `el` and `parent` are captured WEAKLY. The config is handed
         //   to `el.animateTo` below, so a strong capture would form el -> animator -> done -> el, a cycle
         //   that only breaks when the animation completes; a chart disposed mid-leave-transition would leak
         //   the whole element subtree. Upstream relies on JS GC and has no equivalent hazard.
@@ -302,7 +302,7 @@ private func applyPropsDirectly(
             for i in 0..<animators.count {
                 let animator = animators[i]
                 if animator.targetName == "style" {
-                    // PORT-TODO: animator.changeTarget((el as Displayable).style). The Swift style
+                    // TODO: animator.changeTarget((el as Displayable).style). The Swift style
                     //   accessor is a per-Displayable reference bridge (PathStyleAnimationAccessor); a
                     //   faithful retarget needs that accessor exposed. Rare (mid-init style clear);
                     //   deferred.
@@ -312,7 +312,7 @@ private func applyPropsDirectly(
         }
         // (el as Displayable).setStyle(styleOpt) — merge the style dict into the typed style bag.
         //   Routed through `attr(["style": dict])` (Path.attrKV merges a partial style dict, coercing
-        //   Int→Double). PORT-NOTE: a non-Path Displayable (Text/Image) types `style` as CommonStyleProps
+        //   Int→Double). note: a non-Path Displayable (Text/Image) types `style` as CommonStyleProps
         //   and only round-trips the shared keys — the same typed-struct FRAMEWORK GAP the consumers note.
         _ = disp.attr(["style": styleOpt])
     }
@@ -416,7 +416,7 @@ private let transitionDuringAPI: TransitionDuringAPI = TransitionDuringAPIImpl()
 private func duringCall(_ el: Element, _ userDuring: @escaping (TransitionDuringAPI) -> Void) {
     // Do not provide "percent" until some requirements come (see upstream comment).
     // If el is removed from zr by reason like legend, during still needs to be called.
-    // PORT-TODO: upstream releases the scope when `transitionInnerStore(el).userDuring !== scopeUserDuring`
+    // TODO: upstream releases the scope when `transitionInnerStore(el).userDuring !== scopeUserDuring`
     //   to ensure a during is only called once per frame. Swift closures are not identity-comparable, so
     //   that de-dup guard is dropped; the user during may fire once per active animator in a frame.
     tmpDuringScope.el = el
@@ -453,7 +453,7 @@ private func prepareShapeOrExtraTransitionFrom(
         if isTransitionAll(attrTransition) {
             // upstream: extend(transFromPropsInAttr, elPropsInAttr) copies ALL live keys. PathShape has
             //   no key enumeration, so approximate with the option's keys (the keys actually being
-            //   animated). PORT-NOTE: minor fidelity gap for keys present on the live shape but absent
+            //   animated). note: minor fidelity gap for keys present on the live shape but absent
             //   from the option.
             let keysInAttr = util.keys(attrOpt)
             for key in keysInAttr where key != "transition" {

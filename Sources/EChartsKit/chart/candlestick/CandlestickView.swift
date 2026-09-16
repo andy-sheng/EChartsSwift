@@ -47,7 +47,7 @@ import ZRenderKit
 //   import Element from 'zrender/src/Element';                       -> `Element` (ZRenderKit).
 //   import { getBorderColor, getColor } from './candlestickVisual';  -> sibling `getBorderColor` / `getColor`.
 //   import { resolveNormalBoxClipping } from '../helper/whiskerBoxCommon';
-//     -> PORT-NOTE: `chart/helper/whiskerBoxCommon.ts` is folded per-client; `resolveNormalBoxClipping`
+//     -> note: `chart/helper/whiskerBoxCommon.ts` is folded per-client; `resolveNormalBoxClipping`
 //        is ported faithfully below (BoundingRect.contain over itemLayout.ends).
 //   import { getIncrementalId } from '../../util/model';             -> `model.getIncrementalId` (large mode only).
 
@@ -122,7 +122,7 @@ open class CandlestickView: ChartView {
     // upstream: eachRendered(cb: (el: Element) => boolean | void)
     open override func eachRendered(_ cb: (_ el: Element) -> Bool) {
         // upstream: graphic.traverseElements(this._progressiveEls || this.group, cb);
-        // PORT-NOTE: `util/graphic.traverseElements` not ported. When `_progressiveEls` exists, traverse
+        // `util/graphic.traverseElements` not ported. When `_progressiveEls` exists, traverse
         //   each (large/progressive mode, deferred); otherwise traverse the group via `Group.traverse`
         //   (same note as BarView.swift `eachRendered`).
         if let progressiveEls = self._progressiveEls {
@@ -329,7 +329,7 @@ public struct NormalBoxPathShape: PathShape {
 }
 
 // upstream: interface NormalBoxPathProps extends PathProps { shape?: Partial<NormalBoxPathShape> }
-// PORT-NOTE: typed-interface fidelity dropped — PathProps is the dynamic `[String: Any]` prop bag
+// typed-interface fidelity dropped — PathProps is the dynamic `[String: Any]` prop bag
 //   (== DisplayableProps); the `shape?` field is set via the `"shape"` key (see Path._init).
 public typealias NormalBoxPathProps = PathProps
 
@@ -400,7 +400,7 @@ private func setBoxCommon(_ el: NormalBoxPath, _ data: SeriesData, _ dataIndex: 
     let itemModel = data.getItemModel(dataIndex)
 
     // el.useStyle(data.getItemVisual(dataIndex, 'style'));
-    // PORT-NOTE: the item visual 'style' is a `[String: Any]` bag (candlestickVisual.swift); ZRenderKit
+    // the item visual 'style' is a `[String: Any]` bag (candlestickVisual.swift); ZRenderKit
     //   `useStyle` takes a typed `PathStyleProps`. `candlestickStyleFromDict` bridges the common paint
     //   keys (this is what colors the body/whiskers bull/bear). Gradient/pattern fills not bridged.
     el.useStyle(candlestickStyleFromDict(data.getItemVisual(dataIndex, "style")))
@@ -474,7 +474,7 @@ private func getTransPointDimension(_ seriesModel: CandlestickSeriesModel) -> In
 
 
 // ================================================================================================
-// PORT-NOTE (deferred): LARGE / PROGRESSIVE DRAW PATH (per task scope + CONVENTIONS §5).
+// TODO: LARGE / PROGRESSIVE DRAW PATH (per task scope + CONVENTIONS §5).
 //   The large-mode `LargeBoxPath` custom shape and `createLarge` / `setLargeStyle` batch-draw one
 //   `LargeBoxPath` per sign (1 / -1 / 0) over the flat `largePoints` buffer produced by
 //   candlestickLayout.swift's `largeProgress`. It needs `ignoreCoarsePointer`, `Element.incremental`
@@ -518,7 +518,7 @@ private func createLarge(
     _ progressiveEls: inout [Element]?,
     _ incremental: Bool = false
 ) {
-    // PORT-NOTE (deferred): large draw (see the block comment above).
+    // TODO: large draw (see the block comment above).
     _ = (seriesModel, group, incremental)
     _ = progressiveEls
 }
@@ -534,7 +534,7 @@ private func createLarge(_ seriesModel: CandlestickSeriesModel, _ group: Group) 
 // export default CandlestickView;  -> `open class CandlestickView` above.
 
 // ================================================================================================
-// PORT-NOTE: local helpers (NOT in upstream CandlestickView.ts).
+// local helpers (NOT in upstream CandlestickView.ts).
 // ================================================================================================
 
 // upstream: export function resolveNormalBoxClipping(clipArea, itemLayout): ShapeClipKind
@@ -560,7 +560,7 @@ private func resolveNormalBoxClipping(_ clipArea: Any?, _ itemLayout: Candlestic
         : SHAPE_CLIP_KIND_NOT_CLIPPED)
 }
 
-// PORT-NOTE: `util/graphic`-level `useStyle(dict)` bridge. The item visual 'style' is a `[String: Any]`
+// `util/graphic`-level `useStyle(dict)` bridge. The item visual 'style' is a `[String: Any]`
 //   bag (candlestickVisual.swift stores `fill`/`stroke` via getColor/getBorderColor); ZRenderKit
 //   `Path.useStyle` takes a typed `PathStyleProps`. Mirrors BarView.swift's `barStyleFromDict`.
 private func candlestickStyleFromDict(_ style: Any?) -> PathStyleProps {

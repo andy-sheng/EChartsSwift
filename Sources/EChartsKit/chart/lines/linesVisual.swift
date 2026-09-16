@@ -36,7 +36,7 @@ import ZRenderKit
 //     if (!(a instanceof Array)) { a = [a, a]; }
 //     return a;
 // }
-// PORT-NOTE: the two TS overloads are one dynamic implementation; the port keeps the single dynamic
+// the two TS overloads are one dynamic implementation; the port keeps the single dynamic
 //   form over `Any?` (the option bag is untyped). A non-array scalar (including nil) is duplicated,
 //   exactly like `[a, a]`. Identical to the sibling port chart/graph/edgeVisual.swift `normalize`
 //   (`as? [Any?]` already matches EVERY Swift/NS array — casts are elementwise and `Any?` accepts any

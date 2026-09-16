@@ -128,7 +128,7 @@ final class RadiusAxisView: AxisView {
         //   elements by `anid` (set by AxisBuilder on the axis line, name, ticks and labels) and
         //   animates the transition via `updateProps` (its `getAnimatableProps` flattens `shape` into the
         //   shape's animatable numeric keys, so the axis line and ticks — `Line`s whose whole geometry
-        //   lives in `shape` — tween instead of snapping; see the PORT-NOTE there).
+        //   lives in `shape` — tween instead of snapping; see the note there).
         //   `oldAxisGroup` is nil on the first render — the callee guards.
         groupTransition(oldAxisGroup, newAxisGroup, radiusAxisModel)
 
@@ -365,7 +365,7 @@ private let axisElementBuilders: [String: RadiusAxisElementBuilder] = [
 //   Return type is structurally an `AxisBuilderCfg` (consumed by `new AxisBuilder(..., layout)`), so it
 //   is built as one here. The `z2: 1` field ("Over splitLine and splitArea") is NOT part of
 //   `AxisBuilderCfg` upstream and is dropped — same deviation as CartesianAxisLayout → AxisBuilderCfg.
-//   PORT-NOTE: the axis-line/ticks/labels z2 ordering (draw above split lines/areas) is not reproduced
+//   the axis-line/ticks/labels z2 ordering (draw above split lines/areas) is not reproduced
 //   (z2 is not part of AxisBuilderCfg; same deviation as CartesianAxisLayout → AxisBuilderCfg).
 private func layoutAxis(_ polar: Polar, _ radiusAxisModel: RadiusAxisModel, _ axisAngle: Double) -> AxisBuilderCfg {
     return AxisBuilderCfg(
@@ -383,7 +383,7 @@ private func layoutAxis(_ polar: Polar, _ radiusAxisModel: RadiusAxisModel, _ ax
 
 
 // ============================================================================
-// PORT-NOTE helpers — NOT part of RadiusAxisView.ts upstream. They reproduce the
+// note helpers — NOT part of RadiusAxisView.ts upstream. They reproduce the
 // dynamic-option-read coercions and the `util/graphic` style-bag bridge referenced
 // above. Delete each when its real sibling lands and call the sibling directly.
 // (Mirrors the same file-private helpers in RadarComponentView / CartesianAxisView.)
@@ -410,7 +410,7 @@ private func jsTruthy(_ v: Any?) -> Bool {
     return true
 }
 
-/// PORT-NOTE (deferred): requires `util/graphic`'s `useStyle` dict bridge, not ported. Map the dynamic style bag
+/// TODO: requires `util/graphic`'s `useStyle` dict bridge, not ported. Map the dynamic style bag
 ///   ([String: Any] — the `defaults(...)` merge of split colors over getLineStyle()/getAreaStyle()) onto
 ///   the typed `PathStyleProps`. Same deviation as RadarComponentView.pathStyleFromDict; mirrored here for
 ///   both stroke (split/minor lines) and fill (split areas). The sentinel `NSNull()` (upstream `fill: null`)

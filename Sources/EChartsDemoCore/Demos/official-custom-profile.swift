@@ -320,7 +320,7 @@ option = {
 };
 """#,
         option: [
-            // PORT-NOTE: tooltip.formatter omitted — JS closure returning
+            // tooltip.formatter omitted — JS closure returning
             // `params.marker + params.name + ': ' + params.value[3] + ' ms'` (the record's duration).
             "tooltip": [:] as [String: Any],
             "title": [

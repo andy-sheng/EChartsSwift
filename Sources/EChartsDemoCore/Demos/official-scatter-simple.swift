@@ -14,7 +14,7 @@
 //   - the 22-point data array is hoisted into a typed `private let` so Swift's type-checker does not choke
 //     on a large untyped nested literal.
 // Nothing is omitted from the Swift `option`: the official option has no function-valued key, so there is
-// nothing to PORT-NOTE. `xAxis: {}` / `yAxis: {}` stay empty dicts rather than being "helpfully" expanded
+// nothing to note. `xAxis: {}` / `yAxis: {}` stay empty dicts rather than being "helpfully" expanded
 // to `type: 'value'` — the port infers the same default upstream does (Axis2D: `axisType ?? "value"`).
 import Foundation
 

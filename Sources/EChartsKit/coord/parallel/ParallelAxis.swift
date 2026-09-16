@@ -27,10 +27,10 @@ import ZRenderKit
 //   import { DimensionName } from '../../util/types';                    -> DimensionName (util/types.swift, = String).
 //   import { OptionAxisType } from '../axisCommonTypes';                 -> OptionAxisType (coord/axisHelper.swift, = String).
 //   import AxisModel from './AxisModel';                                 -> ParallelAxisModel (coord/parallel/ParallelAxisModel.swift).
-//       PORT-NOTE: the inherited `Axis.model: AxisBaseModel!` already provides the model slot — no
+//       the inherited `Axis.model: AxisBaseModel!` already provides the model slot — no
 //       re-declaration needed; narrow via `as? ParallelAxisModel` at use.
 //   import Parallel from './Parallel';                                   -> Parallel (coord/parallel/Parallel.swift; the parallel
-//       coordinate-system master). PORT-NOTE: `Parallel` is ported (coord/parallel/Parallel.swift); the
+//       coordinate-system master). note: `Parallel` is ported (coord/parallel/Parallel.swift); the
 //       `coordinateSystem` slot below references it (mirrors AngleAxis referencing `Polar`,
 //       SingleAxis referencing `Single`). `getModel()` is provided by that master.
 
@@ -45,7 +45,7 @@ public final class ParallelAxis: Axis {
     // Inject
     // upstream: model: AxisModel;  (property narrowing of the inherited `Axis.model`) — see import note.
     // upstream: coordinateSystem: Parallel;  (injected by Parallel's constructor).
-    //   PORT-NOTE: `Parallel` (coord/parallel/Parallel.swift) is ported; typed here to that master so
+    //   `Parallel` (coord/parallel/Parallel.swift) is ported; typed here to that master so
     //   `getModel()` resolves. Narrow the inherited `model` via `as? ParallelAxisModel` at use.
     public var coordinateSystem: Parallel!
 

@@ -24,7 +24,7 @@ import ZRenderKit
 // upstream imports:
 //   import * as vec2 from 'zrender/src/core/vector';                 -> `vector.*` (ZRenderKit).
 //   import GraphSeriesModel, { GraphNodeItemOption, GraphEdgeItemOption } from './GraphSeries';
-//       -> GraphSeriesModel (PORT-NOTE: chart/graph/GraphSeries.swift ported).
+//       -> GraphSeriesModel (note: chart/graph/GraphSeries.swift ported).
 //   import Graph from '../../data/Graph';                            -> Graph (data/Graph.swift).
 //   import * as zrUtil from 'zrender/src/core/util';                 -> `util.*` (ZRenderKit).
 //   import {getCurvenessForEdge} from '../helper/multipleGraphEdgeHelper';

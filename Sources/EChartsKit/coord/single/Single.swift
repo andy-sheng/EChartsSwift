@@ -36,7 +36,7 @@ import ZRenderKit
 //   import ExtensionAPI from '../../core/ExtensionAPI';                    -> ExtensionAPI.
 //   import BoundingRect from 'zrender/src/core/BoundingRect';              -> BoundingRect / LayoutRect (ZRenderKit; LayoutRect = BoundingRect).
 //   import SingleAxisModel, { COORD_SYS_TYPE_SINGLE } from './AxisModel';  -> SingleAxisModel + COORD_SYS_TYPE_SINGLE.
-//       PORT-NOTE: coord/single/AxisModel.ts is ported as `SingleAxisModel.swift` (named that way — a
+//       coord/single/AxisModel.ts is ported as `SingleAxisModel.swift` (named that way — a
 //       second `AxisModel.swift` would collide with coord/cartesian's). It
 //       exports the constant `COORD_SYS_TYPE_SINGLE = "single"` and `open class SingleAxisModel:
 //       AxisBaseModel` (a `ComponentModel`, with `coordinateSystem: Single`).
@@ -64,7 +64,7 @@ public let singleDimensions: [DimensionName] = ["single"]
 public final class Single: CoordinateSystemMaster {
 
     // upstream: readonly type = COORD_SYS_TYPE_SINGLE;
-    //   PORT-NOTE: `COORD_SYS_TYPE_SINGLE` ("single") is defined in the sibling SingleAxisModel.swift.
+    //   `COORD_SYS_TYPE_SINGLE` ("single") is defined in the sibling SingleAxisModel.swift.
     public let type = COORD_SYS_TYPE_SINGLE
 
     // upstream: readonly dimension = 'single';
@@ -192,7 +192,7 @@ public final class Single: CoordinateSystemMaster {
     }
 
     // upstream: getRect() { return this._rect; }
-    //   PORT-NOTE: upstream returns the concrete `BoundingRect`; the optional protocol requirement
+    //   upstream returns the concrete `BoundingRect`; the optional protocol requirement
     //   `CoordinateSystemMaster.getRect(): RectLike?` therefore resolves to its nil default when Single is
     //   held as the protocol (mirroring Grid.getRect). Concrete-typed holders get the real rect.
     public func getRect() -> LayoutRect {
@@ -362,7 +362,7 @@ public final class Single: CoordinateSystemMaster {
 //     return singleModel && singleModel.coordinateSystem
 //         || seriesModel && seriesModel.coordinateSystem as Single;
 // }
-//   `finder` is `[String: Any]` → field access via subscript. PORT-NOTE: references sibling `SingleAxisModel`.
+//   `finder` is `[String: Any]` → field access via subscript. note: references sibling `SingleAxisModel`.
 private func getCoordSys(_ finder: ParsedModelFinderKnown) -> Single? {
     let seriesModel = finder["seriesModel"] as? SeriesModel
     let singleModel = finder["singleAxisModel"] as? SingleAxisModel

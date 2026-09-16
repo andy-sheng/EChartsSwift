@@ -43,7 +43,7 @@ import ZRenderKit
 //   import type { BuiltinTextPosition } from 'zrender/src/core/types'; -> the `defaultOutsidePosition`
 //       only feeds the DEFERRED setLabelStyle.
 //   import { setStatesStylesFromModel, toggleHoverEmphasis } from '../../util/states';
-//       -> PORT-NOTE: util/states.swift is ported; states/emphasis is just not wired here yet (DEFERRED per CONVENTIONS §5).
+//       -> note: util/states.swift is ported; states/emphasis is just not wired here yet (DEFERRED per CONVENTIONS §5).
 //   import { getECData } from '../../util/innerStore';             -> `innerStore.getECData`.
 
 // upstream: export default class ChordPiece extends graphic.Sector
@@ -80,12 +80,12 @@ open class ChordPiece: Sector {
         // const sector = this;
         let sector = self
         // const node = data.graph.getNodeByIndex(idx);
-        //   PORT-NOTE: `data.graph` is `Graph?` and `getNodeByIndex` is `GraphNode?`; upstream assumes
+        //   `data.graph` is `Graph?` and `getNodeByIndex` is `GraphNode?`; upstream assumes
         //   both non-null. Guard defensively (no node → nothing to draw) — semantically equivalent.
         guard let node = data.graph?.getNodeByIndex(idx) else { return }
 
         // const seriesModel = data.hostModel as ChordSeriesModel;
-        //   PORT-NOTE: `hostModel` is `Model?`; force-cast mirrors the upstream `as ChordSeriesModel`.
+        //   `hostModel` is `Model?`; force-cast mirrors the upstream `as ChordSeriesModel`.
         let seriesModel = data.hostModel as! ChordSeriesModel
         // const itemModel = node.getModel<ChordNodeItemOption>();
         //   `GraphNode.getModel()` is `Model?` (nil for dataIndex < 0); guard.
@@ -144,7 +144,7 @@ open class ChordPiece: Sector {
         // sector.useStyle(data.getItemVisual(idx, 'style'));
         sector.useStyle(barStyleFromDict(data.getItemVisual(idx, "style")))
         // setStatesStylesFromModel(sector, itemModel);
-        // PORT-NOTE: per-state itemStyle (emphasis/blur/select) not wired here yet (util/states.swift is ported).
+        // per-state itemStyle (emphasis/blur/select) not wired here yet (util/states.swift is ported).
 
         // this._updateLabel(seriesModel, itemModel, node);
         self._updateLabel(seriesModel, itemModel, node)
@@ -204,7 +204,7 @@ open class ChordPiece: Sector {
         // setLabelStyle(label, labelStateModels, { labelFetcher: {...}, labelDataIndex,
         //     defaultText: node.dataIndex + '', inheritColor: style.fill, defaultOpacity: style.opacity,
         //     defaultOutsidePosition: 'startArc' });
-        //   PORT-NOTE: upstream passes a CUSTOM inline labelFetcher whose getFormattedLabel forces
+        //   upstream passes a CUSTOM inline labelFetcher whose getFormattedLabel forces
         //   `dataType: 'node'` and a `retrieve3(formatter, normal formatter, itemModel name)` formatter
         //   fallback. Port the observable behaviour instead: pass `seriesModel` as the fetcher (its
         //   getFormattedLabel
@@ -271,7 +271,7 @@ open class ChordPiece: Sector {
 
         // label.attr({ x: dx * r + layout.cx, y: dy * r + layout.cy, rotation: 0, style: { align, verticalAlign } });
         //   `style: { align, verticalAlign }` is a MERGE-set onto the style `setLabelStyle` just built —
-        //   ZRText has no field-merge `setStyle` counterpart (see setLabelText PORT-NOTE), so read the
+        //   ZRText has no field-merge `setStyle` counterpart (see setLabelText note), so read the
         //   current style, mutate just align/verticalAlign, then `useStyle` (full replace); every other
         //   field carries over unchanged.
         var mergedStyle = label.textStyle ?? TextStyleProps()

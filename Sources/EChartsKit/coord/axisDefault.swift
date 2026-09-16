@@ -7,7 +7,7 @@ import ZRenderKit
 // import tokens from '../visual/tokens';               → `tokens` (visual/tokens.swift, global `let tokens`)
 // import { AxisBaseOption } from './axisCommonTypes';  → dynamic option bag ([String: Any])
 //
-// PORT-NOTE: visual/tokens.swift is ported; the `tokens.color.*` values consumed below are wired to the
+// visual/tokens.swift is ported; the `tokens.color.*` values consumed below are wired to the
 // real `tokens` namespace (resolved constants for reference):
 //   tokens.color.axisLine           = color.neutral70            = '#54555a'
 //   tokens.color.axisLabel          = color.neutral70            = '#54555a'
@@ -37,10 +37,10 @@ public enum axisDefault {
         // 'start' | 'middle' | 'end'
         "nameLocation": "end",
         // By degree. By default auto rotate by nameLocation.
-        // PORT-NOTE: upstream value is `null`; NSNull() retains the key in the [String: Any] bag.
+        // upstream value is `null`; NSNull() retains the key in the [String: Any] bag.
         "nameRotate": NSNull(),
         "nameTruncate": [
-            // PORT-NOTE: upstream value is `null`; NSNull() retains the key.
+            // upstream value is `null`; NSNull() retains the key.
             "maxWidth": NSNull(),
             "ellipsis": "...",
             "placeholder": "."
@@ -66,7 +66,7 @@ public enum axisDefault {
         "axisLine": [
             "show": true,
             "onZero": "auto",
-            // PORT-NOTE: upstream value is `null`; NSNull() retains the key.
+            // upstream value is `null`; NSNull() retains the key.
             "onZeroAxisIndex": NSNull(),
             "lineStyle": [
                 "color": tokens.color.axisLine,
@@ -94,10 +94,10 @@ public enum axisDefault {
             "inside": false,
             "rotate": 0,
             // true | false | null/undefined (auto)
-            // PORT-NOTE: upstream value is `null`; NSNull() retains the key.
+            // upstream value is `null`; NSNull() retains the key.
             "showMinLabel": NSNull(),
             // true | false | null/undefined (auto)
-            // PORT-NOTE: upstream value is `null`; NSNull() retains the key.
+            // upstream value is `null`; NSNull() retains the key.
             "showMaxLabel": NSNull(),
             "margin": 8,
             // formatter: null,
@@ -157,7 +157,7 @@ public enum axisDefault {
             // The gap at both ends of the axis. For categoryAxis, boolean.
             "boundaryGap": true,
             // Set false to faster category collection.
-            // PORT-NOTE: upstream value is `null`; NSNull() retains the key.
+            // upstream value is `null`; NSNull() retains the key.
             "deduplication": NSNull(),
             "jitter": 0,
             "jitterOverlap": true,

@@ -49,7 +49,7 @@ private let TRANSITION_P2C = 1
 private let TRANSITION_C2P = 2
 
 // interface GlobalStore { oldSeries: SeriesModel[], oldDataGroupIds: string[], oldData: SeriesData[] };
-//   PORT-NOTE: `makeInner` keys by object identity and requires a CLASS store (CONVENTIONS §4) — the
+//   `makeInner` keys by object identity and requires a CLASS store (CONVENTIONS §4) — the
 //   record is mutated in place by the 'series:transition' handler and read on the NEXT update.
 //   `oldDataGroupIds` is `[String?]` because `series.get('dataGroupId')` may be absent (upstream
 //   `string` is really `string | undefined`).
@@ -94,7 +94,7 @@ struct TransitionSeries {
     var groupIdDim: DimensionLoose?
 }
 
-// PORT-NOTE: JS `value + ''` string coercion, used by `getValueByDimension` / `getGroupId` where the
+// JS `value + ''` string coercion, used by `getValueByDimension` / `getGroupId` where the
 //   raw value may be a number, a string, or an ordinal category. (File-local shim, as elsewhere in the
 //   port — Source.swift / sourceManager.swift each carry their own.)
 private func jsToString(_ value: Any?) -> String {
@@ -109,7 +109,7 @@ private func jsToString(_ value: Any?) -> String {
     }
 }
 // JS `Number.prototype.toString` for a Double (integral values print without a fraction).
-private func jsNumberStr(_ x: Double) -> String {   // PORT-NOTE: JS number-to-string shim
+private func jsNumberStr(_ x: Double) -> String {   // JS number-to-string shim
     if x.isNaN { return "NaN" }
     if x.isInfinite { return x > 0 ? "Infinity" : "-Infinity" }
     if x == x.rounded() && Swift.abs(x) < 1e15 {
@@ -118,7 +118,7 @@ private func jsNumberStr(_ x: Double) -> String {   // PORT-NOTE: JS number-to-s
     return String(x)
 }
 // JS truthiness for an arbitrary value.
-private func jsTruthy(_ v: Any?) -> Bool {   // PORT-NOTE: JS truthiness shim
+private func jsTruthy(_ v: Any?) -> Bool {   // JS truthiness shim
     guard let v = v else { return false }
     if let b = v as? Bool { return b }
     if let d = v as? Double { return d != 0 && !d.isNaN }
@@ -133,7 +133,7 @@ private func getDimension(_ data: SeriesData, _ visualDimension: String) -> Dime
     for i in 0..<dimensions.count {
         let dimInfo = data.getDimensionInfo(dimensions[i])
         // upstream: dimInfo && dimInfo.otherDims[visualDimension] === 0
-        // PORT-NOTE: `otherDims` is a typed struct here (`DataVisualDimensions`), so the dynamic
+        // `otherDims` is a typed struct here (`DataVisualDimensions`), so the dynamic
         //   string-keyed lookup is an explicit switch over the two keys this file ever passes.
         let otherDim: DimensionIndex?
         switch visualDimension {
@@ -266,7 +266,7 @@ private func animateElementStyles(_ el: Element, _ dataIndex: Int, _ seriesModel
     }
 }
 
-// PORT-NOTE: `Element.traverse` (void cb) is a no-op on the base class; `Displayable` overrides it
+// `Element.traverse` (void cb) is a no-op on the base class; `Displayable` overrides it
 //   (visits self) and `Group` declares an OVERLOAD taking a Bool-returning cb (visits children only,
 //   like upstream `Group.traverse`). Static dispatch on an `Element`-typed value would silently skip a
 //   Group's subtree, so upstream's `el.traverse(cb)` is routed through these two helpers.
@@ -286,7 +286,7 @@ private func traverseChildren(_ el: Element, _ cb: @escaping (Element) -> Void) 
     }
 }
 
-// PORT-NOTE: upstream animates a whole style OBJECT (`to.animateFrom({ style: from.style })`) — in JS
+// upstream animates a whole style OBJECT (`to.animateFrom({ style: from.style })`) — in JS
 //   the style bag IS a plain keyed object, so `animateTo` walks its own keys. `PathStyleProps` is a
 //   Swift struct, and `Element.animateTo`'s nested-object target must be a `[String: Any]`, so the
 //   struct is projected onto its ANIMATABLE keys (`PathStyleProps.animationGet`, the same list the
@@ -404,7 +404,7 @@ func transitionBetween(
         }
     }
 
-    // PORT-NOTE: the key getter receives the raw `[Any]` element (the DiffItem) + its index, and JS
+    // the key getter receives the raw `[Any]` element (the DiffItem) + its index, and JS
     //   coerces an `undefined` groupId into the string "undefined" when it builds the map key
     //   ("_ec_" + undefined). `jsToString(nil)` reproduces that exactly.
     func createKeyGetter(_ isOld: Bool, _ onlyGetId: Bool) -> DiffKeyGetter {
@@ -656,7 +656,7 @@ private func convertArraySeriesKeyToString(_ seriesKey: Any) -> String {
 }
 
 // interface SeriesTransitionBatch { oldSeries: TransitionSeries[]; newSeries: TransitionSeries[] }
-//   PORT-NOTE: a CLASS — upstream mutates the batch fetched out of the hashmap in place
+//   a CLASS — upstream mutates the batch fetched out of the hashmap in place
 //   (`batch.newSeries.push(...)` in the one-to-multiple branch), which a struct value copy would lose.
 final class SeriesTransitionBatch {
     var oldSeries: [TransitionSeries]

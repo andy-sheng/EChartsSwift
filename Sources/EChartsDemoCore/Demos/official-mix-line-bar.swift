@@ -9,7 +9,7 @@
 //     and the file ends with `export {};`. The web pane runs as a CLASSIC script, so the TS type
 //     assertions (`as number`) and the trailing bare `export` are dropped — both are SyntaxErrors in
 //     plain JS. Nothing else in webOptionJS is changed; the formatters themselves run verbatim.
-//   - The native pane omits the three `series[].tooltip.valueFormatter` closures (see PORT-NOTEs);
+//   - The native pane omits the three `series[].tooltip.valueFormatter` closures (see notes);
 //     Swift's `[String: Any]` option cannot carry a JS function. Everything else — including the
 //     `axisLabel.formatter: '{value} ml'` STRING templates, which are not closures — is ported as-is.
 //   - The example's own quirk is preserved: xAxis has 7 categories (Mon…Sun) while every series
@@ -170,14 +170,14 @@ option = {
                 [
                     "name": "Evaporation",
                     "type": "bar",
-                    // PORT-NOTE: series[0].tooltip.valueFormatter omitted — JS closure appending ' ml'
+                    // series[0].tooltip.valueFormatter omitted — JS closure appending ' ml'
                     // to each tooltip value.
                     "data": mixLineBarEvaporationData
                 ] as [String: Any],
                 [
                     "name": "Precipitation",
                     "type": "bar",
-                    // PORT-NOTE: series[1].tooltip.valueFormatter omitted — JS closure appending ' ml'
+                    // series[1].tooltip.valueFormatter omitted — JS closure appending ' ml'
                     // to each tooltip value.
                     "data": mixLineBarPrecipitationData
                 ] as [String: Any],
@@ -185,7 +185,7 @@ option = {
                     "name": "Temperature",
                     "type": "line",
                     "yAxisIndex": 1.0,
-                    // PORT-NOTE: series[2].tooltip.valueFormatter omitted — JS closure appending ' °C'
+                    // series[2].tooltip.valueFormatter omitted — JS closure appending ' °C'
                     // to each tooltip value.
                     "data": mixLineBarTemperatureData
                 ] as [String: Any]

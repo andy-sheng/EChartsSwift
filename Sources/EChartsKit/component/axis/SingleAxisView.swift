@@ -33,7 +33,7 @@ import ZRenderKit
 //       (anid-matched transition animation) → the ported top-level `groupTransition` free func in
 //       util/graphic.swift (called bare; see `render`).
 //   import * as singleAxisHelper from '../../coord/single/singleAxisHelper';
-//     → PORT-NOTE: `coord/single/singleAxisHelper` is ported (singleAxisHelper.swift). Its
+//     → note: `coord/single/singleAxisHelper` is ported (singleAxisHelper.swift). Its
 //       API (free-function module → caseless enum, CONVENTIONS §2): `enum singleAxisHelper { static func
 //       layout(_ axisModel: SingleAxisModel, _ opt: SingleAxisLayoutOpt? = nil) -> AxisBuilderCfg }`.
 //       Upstream `layout` returns a `LayoutResult` (position/rotation/labelRotate/labelDirection/
@@ -41,13 +41,13 @@ import ZRenderKit
 //       dropped, same deviation as CartesianAxisLayout / RadiusAxisView.layoutAxis → AxisBuilderCfg).
 //   import AxisView from './AxisView';                             → `AxisView` (component/axis/AxisView.swift).
 //   import {rectCoordAxisBuildSplitArea, rectCoordAxisHandleRemove} from './axisSplitHelper';
-//     → PORT-NOTE: `component/axis/axisSplitHelper` is a SHARED helper file (also used by CartesianAxisView)
+//     → note: `component/axis/axisSplitHelper` is a SHARED helper file (also used by CartesianAxisView)
 //       and is not ported as its own module. Its SingleAxis path is reproduced as file-private functions at
 //       the bottom of this file (`rectCoordAxisBuildSplitArea` builds the alternating splitArea color bands;
 //       `rectCoordAxisHandleRemove` clears the color cache). The `makeInner` inner store is ported as the
 //       `_splitAreaColors` property. Delete when `axisSplitHelper.swift` lands.
 //   import SingleAxisModel from '../../coord/single/AxisModel';
-//     → PORT-NOTE: `coord/single/AxisModel` (SingleAxisModel) is ported (SingleAxisModel.swift).
+//     → note: `coord/single/AxisModel` (SingleAxisModel) is ported (SingleAxisModel.swift).
 //       Named `SingleAxisModel.swift` (NOT `AxisModel.swift`) to avoid the SwiftPM object-name collision
 //       with the cartesian/polar `AxisModel`. Assumed API (mirrors CartesianAxisModel / RadiusAxisModel):
 //         open class SingleAxisModel: AxisBaseModel   // → so AxisBuilder(singleAxisModel, …) type-checks
@@ -57,7 +57,7 @@ import ZRenderKit
 //   import GlobalModel from '../../model/Global';                  → `GlobalModel`.
 //   import ExtensionAPI from '../../core/ExtensionAPI';            → `ExtensionAPI`.
 //   import { Payload } from '../../util/types';                    → `Payload` (util/types.swift).
-//   import { getAxisBreakHelper } from './axisBreakHelper';        → PORT-NOTE (deferred): the axis-break
+//   import { getAxisBreakHelper } from './axisBreakHelper';        → TODO: the axis-break
 //     feature installer is not ported; `getAxisBreakHelper()` (axisModelCreator.swift) returns nil, so
 //     `breakArea` is a no-op (matches upstream when the feature is not `use()`-d).
 //
@@ -299,7 +299,7 @@ private let axisElementBuilders: [String: SingleAxisElementBuilder] = [
         //       axisBreakHelper.rectCoordBuildBreakAxis(
         //           group, axisView, axisModel, axisModel.coordinateSystem.getRect(), api);
         //   }
-        // PORT-NOTE (deferred): requires `component/axis/axisBreakHelper` (the axis-break feature), not ported;
+        // TODO: requires `component/axis/axisBreakHelper` (the axis-break feature), not ported;
         //   `getAxisBreakHelper()` returns nil, so this builder is a no-op (matches upstream when the
         //   feature is not `use()`-d). Deferred per task scope; same deviation as CartesianAxisView.breakArea.
         _ = (axisView, group, axisGroup, axisModel, api)
@@ -310,7 +310,7 @@ private let axisElementBuilders: [String: SingleAxisElementBuilder] = [
 
 
 // ============================================================================
-// PORT-NOTE helpers — NOT part of SingleAxisView.ts upstream. They reproduce the
+// note helpers — NOT part of SingleAxisView.ts upstream. They reproduce the
 // dynamic-option-read coercions, the `util/graphic` style-bag bridge, and the
 // value-returning `subPixelOptimizeLine` wrapper referenced above so the split
 // lines are actually drawn. Delete each when its real sibling lands and call the
@@ -339,7 +339,7 @@ private func jsTruthy(_ v: Any?) -> Bool {
     return true
 }
 
-/// PORT-NOTE: `util/graphic` (and its `useStyle` dict bridge) is not ported. Map the dynamic style bag
+/// `util/graphic` (and its `useStyle` dict bridge) is not ported. Map the dynamic style bag
 ///   ([String: Any] — the `defaults(...)` merge of the split color over `getLineStyle(['color'])`) onto the
 ///   typed `PathStyleProps`. Same deviation as RadiusAxisView.pathStyleFromDict. Numbers are read with
 ///   `styleNum` (Int|Double|NSNumber) to avoid the Int-drop trap. Delete when the graphic bridge lands.
@@ -395,7 +395,7 @@ private func pathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
 }
 
 // ============================================================================
-// PORT-NOTE: `component/axis/axisSplitHelper.{rectCoordAxisBuildSplitArea,rectCoordAxisHandleRemove}` is a
+// `component/axis/axisSplitHelper.{rectCoordAxisBuildSplitArea,rectCoordAxisHandleRemove}` is a
 //   SHARED helper (also consumed by CartesianAxisView) whose own sibling file is not ported. Its SingleAxis
 //   path is reproduced here as file-private functions so the splitArea bands actually render. The `makeInner`
 //   inner store keyed on the axis view is ported as the `SingleAxisView._splitAreaColors` property (same

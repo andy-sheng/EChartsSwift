@@ -46,11 +46,11 @@
 // The `handler` MUST forward the passed `dispatchAction` into `axisTrigger` (as `payload.dispatchAction`)
 // so `showTip`/`hideTip` flow through the pend/merge below rather than dispatching directly.
 //
-// PORT-NOTE: `util/throttle.throttle` / `throttleUtil` is VERIFIED NOT APPLICABLE here.
+// `util/throttle.throttle` / `throttleUtil` is VERIFIED NOT APPLICABLE here.
 //   THROTTLE: none in this file. Verified against upstream 6.1.0 (pinned 20ecdf4) —
 //   `globalListener.ts` imports no `util/throttle` and calls every `record.handler(...)` SYNCHRONOUSLY
 //   inside `useHandler`'s zr listener; the handler fan-out is NOT throttled upstream, so this port
-//   matches it by calling immediately. An earlier PORT-NOTE incorrectly claimed this fan-out was
+//   matches it by calling immediately. An earlier note incorrectly claimed this fan-out was
 //   throttled upstream.
 //
 //   The axisPointer/tooltip throttling upstream lives in the CONSUMERS of this listener, not here:

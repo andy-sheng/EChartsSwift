@@ -169,7 +169,7 @@ open class GaugeSeriesModel: SeriesModel {
                 "rotate": 0.0
             ] as [String: Any],
             "pointer": [
-                // PORT-NOTE: upstream value is `null`; NSNull() retains the key in the [String: Any] bag.
+                // upstream value is `null`; NSNull() retains the key in the [String: Any] bag.
                 "icon": NSNull(),
                 "offsetCenter": [0.0, 0.0],
                 "show": true,
@@ -212,7 +212,7 @@ open class GaugeSeriesModel: SeriesModel {
                 // borderColor: tokens.color.neutral40  (= '#9ea0a5')
                 "borderColor": "#9ea0a5",
                 "width": 100.0,
-                // PORT-NOTE: upstream value is `null` (self-adaption); NSNull() retains the key.
+                // upstream value is `null` (self-adaption); NSNull() retains the key.
                 "height": NSNull(), // self-adaption
                 "padding": [5.0, 10.0],
                 // x, y，单位px

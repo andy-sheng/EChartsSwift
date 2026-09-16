@@ -34,7 +34,7 @@ import ZRenderKit
 //          as its upstream literal (`#86878c`).
 //   import { createSimpleOverallStageHandler } from '../../util/model'; -> `model.createSimpleOverallStageHandler`.
 
-// PORT-NOTE: `tokens.color.neutral50` (visual/tokens.swift). Inlined as the upstream literal value.
+// `tokens.color.neutral50` (visual/tokens.swift). Inlined as the upstream literal value.
 private let tokens_color_neutral50 = "#86878c"
 
 // upstream:
@@ -46,7 +46,7 @@ public let sunburstVisualStageHandler = model.createSimpleOverallStageHandler(
     { ecModel, _, _ in sunburstVisual(ecModel) }
 )
 
-// PORT-NOTE: upstream palette `scope` is the object literal `{}` (`Dictionary<ColorString>`), used only
+// upstream palette `scope` is the object literal `{}` (`Dictionary<ColorString>`), used only
 //   as a WeakMap identity key by getColorFromPalette (see model/mixin/palette.swift). Modeled as an
 //   empty reference type so it can key the per-scope palette store.
 private final class SunburstPaletteScope {}

@@ -147,7 +147,7 @@ public final class RadarComponentView: ComponentView {
         //     areaOrLine[colorIndex] = areaOrLine[colorIndex] || [];
         //     return colorIndex;
         //   }
-        // PORT-NOTE (JS sparse-index quirk): for the polygon-shape splitArea below, `idx` can be `-1`
+        // note (JS sparse-index quirk): for the polygon-shape splitArea below, `idx` can be `-1`
         //   at the first ring (i-1 with i=0, since the empty `prevPoints` array is truthy in JS). JS
         //   `(-1) % n === -1`, and `areaOrLine[-1] = ...` writes a NON-enumerable "-1" key that the
         //   later `each(splitAreas)` (index-based) skips — i.e. that first area polygon is silently
@@ -215,7 +215,7 @@ public final class RadarComponentView: ComponentView {
                     points.append(points[0])
                 }
                 else {
-                    // PORT-NOTE: upstream `if (__DEV__) { console.error('Can\'t draw value axis ' + i); }`
+                    // upstream `if (__DEV__) { console.error('Can\'t draw value axis ' + i); }`
                     //   — dev-only diagnostic dropped.
                 }
 
@@ -229,7 +229,7 @@ public final class RadarComponentView: ComponentView {
                 }
                 // upstream: `if (showSplitArea && prevPoints)` — an empty JS array is truthy, so this
                 //   is entered even on the first ring (i=0, prevPoints=[]); see the getColorIndex
-                //   PORT-NOTE for how that first (colorIndex=-1) polygon is dropped.
+                //   note for how that first (colorIndex=-1) polygon is dropped.
                 if showSplitArea {
                     let colorIndex = getColorIndex(&splitAreas, splitAreaColorsArr, i - 1)
                     if colorIndex >= 0 {
@@ -285,7 +285,7 @@ public final class RadarComponentView: ComponentView {
 
 
 // ============================================================================
-// PORT-NOTE helpers — NOT part of RadarView.ts upstream. These reproduce the
+// note helpers — NOT part of RadarView.ts upstream. These reproduce the
 // out-of-phase sibling APIs / the `util/graphic` style bridge referenced above.
 // Delete each when its real sibling lands and call the sibling directly.
 // ============================================================================
@@ -302,7 +302,7 @@ private func jsTruthy(_ v: Any?) -> Bool {
     return true
 }
 
-/// PORT-NOTE: `util/graphic`'s `useStyle` dict bridge is not ported, so the dynamic style bag
+/// `util/graphic`'s `useStyle` dict bridge is not ported, so the dynamic style bag
 ///   ([String: Any] — the `defaults(...)` merge of split colors over getLineStyle()/getAreaStyle())
 ///   is mapped onto the typed `PathStyleProps` here. Same deviation as AxisBuilder.swift's
 ///   `pathStyleFromLineStyleDict` (kept file-private there); mirrored here for both stroke (split

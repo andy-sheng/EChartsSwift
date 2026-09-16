@@ -73,7 +73,7 @@ public final class AxisPointerView: ComponentView {
     }
 
     // upstream: remove(ecModel, api) { globalListener.unregister('axisPointer', api); }
-    //   PORT-NOTE: the ported `ComponentView` base exposes `dispose` (not `remove`); upstream's `remove`
+    //   the ported `ComponentView` base exposes `dispose` (not `remove`); upstream's `remove`
     //   only unregisters the global listener, which `EChartsView` owns here, so both fold into `dispose`.
     public override func dispose(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
         // upstream: globalListener.unregister('axisPointer', api);

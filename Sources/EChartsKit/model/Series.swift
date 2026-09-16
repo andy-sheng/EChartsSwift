@@ -21,7 +21,7 @@
 import Foundation
 import ZRenderKit
 // import * as zrUtil from 'zrender/src/core/util';                 -> util (ZRenderKit)
-// import env from 'zrender/src/core/env';                          -> ZRenderKit `env` is module-internal (see isAnimationEnabled PORT-NOTE)
+// import env from 'zrender/src/core/env';                          -> ZRenderKit `env` is module-internal (see isAnimationEnabled note)
 // import * as modelUtil from '../util/model';                      -> EChartsKit `model` namespace (util/model.swift)
 // import { ... } from '../util/types';                             -> EChartsKit util/types.swift (same module)
 // import ComponentModel, { ComponentModelConstructor } from './Component';  -> ComponentModel (sibling model/Component.swift)
@@ -39,7 +39,7 @@ import ZRenderKit
 // import LegendVisualProvider from '../visual/LegendVisualProvider';  -> LegendVisualProvider (visual/LegendVisualProvider.swift)
 // import SeriesData from '../data/SeriesData';                     -> SeriesData (data/SeriesData.swift)
 // import Axis from '../coord/Axis';                                -> Axis (coord/Axis.swift)
-// import type { BrushCommonSelectorsForSeries, BrushSelectableArea } from '../component/brush/selector';  -> PORT-NOTE: both types ARE ported (component/brush/brushVisual.swift); brush/selector.ts not yet split into its own module.
+// import type { BrushCommonSelectorsForSeries, BrushSelectableArea } from '../component/brush/selector';  -> note: both types ARE ported (component/brush/brushVisual.swift); brush/selector.ts not yet split into its own module.
 // import makeStyleMapper from './mixin/makeStyleMapper';           -> makeStyleMapper (sibling model/mixin/makeStyleMapper.swift)
 // import { SourceManager } from '../data/helper/sourceManager';    -> SourceManager (data/helper/sourceManager.swift)
 // import { Source } from '../data/Source';                         -> Source (data/Source.swift)
@@ -81,7 +81,7 @@ public let SERIES_UNIVERSAL_TRANSITION_PROP = "__universalTransitionEnabled"
  *  - prefix `__` can be used to avoid conflicts with possible outside subclasses.
  *  - All of these methods are optional - null-check is needed.
  */
-// PORT-NOTE: upstream declares an `interface SeriesModel { ... }` (declaration merging) listing
+// upstream declares an `interface SeriesModel { ... }` (declaration merging) listing
 //   optional methods that subclasses MAY implement and that callers null-check before invoking:
 //     preventIncremental(): boolean
 //     __preparePipelineContext(view: ChartView, pipeline): PipelineContext
@@ -101,7 +101,7 @@ public let SERIES_UNIVERSAL_TRANSITION_PROP = "__universalTransitionEnabled"
 
 // upstream: class SeriesModel<Opt extends SeriesOption = SeriesOption> extends ComponentModel<Opt>
 //
-// PORT-NOTE: the generic `Opt` is dropped per CONVENTIONS §2 (the dynamic option tree is the `Any`
+// the generic `Opt` is dropped per CONVENTIONS §2 (the dynamic option tree is the `Any`
 //   bag; keyed access casts to `[String: Any]`). `SeriesModel` is the project's real reference type
 //   for series — `open class` (subclassed by every concrete series). It replaces the forward-
 //   reference placeholder `protocol SeriesModel` that previously lived in util/types.swift.
@@ -137,18 +137,18 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
 
     // Should be impleneted in subclass.
     // upstream: defaultOption: SeriesOption
-    // PORT-NOTE: `defaultOption` is supplied via the inherited `class var defaultOption: ModelOption?`
+    // `defaultOption` is supplied via the inherited `class var defaultOption: ModelOption?`
     //   (ComponentModel); concrete series override that static (cf. `getDefaultOption`).
 
     // @readonly
     open var seriesIndex: Double = 0
 
     // Injected outside / @see `injectCoordinateSystem`
-    // PORT-NOTE: coord/CoordinateSystem.swift is ported; this injected slot stays `Any?` (holds any coord system).
+    // coord/CoordinateSystem.swift is ported; this injected slot stays `Any?` (holds any coord system).
     open var coordinateSystem: Any?
 
     // Injected outside
-    // PORT-NOTE: `SeriesTask` is the real type from core/Scheduler.swift (`Task<SeriesTaskContext>`).
+    // `SeriesTask` is the real type from core/Scheduler.swift (`Task<SeriesTaskContext>`).
     open var dataTask: SeriesTask!
 
     // Injected outside
@@ -159,14 +159,14 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
     // Props to tell visual/style.ts about how to do visual encoding.
     // ---------------------------------------
     // legend visual provider to the legend component
-    // PORT-NOTE: visual/LegendVisualProvider.swift is ported; this slot stays `Any?`.
+    // visual/LegendVisualProvider.swift is ported; this slot stays `Any?`.
     open var legendVisualProvider: Any?
 
     // Access path of style for visual
     open var visualStyleAccessPath: String = "itemStyle"
     // Which property is treated as main color. Which can get from the palette.
     // upstream: 'fill' | 'stroke'
-    // PORT-NOTE: the string-literal union is modeled as `String`.
+    // the string-literal union is modeled as `String`.
     open var visualDrawType: String = "fill"
     // Style mapping rules.
     // upstream: ReturnType<typeof makeStyleMapper>
@@ -184,7 +184,7 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
     // It will be set temporary when cross series transition setting is from setOption.
     // TODO if deprecate further?
     // upstream: [SERIES_UNIVERSAL_TRANSITION_PROP]: boolean
-    // PORT-NOTE: the dynamic computed-key property `'__universalTransitionEnabled'` maps to this
+    // the dynamic computed-key property `'__universalTransitionEnabled'` maps to this
     //   stored property; `isUniversalTransitionEnabled` reads it directly.
     open var __universalTransitionEnabled: Bool?
 
@@ -254,7 +254,7 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
         // const layoutMode = fetchLayoutMode(this);
         let layoutMode = layout.fetchLayoutMode(self)
         // const inputPositionParams = layoutMode ? getLayoutParams(option as BoxLayoutOptionMixin) : {};
-        // PORT-NOTE: `option === self.option` at call, so capture the input position params from that
+        // `option === self.option` at call, so capture the input position params from that
         //   bag BEFORE the theme/default merges below (mirrors axisModelCreator.mergeDefaultAndTheme).
         let inputPositionParams: [String: Any]
         if layoutMode != nil, let src = (self.option ?? option) as? [String: Any] {
@@ -283,7 +283,7 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
         }
 
         // zrUtil.merge(option, this.getDefaultOption());
-        // PORT-NOTE: option bags are value types; merge the default into a mutable copy and write
+        // option bags are value types; merge the default into a mutable copy and write
         //   it back to `self.option` (at call time `option === self.option`). `overwrite` is false.
         if var target = (self.option ?? option) as? [String: Any],
            let def = self.getDefaultOption() as? [String: Any] {
@@ -301,7 +301,7 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
         self.fillDataTextStyle((self.option as? [String: Any])?["data"])
 
         // if (layoutMode) { mergeLayoutParam(option as BoxLayoutOptionMixin, inputPositionParams, layoutMode); }
-        // PORT-NOTE: upstream passes the `ComponentLayoutMode` object as `opt`; only its `ignoreSize`
+        // upstream passes the `ComponentLayoutMode` object as `opt`; only its `ignoreSize`
         //   is read by `mergeLayoutParam`, so it is forwarded via the option bag (cf. axisModelCreator).
         if let mode = layoutMode, var target = self.option as? [String: Any] {
             var opt: [String: Any] = [:]
@@ -343,7 +343,7 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
         // const layoutMode = fetchLayoutMode(this);
         let layoutMode = layout.fetchLayoutMode(self)
         // if (layoutMode) { mergeLayoutParam(this.option, newSeriesOption, layoutMode); }
-        // PORT-NOTE: upstream merges the newSeriesOption box params INTO this.option; the delta box
+        // upstream merges the newSeriesOption box params INTO this.option; the delta box
         //   params live in the raw `newSeriesOption`. Only `ignoreSize` from the layout mode is read.
         if let mode = layoutMode,
            var target = self.option as? [String: Any],
@@ -384,7 +384,7 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
         if let arr = data as? [Any], !util.isTypedArray(data) {
             // const props = ['show'];
             let props = ["show"]
-            // PORT-NOTE: upstream mutates each `data[i]` in place (reference semantics). Swift value
+            // upstream mutates each `data[i]` in place (reference semantics). Swift value
             //   types require read-modify-write-back: mutate a local copy of the array and, if any item
             //   changed, write it back through `self.option["data"]` (both call sites pass that bag).
             var mutated = arr
@@ -457,7 +457,7 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
         if let task = task {
             let data = task.context.data!
             // upstream: return (dataType == null || !data.getLinkedData) ? data : data.getLinkedData(dataType);
-            // PORT-NOTE: `!data.getLinkedData` is an instance-method presence check == "data is a linked
+            // `!data.getLinkedData` is an instance-method presence check == "data is a linked
             //   (graph/tree) data". Swift can't attach the method per-instance, so the real logic lives in
             //   `linkSeriesData` (data/helper/linkSeriesData.swift): `getLinkedData(data)` returns the
             //   mainData for a linked data and `nil` for an unlinked one. So `getLinkedData(data, dataType)`
@@ -504,7 +504,7 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
     open func getAllData() -> [(data: SeriesData, type: SeriesDataType?)] {
         let mainData = self.getData()
         // upstream: (mainData && mainData.getLinkedDataAll) ? mainData.getLinkedDataAll() : [{ data: mainData }];
-        // PORT-NOTE: `mainData.getLinkedDataAll` presence == "mainData is a linked (graph/tree) data".
+        // `mainData.getLinkedDataAll` presence == "mainData is a linked (graph/tree) data".
         //   `linkSeriesData.getLinkedData(mainData)` is non-nil iff linked, so it stands in for the presence
         //   check; then route to `linkSeriesData.getLinkedDataAll` (data/helper/linkSeriesData.swift). A
         //   linked data always has non-nil sub-data entries, so `compactMap` narrows the helper's optional
@@ -547,7 +547,7 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
         let encode = self.get("encode", true)
         if let encode = encode {
             // return zrUtil.createHashMap<OptionEncodeValue, DimensionName>(encode);
-            // PORT-NOTE: the `createHashMap` shim (util/model.swift) has no init-from-object; build
+            // the `createHashMap` shim (util/model.swift) has no init-from-object; build
             //   it manually from the dynamic `encode` dict.
             let hm: HashMap<OptionEncodeValue> = createHashMap()
             if let dict = encode as? [String: Any] {
@@ -779,7 +779,7 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
         // Disable animation if using echarts in node but not give ssr flag.
         // In ssr mode, renderToString will generate svg with css animation.
         // if (env.node && !(ecModel && ecModel.ssr)) { return false; }
-        // PORT-NOTE: zrender `env` is module-internal to ZRenderKit (not exposed to EChartsKit). The
+        // zrender `env` is module-internal to ZRenderKit (not exposed to EChartsKit). The
         //   native client is treated as browser-like (`env.node` false), so this early-return is
         //   skipped; revisit if `env` is bridged. (GlobalModel.ssr now exists.)
         _ = ecModel
@@ -816,13 +816,13 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
         let ecModel = self.ecModel
         // PENDING
         // let color = PaletteMixin.prototype.getColorFromPalette.call(this, name, scope, requestColorNum);
-        // PORT-NOTE: upstream calls the mixin's prototype method to avoid recursing into this
+        // upstream calls the mixin's prototype method to avoid recursing into this
         //   override; in Swift the protocol-extension method is reached by casting `self` to
         //   `PaletteMixin` (static dispatch onto the extension default).
         var color = (self as PaletteMixin).getColorFromPalette(name, scope, requestColorNum)
         if color == nil {
             // color = ecModel.getColorFromPalette(name, scope, requestColorNum);
-            // PORT-NOTE: GlobalModel conforms to PaletteMixin (upstream `mixin(GlobalModel,
+            // GlobalModel conforms to PaletteMixin (upstream `mixin(GlobalModel,
             //   PaletteMixin)`), so this routes through that conformance's `getColorFromPalette`.
             color = ecModel?.getColorFromPalette(name, scope, requestColorNum)   // GlobalModel conforms to PaletteMixin
         }
@@ -849,7 +849,7 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
      * Get progressive rendering count each step
      */
     open func getProgressiveThreshold() -> Double {
-        // PORT-NOTE: option numbers are boxed as `Int` when written as integer literals
+        // option numbers are boxed as `Int` when written as integer literals
         // (globalDefault.swift stores `"progressiveThreshold": 3000`), so a plain `as? Double`
         // returns nil and the threshold would silently collapse to 0 — tripping the progressive
         // gate at zero elements. Coerce Int/Double/NSNumber alike (same shape as
@@ -866,7 +866,7 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
     //     `seriesModel.preventIncremental && seriesModel.preventIncremental()`
     //     `seriesModel.__preparePipelineContext ? seriesModel.__preparePipelineContext(view, pipeline)
     //                                           : preparePipelineContext(seriesModel, view, pipeline)`
-    // PORT-NOTE: Swift cannot feature-detect a method, so the "absent" branch of each upstream ternary
+    // Swift cannot feature-detect a method, so the "absent" branch of each upstream ternary
     //   becomes the *base implementation* here and the concrete-series implementations become plain
     //   `override`s (BarSeries, LinesSeries, HeatmapSeries). This is behavior-preserving: a series that
     //   does not implement the hook takes exactly the fallback upstream would take.
@@ -1027,7 +1027,7 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
                 let idx = (args[0] as? Double) ?? 0
                 let rawItem = data.getRawDataItem(Int(idx))
                 // if (rawItem && (rawItem as OptionDataItemObject).selected)
-                // PORT-NOTE: rawItem is a dynamic `OptionDataItem`; `.selected` read via dict.
+                // rawItem is a dynamic `OptionDataItem`; `.selected` read via dict.
                 if let dict = rawItem as? [String: Any], jsTruthy(dict["selected"]) {
                     dataIndices.append(idx)
                 }
@@ -1047,7 +1047,7 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
     // upstream: static registerClass(clz: Constructor): Constructor { return ComponentModel.registerClass(clz); }
     //   `ComponentModel.registerClass` is `static` (not overridable); this shadows it on SeriesModel.
     //
-    // PORT-NOTE: Swift `static func` is `final` and cannot be overridden/shadowed by a subclass with
+    // Swift `static func` is `final` and cannot be overridden/shadowed by a subclass with
     //   the same signature. But Swift *inherits* statics, so `SeriesModel.registerClass(clz)` already
     //   resolves to `ComponentModel.registerClass` (identical behavior to the upstream forwarder).
     //   The redeclaration is therefore dropped; the inherited static provides the same call surface.
@@ -1081,7 +1081,7 @@ open class SeriesModel: ComponentModel, PaletteMixin, DataHost, DataFormatMixin 
 // PORT (CONVENTIONS §2): `PaletteMixin` + `DataHost` + `DataFormatMixin` are all conformed on the
 //   class declaration above. The former `Model.ecModel: GlobalModel?` (optional) vs
 //   `DataFormatMixin.ecModel: GlobalModel` (non-optional) impedance was resolved by relaxing the
-//   mixin's `ecModel` requirement to optional (see the class header PORT-NOTE).
+//   mixin's `ecModel` requirement to optional (see the class header note).
 //   The optional `getShadowDim()` is implemented by subclasses (dataZoom shadow) when needed.
 
 // export type SeriesModelConstructor = typeof SeriesModel & ExtendableConstructor;
@@ -1143,7 +1143,7 @@ func wrapData(_ data: SeriesData, _ seriesModel: SeriesModel) {
     // zrUtil.each(zrUtil.concatArray(data.CHANGABLE_METHODS, data.DOWNSAMPLE_METHODS), function (methodName) {
     //     data.wrapMethod(methodName, zrUtil.curry(onDataChange, seriesModel));
     // });
-    // PORT-NOTE: `util.concatArray`/`util.curry` are not ported in ZRenderKit; inlined here
+    // `util.concatArray`/`util.curry` are not ported in ZRenderKit; inlined here
     //   (`+` for concat, an explicit closure for the curried `onDataChange`).
     let methods = data.CHANGABLE_METHODS + data.DOWNSAMPLE_METHODS
     util.each(methods) { methodName, _ in
@@ -1170,7 +1170,7 @@ func getCurrentTask(_ seriesModel: SeriesModel) -> SeriesTask? {
     // const scheduler = (seriesModel.ecModel || {}).scheduler;
     // const pipeline = scheduler && scheduler.getPipeline(seriesModel.uid);
     // ... return the pipeline currentTask (or its agentStub for an OverallTask).
-    // PORT-NOTE (deferred): core/Scheduler.swift IS ported and GlobalModel now has `scheduler`, but
+    // TODO: core/Scheduler.swift IS ported and GlobalModel now has `scheduler`, but
     //   wiring this to resolve `pipeline.currentTask` (+ agentStub) back to a `SeriesTask` and thereby
     //   change getData/setData's data source is deferred to the C2 render-pipeline routing work — the
     //   render pipeline does not yet publish a per-series currentTask whose context.data is authoritative.
@@ -1183,7 +1183,7 @@ func getCurrentTask(_ seriesModel: SeriesModel) -> SeriesTask? {
 
 
 // ============================================================================
-// PORT-NOTE: core/Scheduler.swift, core/task.swift, and data/helper/sourceManager.swift are all
+// core/Scheduler.swift, core/task.swift, and data/helper/sourceManager.swift are all
 // ported — the former local stubs (SeriesTask/SeriesTaskContext/SourceManager) were removed and
 // replaced by the real types. What remains below is a single labeled `createTask` bridging overload
 // (mapping the `(context)`-only closures to the real generic `createTask`) plus small value bags,
@@ -1192,7 +1192,7 @@ func getCurrentTask(_ seriesModel: SeriesModel) -> SeriesTask? {
 
 // '../core/Scheduler' — SeriesTaskContext and SeriesTask are now the REAL types ported in
 //   core/Scheduler.swift (`SeriesTaskContext: TaskContext`, `SeriesTask = Task<SeriesTaskContext>`).
-//   The former local stubs were removed by the Scheduler-porting agent, per their PORT-NOTE note.
+//   The former local stubs were removed by the Scheduler-porting agent, per their note note.
 
 // '../core/task' — createTask({ count, reset }). Bridges the `dataTask` config closures (which use
 //   the upstream `(context)`-only shape) to the real `createTask<Ctx>(TaskDefineParam)` (core/task.swift).

@@ -48,7 +48,7 @@ import ZRenderKit
 //     are ported (util/states is present) AND the per-state application loop that CALLS `updateElOnState`
 //     (the `for (STATES)` walk + `retrieveStateOption` + `updateZForEachState` per-state z2) is WIRED.
 //
-// DEFERRED (each marked // PORT-NOTE at its site):
+// DEFERRED (each marked // note at its site):
 //   - MORPH (universalTransition / morphPath).
 //   - the GROUP-CHILD by-name diff (`diffGroupChildren` / DataDiffer child-diff) — `mergeChildren`
 //     still rebuilds a group's children by index each render.
@@ -226,7 +226,7 @@ private func copyElement(_ sourceEl: Element, _ targetEl: Element) {
     targetEl.copyTransform(sourceEl)
     if let target = targetEl as? Displayable, let source = sourceEl as? Displayable {
         // upstream: targetEl.setStyle(sourceEl.style); z/z2/zlevel/invisible/ignore copied.
-        // PORT-NOTE (language difference): `Displayable.style` is a typed struct; a generic
+        // note (language difference): `Displayable.style` is a typed struct; a generic
         //   `setStyle(source.style)` across Path/Text/Image variants is not uniformly typed here. Copy
         //   the scalar display props; the style copy is deferred (recreate path is off the static
         //   critical path).
@@ -318,7 +318,7 @@ open class CustomChartView: ChartView {
         //   const clipPath = customSeries.get('clip', true)
         //       ? createClipPath(customSeries.coordinateSystem, false, customSeries) : null;
         //   if (clipPath) { group.setClipPath(clipPath); } else { group.removeClipPath(); }
-        // PORT-NOTE (deferred): `createClipPath` IS ported (chart/helper/createClipPathFromCoordSys), but
+        // TODO: `createClipPath` IS ported (chart/helper/createClipPathFromCoordSys), but
         //   wiring the group-level clip for the custom series (its `coordinateSystem` access +
         //   SeriesModelWithLineWidth conformance, plus the still-deferred Polar clip branch) is not done.
         //   Static shape rendering does not require it.
@@ -347,7 +347,7 @@ open class CustomChartView: ChartView {
 
         // upstream: function setIncrementalAndHoverLayer(el) { ... el.incremental = getIncrementalId(...);
         //   el.ensureState('emphasis').hoverLayer = HOVER_LAYER_FOR_INCREMENTAL; }
-        // PORT-NOTE (deferred): requires the incremental hover-layer (`el.incremental` +
+        // TODO: requires the incremental hover-layer (`el.incremental` +
         //   HOVER_LAYER_FOR_INCREMENTAL emphasis state), not ported. The elements are still built +
         //   collected below.
 
@@ -368,7 +368,7 @@ open class CustomChartView: ChartView {
 
     // upstream: eachRendered(cb) { graphicUtil.traverseElements(this._progressiveEls || this.group, cb); }
     open override func eachRendered(_ cb: (_ el: Element) -> Bool) {
-        // PORT-NOTE (equivalent substitute): `graphicUtil.traverseElements` is not ported; the walk below
+        // note (equivalent substitute): `graphicUtil.traverseElements` is not ported; the walk below
         //   reproduces it — traverse the progressive els or group.
         //   `traverseElements` invokes `cb` on each root element itself and then walks its descendants;
         //   `Element.traverse` is empty UPSTREAM TOO (zrender Element.ts) and only `Group` overrides it, so invoke `cb` on
@@ -489,7 +489,7 @@ private func createEl(_ elOption: [String: Any]) -> Element {
     }
     else {
         // upstream: const Clz = getShapeClass(graphicType); if (!Clz) throwError(...); el = new Clz();
-        // PORT-NOTE (equivalent substitute): `graphicUtil.getShapeClass` (the extendShape string->class
+        // note (equivalent substitute): `graphicUtil.getShapeClass` (the extendShape string->class
         //   registry) is not ported; the built-in shapes are switched explicitly in `makeShapeElement`.
         if let shapeEl = makeShapeElement(graphicType) {
             el = shapeEl
@@ -563,7 +563,7 @@ private func updateElNormal(
     }
 
     // upstream mutates the option object in place; `elOption` is a value dict here, so shadow it.
-    // PORT-NOTE (divergence): upstream's normalizations below (the DEFAULT_TRANSITION default, the ec4
+    // note (divergence): upstream's normalizations below (the DEFAULT_TRANSITION default, the ec4
     //   text compat, `style.decal` / `style.__decalPattern`) are observable through the SHARED option
     //   object; here they are confined to this local copy. Currently benign only because
     //   `customInnerStore(el).option` is never assigned (upstream does not assign it either — only
@@ -588,7 +588,7 @@ private func updateElNormal(
     //   (+ the legacy `position`/`scale`/`origin` array aliases), the `enterFrom`/`leaveTo` bags at the
     //   root and inside each `ELEMENT_ANIMATABLE_PROPS` sub-bag, and the `keyframeAnimation` keyframes.
     //   JS has a single number type, so upstream has no analog.
-    // PORT-NOTE: ideally this lives in the PROVIDER (customGraphicTransition /
+    // ideally this lives in the PROVIDER (customGraphicTransition /
     //   customGraphicKeyframeAnimation) so the other consumer (GraphicComponentView) gets it too; kept
     //   consumer-side here because that file is owned by another migration row.
     for key in TRANSFORMABLE_PROPS where elOption[key] != nil {
@@ -638,7 +638,7 @@ private func updateElNormal(
         //   if (api && decalObj) { (decalObj as InnerDecalObject).dirty = true;
         //       decalPattern = createOrUpdatePatternFromDecal(decalObj, api); }
         //   (styleOpt as InnerCustomZRPathOptionStyle).__decalPattern = decalPattern;
-        // PORT-NOTE: the `decalObj.dirty = true` marker drives upstream's `decalMap` WeakMap cache; the
+        // the `decalObj.dirty = true` marker drives upstream's `decalMap` WeakMap cache; the
         //   Swift `decal.swift` dropped that identity cache for a value-keyed one, so the marker is moot.
         var decalPattern: Pattern?
         let decalObj: Any? = (el is Path) ? styleOpt?["decal"] : nil
@@ -938,7 +938,7 @@ private func makeRenderItem(
         // upstream DEV assert: renderItem present + coordSys supports custom.
         // upstream: prepareResult = coordSys.prepareCustoms ? coordSys.prepareCustoms(coordSys)
         //             : prepareCustoms[coordSys.type](coordSys);
-        // PORT-NOTE: `coordSys.prepareCustoms` is modeled (a property on CoordinateSystem), but this
+        // `coordSys.prepareCustoms` is modeled (a property on CoordinateSystem), but this
         //   call site still only uses the built-in dispatch and does not yet consult the coordSys
         //   override (relevant to external systems like bmap).
         if let r = prepareCustoms(coordSys) {
@@ -1098,7 +1098,7 @@ private final class CustomRenderItemAPI: CustomSeriesRenderItemAPI {
     // upstream: function ordinalRawValue(dim?, dataIndexInside?): ParsedValue | OrdinalRawValue
     func ordinalRawValue(_ dim: DimensionLoose, _ dataIndexInside: Double?) -> Any? {
         let idx = resolveIdx(dataIndexInside)
-        // PORT-NOTE (language difference): `data.getDimensionInfo` returns a non-Optional
+        // note (language difference): `data.getDimensionInfo` returns a non-Optional
         //   `SeriesDimensionDefine` in this port (a missing dim can not be signalled), so upstream's
         //   `if (!dimInfo) { getDimensionIndex fallback }` branch is unreachable; the ordinalMeta path
         //   below covers the common case.
@@ -1162,7 +1162,7 @@ private final class CustomRenderItemAPI: CustomSeriesRenderItemAPI {
 
     // upstream (deprecated): function styleEmphasis(userProps?, dataIndexInside?): ZRStyleProps  — DEFERRED.
     func styleEmphasis(_ userProps: [String: Any]?, _ dataIndexInside: Double?) -> [String: Any] {
-        // PORT-NOTE (deferred): the full (deprecated) api.styleEmphasis requires the same label/styleCompat
+        // TODO: the full (deprecated) api.styleEmphasis requires the same label/styleCompat
         //   surface as api.style (not ported); returns userProps as a best effort.
         return userProps ?? [:]
     }
@@ -1360,7 +1360,7 @@ private func doCreateOrUpdateEl(
     )
 
     // upstream: doCreateOrUpdateClipPath(el, dataIndex, elOption, seriesModel, isInit);
-    // PORT-NOTE: per-element clip paths use the same normal update path as ordinary custom elements,
+    // per-element clip paths use the same normal update path as ordinary custom elements,
     // including `applyUpdateTransition` and `during`. Without this call a sector/polygon clip (such as
     // custom-gauge's arc and pointer) would either render unclipped or snap to its final geometry.
     doCreateOrUpdateClipPath(elUnwrapped, dataIndex, elOption, seriesModel, isInit)
@@ -1690,7 +1690,7 @@ private func mergeChildren(
 
     if byName {
         // upstream: diffGroupChildren({...}) — the DataDiffer by-name child diff.
-        // PORT-NOTE (deferred): the by-name child DIFF (`diffGroupChildren` via DataDiffer) is deferred
+        // TODO: the by-name child DIFF (`diffGroupChildren` via DataDiffer) is deferred
         //   (needs data/DataDiffer + the leave transition, both in other files); fall through to the
         //   by-index merge below as a best-effort.
     }
@@ -1875,7 +1875,7 @@ private func bridgePathStyle(_ s: [String: Any]) -> PathStyleProps {
     // `decal` carries the tiling Pattern resolved by `createOrUpdatePatternFromDecal` in `updateElNormal`
     //   (a raw decal OPTION dict left here is not a Pattern and is correctly ignored).
     out.decal = s["decal"] as? Pattern
-    // PORT-NOTE (deferred): the lineDash-string style-bridge case is still deferred.
+    // TODO: the lineDash-string style-bridge case is still deferred.
     return out
 }
 
@@ -1984,7 +1984,7 @@ private func bridgeTextStylePart(_ s: [String: Any]) -> TextStylePropsPart {
 private func bridgeImageStyle(_ s: [String: Any]) -> ImageStyleProps {
     var out = ImageStyleProps()
     if let url = s["image"] as? String { out.image = .url(url) }
-    // PORT-NOTE (deferred): non-URL ImageLike sources (HTMLImageElement/HTMLCanvasElement) have no native
+    // TODO: non-URL ImageLike sources (HTMLImageElement/HTMLCanvasElement) have no native
     //   analog in the string-URL bridge; deferred.
     out.x = customToDouble(s["x"])
     out.y = customToDouble(s["y"])

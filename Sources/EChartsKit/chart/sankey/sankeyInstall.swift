@@ -25,22 +25,22 @@ import ZRenderKit
 //   import { EChartsExtensionInstallRegisters } from '../../extension';       -> registrar surface owned by
 //       the Orchestrate/Integrate driver (same convention as chart/sunburst/sunburstInstall.swift).
 //   import SankeyView from './SankeyView';
-//       -> PORT-NOTE: chart/sankey/SankeyView.swift is a sibling port (the render layer:
+//       -> note: chart/sankey/SankeyView.swift is a sibling port (the render layer:
 //          node Rects + ribbon Path + labels). Registered via ECharts.installOnce.
 //   import SankeySeriesModel, { SERIES_TYPE_SANKEY } from './SankeySeries';   -> sibling SankeySeries.swift (ported).
 //   import { COMPONENT_MAIN_TYPE_SERIES, Payload } from '../../util/types';   -> util/types.swift.
 //   import GlobalModel from '../../model/Global';                             -> GlobalModel (model/Global.swift).
 //   import { registerRoamActionSimply } from '../../component/helper/roamHelper';
-//       -> PORT-NOTE: ported as registerSankeyRoamAction() (component/helper/roamHelperViewGroup.swift).
+//       -> note: ported as registerSankeyRoamAction() (component/helper/roamHelperViewGroup.swift).
 //   import { sankeyLayoutStageHandler } from './sankeyLayout';
-//       -> PORT-NOTE: chart/sankey/sankeyLayout.swift is a sibling port (box layout stage).
+//       -> note: chart/sankey/sankeyLayout.swift is a sibling port (box layout stage).
 //   import { sankeyVisualStageHandler } from './sankeyVisual';                -> sibling sankeyVisual.swift (ported).
 
 // interface SankeyDragNodePayload extends Payload { localX: number; localY: number }
-//   PORT-NOTE: type-only payload shape for the `dragNode` action (implemented in sankeyAction.swift installSankeyAction).
+//   type-only payload shape for the `dragNode` action (implemented in sankeyAction.swift installSankeyAction).
 
 // export function install(registers: EChartsExtensionInstallRegisters) { ... }
-// PORT-NOTE: registration boilerplate belongs to the Orchestrate/Integrate driver, not this
+// registration boilerplate belongs to the Orchestrate/Integrate driver, not this
 //   render-layer file (same convention as chart/sunburst/sunburstInstall.swift). The `dragNode` action +
 //   `registerRoamActionSimply` (drag/roam) are wired in ECharts.installOnce (installSankeyAction). `SankeyView`
 //   and `sankeyLayoutStageHandler` are likewise registered there. Preserved as commented source for the diffable surface:

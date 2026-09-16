@@ -16,7 +16,7 @@
 //     with the brush ARMED but nothing selected — i.e. the frame before the example's initial selection.
 //   - TS type annotations (`rawData: number[][]`, `Record<string, number>`) stripped: the reference pane
 //     is a classic script. `export {}` and the `myChart.setOption(option, true)` wrapper likewise removed.
-//   - NATIVE PANE: `tooltip.position` is a JS closure — omitted (see PORT-NOTE); `itemStyle.borderColor:
+//   - NATIVE PANE: `tooltip.position` is a JS closure — omitted (see note); `itemStyle.borderColor:
 //     undefined` / `borderColor0: undefined` are dropped (JS `undefined` == key absent).
 //   - Canvas bumped to 800x520: two stacked grids + bottom legend + dataZoom slider do not fit 640x420.
 import Foundation
@@ -352,7 +352,7 @@ option = {
                 "textStyle": [
                     "color": "#000"
                 ] as [String: Any]
-                // PORT-NOTE: tooltip.position omitted — a JS closure that pins the tooltip to top:10 and
+                // tooltip.position omitted — a JS closure that pins the tooltip to top:10 and
                 // parks it 30px from whichever side the cursor is NOT on (left when the pointer is in the
                 // right half, right otherwise), so it never covers the candles under the cursor.
             ] as [String: Any],
@@ -463,7 +463,7 @@ option = {
                     "name": "Dow-Jones index",
                     "type": "candlestick",
                     "data": candlestickBrushSplit.values,
-                    // PORT-NOTE: itemStyle.borderColor / borderColor0 are `undefined` upstream — i.e. absent,
+                    // itemStyle.borderColor / borderColor0 are `undefined` upstream — i.e. absent,
                     // so the candlestick defaults apply. Omitted rather than mapped to NSNull.
                     "itemStyle": [
                         "color": candlestickBrushUpColor,

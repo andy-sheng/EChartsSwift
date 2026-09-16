@@ -24,7 +24,7 @@
 import Foundation
 
 // return key.
-// PORT-NOTE: upstream `DiffKeyGetter<CTX>` carries a `this: DataDiffer<CTX>` binding so the
+// upstream `DiffKeyGetter<CTX>` carries a `this: DataDiffer<CTX>` binding so the
 //   getter may read `this.context`. Swift closures have no `this`; callers that need the
 //   context must capture the differ explicitly. Param `value: unknown` -> `Any`.
 public typealias DiffKeyGetter = (_ value: Any, _ index: Int) -> String
@@ -42,7 +42,7 @@ public typealias DiffCallbackUpdateManyToMany = (_ newIndex: [Int], _ oldIndex: 
  * + a number[] that length >= 2.
  * + null/undefined
  */
-// PORT-NOTE: upstream `{[key: string]: number | number[]}`. Modeled as `[String: Any]`
+// upstream `{[key: string]: number | number[]}`. Modeled as `[String: Any]`
 //   whose values are `Int` or `[Int]`; `null` is represented by absence of the key
 //   (`dict[key] = nil`), which yields the same length-0 behavior as upstream `null`.
 public typealias DataIndexMap = [String: Any]
@@ -191,7 +191,7 @@ public final class DataDiffer<CTX> {
             if newIdxMapValLen > 1 {
                 // Consider there is duplicate key (for example, use dataItem.name as key).
                 // We should make sure every item in newArr and oldArr can be visited.
-                // PORT-NOTE: upstream `shift()` mutates the array stored in the map in place
+                // upstream `shift()` mutates the array stored in the map in place
                 //   (reference). Swift arrays are value types, so we explicitly write the
                 //   shifted array back to the map to keep the same semantics.
                 var newIdxArr = newIdxMapVal as! [Int]
@@ -314,7 +314,7 @@ public final class DataDiffer<CTX> {
         // In 'byIndex', the output `keyArr` is not duplication removed and
         //     its indices are accurately corresponding to `arr`.
         _ keyArr: inout [String],
-        // PORT-NOTE: upstream passes the key-getter property name ('_oldKeyGetter' |
+        // upstream passes the key-getter property name ('_oldKeyGetter' |
         //   '_newKeyGetter') and dynamically dispatches via `this[keyGetterName]`. Swift has
         //   no string-keyed member access, so we pass the resolved getter closure directly.
         _ keyGetter: DiffKeyGetter
@@ -346,7 +346,7 @@ public final class DataDiffer<CTX> {
                 map![key] = [idxMapVal as! Int, i]
             }
             else {
-                // PORT-NOTE: upstream `push` mutates the array stored in the map in place
+                // upstream `push` mutates the array stored in the map in place
                 //   (reference). Swift arrays are value types, so we write back explicitly.
                 var arrVal = idxMapVal as! [Int]
                 arrVal.append(i)

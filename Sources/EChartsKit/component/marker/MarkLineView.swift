@@ -24,7 +24,7 @@ import ZRenderKit
 // import * as numberUtil from '../../util/number';                   -> EChartsKit `number`
 // import * as markerHelper from './markerHelper';                    -> sibling markerHelper.swift
 // import LineDraw from '../../chart/helper/LineDraw';
-//   -> PORT-NOTE (deferred): the real `chart/helper/LineDraw` (+ `chart/helper/Line`, with enter/leave
+//   -> TODO: the real `chart/helper/LineDraw` (+ `chart/helper/Line`, with enter/leave
 //      animation + emphasis/blur states) is not ported. A STATIC-SUBSET stand-in `LineDraw` is defined at the
 //      bottom of this file: it draws the from→to Polyline with the full `lineStyle` (dashed/width/
 //      opacity), the from/to end symbols (circle+arrow, tangent-rotated per Line.ts), and the default
@@ -37,7 +37,7 @@ import ZRenderKit
 // import { ScaleDataValue, ColorString } from '../../util/types';    -> util/types.swift
 // import SeriesModel from '../../model/Series';                      -> EChartsKit `SeriesModel`
 // import { getECData } from '../../util/innerStore';
-//   -> PORT-NOTE: util/innerStore is ported (util/innerStore.swift, getECData); the ECData host-model
+//   -> note: util/innerStore is ported (util/innerStore.swift, getECData); the ECData host-model
 //      tagging for tooltip is still deferred (see below).
 // import ExtensionAPI from '../../core/ExtensionAPI';                -> EChartsKit `ExtensionAPI`
 // import Cartesian2D from '../../coord/cartesian/Cartesian2D';       -> EChartsKit `Cartesian2D`
@@ -48,7 +48,7 @@ import ZRenderKit
 // import { makeInner } from '../../util/model';                      -> EChartsKit `model.makeInner`
 // import { LineDataVisual } from '../../visual/commonVisualTypes';   -> util/types
 // import { getVisualFromData } from '../../visual/helper';
-//   -> PORT-NOTE (deferred): requires visual/helper.getVisualFromData (not ported); approximated by the local `getVisualFromData` below.
+//   -> TODO: requires visual/helper.getVisualFromData (not ported); approximated by the local `getVisualFromData` below.
 // import Axis2D from '../../coord/cartesian/Axis2D';                 -> EChartsKit `Axis2D`
 // import SeriesDimensionDefine from '../../data/SeriesDimensionDefine'; -> EChartsKit `SeriesDimensionDefine`
 
@@ -56,12 +56,12 @@ import ZRenderKit
 // Line option. be merged from configuration of two ends.
 // type MarkLineMergedItemOption = MarkLine2DDataItemOption[number];
 //   -> the per-end option; modeled as `MarkerPositionOption` (position-only, see MarkerModel.swift).
-//   PORT-NOTE: item-level style/label/symbol options in the raw `[String: Any]` data item are not
+//   item-level style/label/symbol options in the raw `[String: Any]` data item are not
 //     carried onto `MarkerPositionOption`; where they are needed they are re-read via `getItemModel`
 //     (which falls back to the mark-line model option).
 
 // const inner = makeInner<{ from: SeriesData<MarkLineModel>, to: SeriesData<MarkLineModel> }, MarkLineModel>();
-// PORT-NOTE: `makeInner` needs an `AnyObject` value; the `{ from, to }` bag is wrapped in a reference.
+// `makeInner` needs an `AnyObject` value; the `{ from, to }` bag is wrapped in a reference.
 final class MarkLineInner {
     var from: SeriesData?
     var to: SeriesData?
@@ -262,7 +262,7 @@ private func updateSingleMarkerEndLayout(
         let dims = coordSys?.dimensions ?? []
         // Chart like bar may have there own marker positioning logic
         // if (seriesModel.getMarkerPosition) { point = seriesModel.getMarkerPosition(...); }
-        //   PORT-NOTE: `getMarkerPosition` is duck-typed on the series in upstream; only
+        //   `getMarkerPosition` is duck-typed on the series in upstream; only
         //   `BaseBarSeriesModel` declares it in the port (mirrors MarkPointView). Feature-detect
         //   via `as? BaseBarSeriesModel`; other series with custom positioning add it when they land.
         if let barSeries = seriesModel as? BaseBarSeriesModel {
@@ -323,7 +323,7 @@ final class MarkLineView: MarkerView {
     //   (Swift generics are invariant, so the map is not re-typed).
 
     // updateTransform(markLineModel, ecModel, api)
-    // PORT-NOTE: this is the optional `ComponentView.updateTransform` hook (transform-only re-layout on
+    // this is the optional `ComponentView.updateTransform` hook (transform-only re-layout on
     //   zoom/pan), now WIRED — the driver (`ECharts.updateTransform`, core/ECharts.swift) invokes the
     //   base 4-param hook `updateTransform(_:_:_:_:) -> Bool?`, so this must override it exactly. The
     //   narrower 3-param method declared here previously did NOT override it and was never called
@@ -509,7 +509,7 @@ final class MarkLineView: MarkerView {
         // Set host model for tooltip
         // FIXME
         // mlData.line.eachItemGraphicEl(function (el) { getECData(el).dataModel = mlModel; ... });
-        // PORT-NOTE: `MarkerModel` conforms to `DataFormatMixin`/`DataHost`/`DataModel` on the base class
+        // `MarkerModel` conforms to `DataFormatMixin`/`DataHost`/`DataModel` on the base class
         //   (MarkerModel.swift), so `ECData.dataModel` (typed `DataModel?`) accepts `mlModel` directly. The
         //   child callback returns `Void` upstream (falsy → never stops descending); mapped to the `Group`
         //   traverse overload with a `false`-returning closure.
@@ -648,7 +648,7 @@ private func markerPositionOption(from raw: Any?) -> MarkerPositionOption? {
 }
 
 // zrender `merge(target, source)` (overwrite falsy): copy source's fields into target only where
-//   target's field is nil. PORT-NOTE: deep object-recursion of merge is approximated by a shallow
+//   target's field is nil. note: deep object-recursion of merge is approximated by a shallow
 //   field fill (MarkerPositionOption fields are scalars/arrays).
 private func mergePositionOption(_ target: inout MarkerPositionOption, _ source: MarkerPositionOption?) {
     guard let source = source else { return }
@@ -712,7 +712,7 @@ private func retrieve2Any(_ value0: Any?, _ value1: Any?) -> Any? {
     return value0 != nil ? value0 : value1
 }
 
-// PORT-NOTE (deferred): requires visual/helper.getVisualFromData (not ported); approximate the series
+// TODO: requires visual/helper.getVisualFromData (not ported); approximate the series
 //   'color' visual by reading `style.fill`, else the direct visual slot.
 private func getVisualFromData(_ data: SeriesData, _ key: String) -> Any? {
     if key == "color", let style = data.getVisual("style") as? [String: Any], let fill = style["fill"] {

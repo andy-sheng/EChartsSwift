@@ -6,7 +6,7 @@
 // a `getTextContent()` whose `style.text` is the region name. Since MapView switched over to the shared
 // `MapDraw`, `el.textConfig.position` is the upstream `labelXY` percent-offset ARRAY (the region centroid
 // expressed relative to the el bounding rect) rather than a named position keyword — see
-// MapDraw.resetLabelForRegion / MapDraw.ts:742 and the switchover PORT-NOTE in MapView.swift. These tests
+// MapDraw.resetLabelForRegion / MapDraw.ts:742 and the switchover note in MapView.swift. These tests
 // assert that end-to-end (drive ECharts → walk the scene graph → inspect the CompoundPath's label).
 import XCTest
 import ZRenderKit
@@ -115,7 +115,7 @@ final class MapLabelTests: XCTestCase {
     }
 
     // ---- (3) an explicit label.position is IGNORED for a geoJSON region (labelXY wins) ----
-    //   PORT-NOTE: before the MapDraw switchover the inlined `_resetLabelForRegion` let `label.position`
+    //   before the MapDraw switchover the inlined `_resetLabelForRegion` let `label.position`
     //   reach `textConfig.position`. Upstream does not: the `labelXY` percent array unconditionally
     //   replaces whatever `createTextConfig` derived from the label model. (SVG regions pass
     //   `labelXY == nil` and therefore DO keep the named position.)

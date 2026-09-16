@@ -91,7 +91,7 @@ public enum bbox {   // upstream is a free-function module (no alias)
 
     // const xDim: number[] = [];
     // const yDim: number[] = [];
-    // PORT-NOTE: upstream uses module-level scratch buffers xDim/yDim as the out-param of
+    // upstream uses module-level scratch buffers xDim/yDim as the out-param of
     // curve.cubicExtrema. Since curve.cubicExtrema is value-returning per CONVENTIONS §3,
     // these buffers are no longer needed; the extrema array is returned directly below.
 

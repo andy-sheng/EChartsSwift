@@ -19,7 +19,7 @@ const PROJ = '/Volumes/EXT-Storage/Developer/iOS-Chart'
 const PREAMBLE = `FAITHFUL line-by-line port of Apache ZRender (TypeScript) to Swift; preserve upstream structure so future upstream diffs re-sync mechanically.
 
 READ FIRST (binding rules + current state):
-- ${PROJ}/CONVENTIONS.md  (number->Double; free-fn module->caseless enum namespace; classes->final class; VectorArray=SIMD2<Double>, value-returning no out-params; header '// Ported from <upstream> — keep in sync with upstream'; mark gaps '// PORT-TODO')
+- ${PROJ}/CONVENTIONS.md  (number->Double; free-fn module->caseless enum namespace; classes->final class; VectorArray=SIMD2<Double>, value-returning no out-params; header '// Ported from <upstream> — keep in sync with upstream'; mark gaps '// TODO')
 - ${PROJ}/PORT_STATUS.md   (Phase 0+1 landed; section 5 is the Phase 2 plan with exact file targets/deps; section 4 lists open issues)
 
 Phases 0+1 already translated into ${PROJ}/Sources/ZRenderKit/: Core/* (matrix, vector=SIMD2, Point, curve, bbox, BoundingRect, Transformable, PathProxy, platform, util[partial], LRU, types, env, Eventful), Element.swift, Graphic/{Displayable,Group,Path,Gradient,LinearGradient,RadialGradient,Pattern,constants}, Graphic/Shape/{Rect,Circle,Sector,Arc,BezierCurve,Polygon}, Graphic/Helper/{roundRect,roundSector,poly,smoothBezier,subPixelOptimize}, Animation/{Animator(stub),easing}, Tool/color(partial). Reuse those APIs; do not re-translate. NativePainter/ is the hand-written CG/CA backend (CGPathRebuilder, CGRenderer, CALayerPainter) — NOT a translation.
@@ -27,7 +27,7 @@ Phases 0+1 already translated into ${PROJ}/Sources/ZRenderKit/: Core/* (matrix, 
 Upstream source of truth (READ-ONLY): ${Z}/ (also mirrored at ${ZL}/). Never modify upstream or scratchpad.`
 
 // minimal schemas (reduce StructuredOutput retry failures seen in Phase 1)
-const T = { type: 'object', additionalProperties: false, required: ['file', 'status'], properties: { file: { type: 'string' }, status: { type: 'string', enum: ['complete', 'partial', 'stub'] }, notes: { type: 'string', description: 'public API surface, deviations, and PORT-TODOs in one short blurb' } } }
+const T = { type: 'object', additionalProperties: false, required: ['file', 'status'], properties: { file: { type: 'string' }, status: { type: 'string', enum: ['complete', 'partial', 'stub'] }, notes: { type: 'string', description: 'public API surface, deviations, and TODOs in one short blurb' } } }
 const R = { type: 'object', additionalProperties: false, required: ['file', 'verdict'], properties: { file: { type: 'string' }, verdict: { type: 'string', enum: ['faithful', 'minor-issues', 'major-issues'] }, issues: { type: 'array', items: { type: 'string' } } } }
 const BUILD = { type: 'object', additionalProperties: false, required: ['buildGreen'], properties: { buildGreen: { type: 'boolean' }, testsPass: { type: 'boolean' }, notes: { type: 'string' } } }
 const TESTS = { type: 'object', additionalProperties: false, required: ['summary'], properties: { summary: { type: 'string' }, failures: { type: 'array', items: { type: 'string' } } } }
@@ -60,7 +60,7 @@ TASK: Translate ${Z}/graphic/TSpan.ts -> ${PROJ}/Sources/ZRenderKit/Graphic/TSpa
 
   () => agent(`${PREAMBLE}
 
-TASK: Translate ${Z}/graphic/Image.ts -> ${PROJ}/Sources/ZRenderKit/Graphic/Image.swift (125 lines). A Displayable subclass for raster images. ImageStyleProps (image source, x/y/width/height, sx/sy/sWidth/sHeight). The 'image' source is browser HTMLImageElement upstream -> model as a Swift seam: an 'ImageLike' protocol / an associated native image handle (CGImage on the painter side); keep the source typed as an opaque/Any or a small protocol with a '// PORT-TODO: native image loading via platform.loadImage' note. getBoundingRect from x/y/width/height.`, { label: 'translate:Image', phase: 'Foundations', schema: T }),
+TASK: Translate ${Z}/graphic/Image.ts -> ${PROJ}/Sources/ZRenderKit/Graphic/Image.swift (125 lines). A Displayable subclass for raster images. ImageStyleProps (image source, x/y/width/height, sx/sy/sWidth/sHeight). The 'image' source is browser HTMLImageElement upstream -> model as a Swift seam: an 'ImageLike' protocol / an associated native image handle (CGImage on the painter side); keep the source typed as an opaque/Any or a small protocol with a '// TODO: native image loading via platform.loadImage' note. getBoundingRect from x/y/width/height.`, { label: 'translate:Image', phase: 'Foundations', schema: T }),
 
   () => agent(`${PREAMBLE}
 
@@ -78,7 +78,7 @@ phase('Composites')
 const composites = (await parallel([
   () => agent(`${PREAMBLE}
 
-TASK: Translate ${Z}/graphic/Text.ts -> ${PROJ}/Sources/ZRenderKit/Graphic/Text.swift (1113 lines, ZRText — the big one). ZRText is a COMPOSITE Displayable: it lays itself out (via contain/text.swift, now ported) into child TSpan/Rect/Image nodes. Translate: TextStyleProps (rich text, overflow, padding, lineHeight, backgroundColor/border, etc.), _updatePlainTexts/_updateRichTexts, the child-TSpan creation + positioning, DefaultTextStyle. Depends on Displayable, TSpan (Foundations), Contain/text (Foundations), platform. This is what makes labels render. Where it references states/animation (Element stubs), keep '// PORT-TODO'. Faithful method order.`, { label: 'translate:Text', phase: 'Composites', schema: T }),
+TASK: Translate ${Z}/graphic/Text.ts -> ${PROJ}/Sources/ZRenderKit/Graphic/Text.swift (1113 lines, ZRText — the big one). ZRText is a COMPOSITE Displayable: it lays itself out (via contain/text.swift, now ported) into child TSpan/Rect/Image nodes. Translate: TextStyleProps (rich text, overflow, padding, lineHeight, backgroundColor/border, etc.), _updatePlainTexts/_updateRichTexts, the child-TSpan creation + positioning, DefaultTextStyle. Depends on Displayable, TSpan (Foundations), Contain/text (Foundations), platform. This is what makes labels render. Where it references states/animation (Element stubs), keep '// TODO'. Faithful method order.`, { label: 'translate:Text', phase: 'Composites', schema: T }),
 
   () => agent(`${PREAMBLE}
 
@@ -102,7 +102,7 @@ TASK: Translate ${Z}/Storage.ts -> ${PROJ}/Sources/ZRenderKit/Storage.swift (245
 
 TASK: EXTEND the hand-written NativePainter (NOT a translation; targets the seam in ${PROJ}/Sources/NativePainter/Renderer.swift) so it paints the features added this phase. Edit ${PROJ}/Sources/NativePainter/CGRenderer.swift and CALayerPainter.swift:
 - GRADIENT fill/stroke: resolve LinearGradientObject/RadialGradientObject (Graphic/*.swift data types) -> CGGradient with colorStops (use Tool/color for stop parsing); objectBoundingBox vs userSpaceOnUse coords; draw via CGContext.drawLinearGradient/drawRadialGradient clipped to the path.
-- PATTERN fill: PatternObject -> tiled CGImage paint (best-effort; '// PORT-TODO' the exotic cases).
+- PATTERN fill: PatternObject -> tiled CGImage paint (best-effort; '// TODO' the exotic cases).
 - TEXT: drawText for a TSpan/positioned run via Core Text (CTLine) — font from the resolved TextStyle, fill+stroke, text-anchor (start/middle/end), baseline. (Layout already pre-baked by Contain/text + ZRText into positioned TSpans.)
 - IMAGE: drawImage for ZRImage -> draw a native CGImage into the dest rect.
 - fill rule (even-odd vs nonzero), line-cap/join keyword presets if not already.
@@ -114,10 +114,10 @@ phase('Facade')
 const facade = await agent(`${PREAMBLE}
 
 TASK: Translate ${Z}/zrender.ts -> ${PROJ}/Sources/ZRenderKit/ZRender.swift (585 lines) AND wire up two integration points:
-1. The ZRender host facade: class ZRender with init(host/painter), add/remove(Element), refresh (build Storage display list -> Painter), resize, dispose, the animation clock hooks (addAnimator/removeAnimator — bodies stay Phase-3 '// PORT-TODO' stubs, but the type surface must be real). Use Storage.swift (Host phase) + NativePainter.Painter (CALayerPainter) + Element.
+1. The ZRender host facade: class ZRender with init(host/painter), add/remove(Element), refresh (build Storage display list -> Painter), resize, dispose, the animation clock hooks (addAnimator/removeAnimator — bodies stay Phase-3 '// TODO' stubs, but the type surface must be real). Use Storage.swift (Host phase) + NativePainter.Painter (CALayerPainter) + Element.
 2. Replace the 'ZRenderType' forward-declaration placeholder in ${PROJ}/Sources/ZRenderKit/Element.swift (and the Path/Group/Polyline placeholders if now resolvable) with the real types — Element.__zr should be the real ZRender. Keep edits minimal and faithful.
 3. Wire the contain/ hit-testing into the scene graph: Path.contain/containStroke (stubs today) -> Contain/path.swift; Displayable.contain -> its bounding/path test. Small faithful edits to the existing Path.swift/Displayable.swift.
-Document anything still stubbed. If a clean integration needs a small helper, add it with PORT-TODO.`, { label: 'translate:ZRender+wire', phase: 'Facade', schema: T })
+Document anything still stubbed. If a clean integration needs a small helper, add it with TODO.`, { label: 'translate:ZRender+wire', phase: 'Facade', schema: T })
 
 // ---------------- Integrate (build-fix loop) ----------------
 phase('Integrate')
@@ -126,7 +126,7 @@ const integrate = await agent(`${PREAMBLE}
 TASK: Make the whole package COMPILE GREEN and keep existing tests passing. Many interdependent files were generated in parallel — expect integration errors (missing members, signature mismatches, the ZRenderType/Path/Group placeholder replacement, new Sources/ZRenderKit/Contain/ dir).
 Loop: run 'cd ${PROJ} && swift build' (timeout ~400s), read errors, fix with MINIMAL FAITHFUL edits across the generated files. Repeat up to ~12 iterations until green. Rules:
 - Fix real mismatches (wrong member name/arg) over deleting logic.
-- For genuinely-deferred deps (animation, native image loading, states), a '// PORT-TODO' stub with a faithful signature is OK to unblock — never weaken shape/text/contain MATH to dodge an error; fix the call site.
+- For genuinely-deferred deps (animation, native image loading, states), a '// TODO' stub with a faithful signature is OK to unblock — never weaken shape/text/contain MATH to dodge an error; fix the call site.
 - Then run 'swift test' — the 44 existing tests (5 golden + 39 unit) must still pass; fix any regressions you introduced.
 Report buildGreen, testsPass, and a short notes of fixes + anything unresolved.`, { label: 'build-fix-loop', phase: 'Integrate', schema: BUILD })
 
@@ -186,7 +186,7 @@ Read the actually-produced Swift under ${PROJ}/Sources/ZRenderKit/{Graphic,Conta
 Add a 'Phase 2' section (preserve Phase 0/1 history — append, do not delete) with:
 1. What landed (Text/TSpan/Image, contain/* hit-testing, 10 remaining shapes, gradient/pattern/text/image paint, Storage display list, ZRender host facade) as a checklist + per-file status/verdict table.
 2. Build + test status: is 'swift build' green; how many tests pass/skip/fail (golden geometry incl. new shapes + ported unit tests for contain/Sector/Image/Text).
-3. Deduped, severity-sorted NEW open issues + PORT-TODOs (especially still-stubbed: animation [Phase 3], native image loading, states/emphasis, event/Handler plumbing).
+3. Deduped, severity-sorted NEW open issues + TODOs (especially still-stubbed: animation [Phase 3], native image loading, states/emphasis, event/Handler plumbing).
 4. The Phase 3 plan: animation/* full (real Animator/Animation/Clip, rAF->CADisplayLink) + tool/{path,morphPath,dividePath,transformPath} (path morphing) + tool/color completion — list upstream files + already-ported deps. After Phase 3 zrender is 'logic-complete'; Phase 4 (Handler/event/GestureMgr -> UIKit) is the final interaction layer.
 5. Keep the standing upstream-sync rule.`, { label: 'synthesize-status', phase: 'Synthesize' })
 

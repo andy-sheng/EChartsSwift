@@ -4,7 +4,7 @@
 // capture order or of the `anid` prefixes would silently turn it back into a no-op).
 //
 // NOTE: only x/y/rotation interpolate today (axis labels); the `shape` leg is discrete — see the
-// PORT-TODO on the `groupTransition` call in CartesianAxisView.render.
+// TODO on the `groupTransition` call in CartesianAxisView.render.
 import XCTest
 @testable import EChartsKit
 @testable import ZRenderKit

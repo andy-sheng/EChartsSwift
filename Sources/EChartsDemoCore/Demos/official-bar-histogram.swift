@@ -241,7 +241,7 @@ option = {
 };
 """#,
         option: [
-            // PORT-NOTE: the two `ecStat:histogram` transforms are DECLARED here exactly as upstream; their
+            // the two `ecStat:histogram` transforms are DECLARED here exactly as upstream; their
             // implementation now lives in `ecStatHistogramTransform.swift` (registered as `ecStat:histogram`
             // in transformInstall.swift) — see the header.
             "dataset": [

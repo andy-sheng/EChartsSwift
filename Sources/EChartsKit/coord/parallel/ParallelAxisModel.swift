@@ -38,7 +38,7 @@ import ZRenderKit
 
 // upstream: // 'normal' means there is no "active intervals" existing.
 // export type ParallelActiveState = 'normal' | 'active' | 'inactive';
-//   PORT-NOTE: no string unions in Swift → a `String` alias. The brush/active-interval SELECTION paths
+//   no string unions in Swift → a `String` alias. The brush/active-interval SELECTION paths
 //   that produce these states (parallelAxisAction / brushing) are DEFERRED (per the port task); only the
 //   pure state-classification logic (`getActiveState`) is ported below.
 public typealias ParallelActiveState = String
@@ -51,7 +51,7 @@ public typealias ParallelAxisInterval = [Double]
 // export type ParallelAreaSelectStyleProps = Pick<PathStyleProps, ParallelAreaSelectStyleKey> & {
 //     width: number;   // Selected area width.
 // };
-//   PORT-NOTE: `PathStyleProps` is a Swift struct (fixed fields) and cannot be produced from arbitrary
+//   `PathStyleProps` is a Swift struct (fixed fields) and cannot be produced from arbitrary
 //   string keys mechanically (same reduction as makeStyleMapper). Modeled as the dynamic style bag
 //   ([String: Any]); narrow at the (deferred) brush-render call sites.
 public typealias ParallelAreaSelectStyleProps = [String: Any]
@@ -63,7 +63,7 @@ public typealias ParallelAreaSelectStyleProps = [String: Any]
 //     areaSelectStyle?: { width?, borderWidth?, borderColor?, color?, opacity? };
 //     realtime?: boolean;            // Whether realtime update view when select.
 // };
-//   PORT-NOTE: option interfaces modeled as the dynamic option bag ([String: Any]); the extra fields
+//   option interfaces modeled as the dynamic option bag ([String: Any]); the extra fields
 //   (dim / parallelIndex / areaSelectStyle / realtime) are keyed accesses on the bag.
 public typealias ParallelAxisOption = AxisBaseOption
 
@@ -78,7 +78,7 @@ public typealias ParallelAxisOption = AxisBaseOption
 // interface ParallelAxisModel extends AxisModelCommonMixin<ParallelAxisOption>, AxisModelExtendedInCreator {}
 // zrUtil.mixin(ParallelAxisModel, AxisModelCommonMixin);
 //
-// PORT-NOTE: mirrors the PolarAxisModel / CartesianAxisModel port. Upstream `extends ComponentModel`
+// mirrors the PolarAxisModel / CartesianAxisModel port. Upstream `extends ComponentModel`
 //   declaration-merged with `AxisModelCommonMixin` + `AxisModelExtendedInCreator`. Per CONVENTIONS §2 the
 //   Swift port subclasses `AxisBaseModel` (an `open class : ComponentModel, AxisModelCommonMixin`, which
 //   supplies the `axis` slot + `needIncludeZero()`/`getCoordSysModel()` protocol extension), so
@@ -93,7 +93,7 @@ public typealias ParallelAxisOption = AxisBaseOption
 public final class ParallelAxisModel: AxisBaseModel, AxisModelExtendedInCreator {
 
     // upstream: static type: 'baseParallelAxis'; readonly type = ParallelAxisModel.type;
-    //   PORT-NOTE / DEVIATION (direct-registration shortcut): upstream registers this base as
+    //   note / DEVIATION (direct-registration shortcut): upstream registers this base as
     //   'baseParallelAxis' and `axisModelCreator(registers, 'parallel', ParallelAxisModel, …)` synthesizes
     //   the per-axisType subclasses under mainType 'parallelAxis' (type 'parallelAxis.value', …). This port
     //   has no runtime axisModelCreator (it ignores BaseAxisModelClass), so — exactly as SingleAxisModel
@@ -109,7 +109,7 @@ public final class ParallelAxisModel: AxisBaseModel, AxisModelExtendedInCreator 
     //      `as? ParallelAxis` at use.
 
     // upstream: coordinateSystem: Parallel;  (Inject — injected by Parallel's constructor).
-    //   PORT-NOTE: `Parallel` (coord/parallel/Parallel.swift) is the parallel coordinate-system master;
+    //   `Parallel` (coord/parallel/Parallel.swift) is the parallel coordinate-system master;
     //   typed to that master (mirrors SingleAxisModel.coordinateSystem: Single).
     public var coordinateSystem: Parallel!
 
@@ -157,7 +157,7 @@ public final class ParallelAxisModel: AxisBaseModel, AxisModelExtendedInCreator 
     //         }
     //     }
     // }
-    //   PORT-NOTE: the CALLER of this (parallelAxisAction) is ported (component/axis/parallelAxisAction.swift
+    //   the CALLER of this (parallelAxisAction) is ported (component/axis/parallelAxisAction.swift
     //   → installParallelActions calls setActiveIntervals). `number.asc` returns a sorted copy (Swift Array is a value type), so the
     //   in-place sort is reproduced by writing the sorted element back.
     public func setActiveIntervals(_ intervals: [ParallelAxisInterval]) {
@@ -194,7 +194,7 @@ public final class ParallelAxisModel: AxisBaseModel, AxisModelExtendedInCreator 
     //     }
     //     return 'inactive';
     // }
-    //   PORT-NOTE: active-interval SELECTION (populating `activeIntervals`) is now ported via
+    //   active-interval SELECTION (populating `activeIntervals`) is now ported via
     //   parallelAxisAction; this pure classifier reads them. `+value` (JS numeric coercion) → `numOpt(value)`; nil/non-numeric ⇒ NaN path.
     public func getActiveState(_ value: ParsedValue? = nil) -> ParallelActiveState {
         let activeIntervals = self.activeIntervals
@@ -285,7 +285,7 @@ public final class ParallelAxisModel: AxisBaseModel, AxisModelExtendedInCreator 
     //     const axisBreakHelper = getAxisBreakHelper();
     //     return axisBreakHelper ? axisBreakHelper.updateModelAxisBreak(this, payload) : {breaks: []};
     //   }
-    //   PORT-NOTE: mirrors SingleAxisModel.updateAxisBreaks. `getAxisBreakHelper()` is a nil stub in this
+    //   mirrors SingleAxisModel.updateAxisBreaks. `getAxisBreakHelper()` is a nil stub in this
     //   port (the optional axis-break helper module is not installed), so the fallback `{breaks: []}` is
     //   taken today; wiring the structure faithfully makes this auto-correct once that helper lands.
     public func updateAxisBreaks(_ payload: BaseAxisBreakPayload) -> AxisBreakUpdateResult {
@@ -347,12 +347,12 @@ public let parallelAxisExtraOption: ParallelAxisOption = [
 //       registers, 'parallel', ParallelAxisModel, defaultAxisOption
 //   );
 //
-// PORT-NOTE: the live registration is wired directly in ECharts.swift (registerClass(ParallelAxisModel) +
+// the live registration is wired directly in ECharts.swift (registerClass(ParallelAxisModel) +
 //   axisModelCreator 'parallel'); this helper mirrors that call pair so the parallelAxis component models get the parallel extra defaults
 //   merged over `axisDefault[axisType]` (see coord/axisModelCreator.swift). Call it from the parallel
 //   install once the extension registrar wiring lands.
 //   NOTE: `axisModelCreator` currently ignores `BaseAxisModelClass` (it cannot subclass a runtime metatype
-//   — see axisModelCreator.swift PORT-NOTE), so the generated axis models are the file-scope `AxisModel`
+//   — see axisModelCreator.swift note), so the generated axis models are the file-scope `AxisModel`
 //   rather than a ParallelAxisModel subclass; `ParallelAxisModel.self` is passed for API fidelity and to
 //   reconcile once that wiring lands (the areaSelect/activeIntervals machinery then rides on the subclass).
 //   Not done by this helper (wired elsewhere in ECharts.swift): `registerComponentView(ParallelAxisView)`

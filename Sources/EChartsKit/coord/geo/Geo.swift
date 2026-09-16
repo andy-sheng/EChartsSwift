@@ -39,7 +39,7 @@ import ZRenderKit
 //   import GlobalModel from '../../model/Global';                       -> GlobalModel.
 //   import { ParsedModelFinder, ParsedModelFinderKnown, SINGLE_REFERRING } from '../../util/model';
 //       -> ParsedModelFinder / ParsedModelFinderKnown (`[String: Any]`). SINGLE_REFERRING used only by the
-//          getReferringComponents fallback in `getCoordSys` (PORT-NOTE below).
+//          getReferringComponents fallback in `getCoordSys` (note below).
 //   import type GeoModel from './GeoModel';
 //       -> coord/geo/GeoModel.swift (ported sibling) (a `ComponentModel` whose
 //          `.coordinateSystem` is a `Geo`).
@@ -124,7 +124,7 @@ public struct GeoConstructorOption {
  *   and every consumer in this phase holds the concrete `Geo` type. `Transformable` subclassing is
  *   preserved because VIEW_COORD_SYS_TRANS_OVERALL is copied onto the Geo instance itself for backward
  *   compatibility (View passes `self` as legacyGeo → view.lgGeo = geo; see View.legacyCopyOverallTrans).
- *   PORT-NOTE: geoCreator has landed — registration is wired (ECharts: `registerCoordinateSystem('geo', geoCreator)`)
+ *   geoCreator has landed — registration is wired (ECharts: `registerCoordinateSystem('geo', geoCreator)`)
  *   and `CoordinateSystemMaster` conformance is present (see class decl below); only `GeoLikeCoordSys` remains dropped.
  */
 public final class Geo: Transformable, CoordinateSystemMaster {
@@ -169,7 +169,7 @@ public final class Geo: Transformable, CoordinateSystemMaster {
 
     // upstream: model: GeoModel | NullUndefined;  // Injected outside.
     //
-    // PORT-NOTE: typed `ComponentModel?`, not `GeoModel?`, so it WITNESSES the `model` requirement of
+    // typed `ComponentModel?`, not `GeoModel?`, so it WITNESSES the `model` requirement of
     //   BOTH `CoordinateSystemMaster` and `CoordinateSystem` (Geo conforms to both — see the extension at
     //   the bottom of this file). With a `GeoModel?` here, neither protocol's requirement is satisfied by
     //   it, and the two protocol-extension defaults collide ("multiple matching properties named 'model'").
@@ -181,7 +181,7 @@ public final class Geo: Transformable, CoordinateSystemMaster {
     public var geoModel: GeoModel? { return model as? GeoModel }
 
     // upstream: resize: resizeGeoType;  // Injected outside (by geoCreator: `geo.resize = resizeGeo`).
-    //   PORT-NOTE: geoCreator assigns this (coord/geo/geoCreator.swift: `geo.resize = resizeGeo`). Signature mirrors `resizeGeo(this: Geo, geoModel, api)`.
+    //   geoCreator assigns this (coord/geo/geoCreator.swift: `geo.resize = resizeGeo`). Signature mirrors `resizeGeo(this: Geo, geoModel, api)`.
     //   `geoModel` is `MapOrGeoModel` (map series model | GeoModel) — erased to `ComponentModel` here.
     public var resize: ((Geo, ComponentModel, ExtensionAPI) -> Void)!
 
@@ -226,7 +226,7 @@ public final class Geo: Transformable, CoordinateSystemMaster {
                     projection = nil
                 }
                 // upstream: if (!(projection.project && projection.unproject)) { warn(...); projection = null; }
-                //   PORT-NOTE: `GeoProjection` requires both `project` and `unproject`, so this check is
+                //   `GeoProjection` requires both `project` and `unproject`, so this check is
                 //   vacuous in Swift — the protocol guarantees both members exist.
             }
         }
@@ -480,7 +480,7 @@ private func getCoordSys(_ finder: ParsedModelFinderKnown) -> Geo? {
 // ============================================================================
 // upstream: `class Geo extends View implements CoordinateSystemMaster, CoordinateSystem`.
 //
-// PORT-NOTE (gap fix): the class above declared only `CoordinateSystemMaster`. The `CoordinateSystem`
+// note (gap fix): the class above declared only `CoordinateSystemMaster`. The `CoordinateSystem`
 //   half was missing, and it is load-bearing: `geoCreator`'s `coordSysProvider` returns
 //   `geoModel.coordinateSystem as? CoordinateSystem` (CoordSysInjectionProvider's type), so that cast
 //   always failed and `injectCoordSysByOption` NEVER set `seriesModel.coordinateSystem` for a geo-bound

@@ -28,7 +28,7 @@ import ZRenderKit
 // `multipleGraphEdgeHelper` (CONVENTIONS §2). The three exported free functions
 // (initCurvenessList / createEdgeMapForCurveness / getCurvenessForEdge) become static members.
 //
-// PORT NOTE on state: upstream stashes `__curvenessList` and `__edgeMap` directly on the
+// note on state: upstream stashes `__curvenessList` and `__edgeMap` directly on the
 //   `GraphSeriesModel` instance (dynamic JS properties). Swift cannot add stored properties to a
 //   class from another file, so the per-series state lives in a side table keyed by object identity.
 //   The mutable edge-array is a reference type (class `EdgeArray`) so that `.isForward` mutations
@@ -177,7 +177,7 @@ public enum multipleGraphEdgeHelper {
     }
 
     // export function getCurvenessForEdge(edge, seriesModel, index, needReverse?) { ... }
-    // PORT NOTE: upstream returns `number | null`. Both call sites in the layout helpers pass the
+    // upstream returns `number | null`. Both call sites in the layout helpers pass the
     //   result into `retrieve3` (directly or negated). JS `-null === 0`, and retrieve3 skips only
     //   null/undefined, so returning 0.0 for the null cases is behaviourally identical for those
     //   sites (retrieve3 falls through to its `0` default). Hence the return type is a plain Double.
@@ -204,7 +204,7 @@ public enum multipleGraphEdgeHelper {
         createCurveness(seriesModel, totalLen)
 
         // edge.lineStyle = edge.lineStyle || {};
-        // PORT-NOTE: GraphEdge has no dynamic `lineStyle` slot; upstream only ensures its existence
+        // GraphEdge has no dynamic `lineStyle` slot; upstream only ensures its existence
         //   here (no effect on the returned value), so the assignment is omitted.
 
         // const parityCorrection = isArrayParam ? 0 : totalLen % 2 ? 0 : 1;

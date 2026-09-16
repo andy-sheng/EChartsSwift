@@ -34,7 +34,7 @@
 //   - the `manuallyShowTip` (seriesIndex branch) / `manuallyHideTip` action entries
 //   - the `showTip`/`hideTip` action REGISTRATION (install.ts)
 //
-// DEFERRED (left as PORT-NOTEs, exactly like the brief):
+// DEFERRED (left as notes, exactly like the brief):
 //   - `trigger:'axis'` — SINCE PORTED via `_showAxisTooltip` (invoked from EChartsView/axisTrigger, not this
 //     item entry). Still deferred: globalListener, `_keepShow`, `_manuallyAxisShowTip`.
 //     (`_showComponentItemTooltip` — the COMPONENT-item tooltip, for elements carrying
@@ -65,12 +65,12 @@
 //     action-driven path) is ported too, as upstream's BASE model under the global option
 //     (`buildTooltipModel(..., positionDefault ? {position: positionDefault} : null)`) so an explicit
 //     `position` still wins. Still deferred: the PAYLOAD `position` override
-//     (`TryShowParams.position`) — see the PORT-TODO in `manuallyShowTip`.
+//     (`TryShowParams.position`) — see the TODO in `manuallyShowTip`.
 //     CONSTRAINT (Swift, no upstream analogue): a `position` CALLBACK must be stored in the option bag
 //     annotated as `TooltipPositionCallback` — `["position": (cb as TooltipPositionCallback)]`. Swift
 //     cannot dynamically cast between structurally-similar function types, so a closure written with any
 //     other spelling of the same signature fails the `as? TooltipPositionCallback` read in
-//     `_updatePosition` and is silently ignored (see the PORT-NOTE there).
+//     `_updatePosition` and is silently ignored (see the note there).
 //   - the `formatter` override of the default markup — NO LONGER DEFERRED: both the STRING formatter
 //     and the FUNCTION formatter (closure-in-option + `asyncTicket`/`_ticket` async callback) are
 //     ported, on BOTH the item and the axis path. See `_showTooltipContent` for the exact closure
@@ -78,7 +78,7 @@
 //     CAVEAT — the STRING formatter's time-axis `timeFormat` PRE-PASS is ported but DORMANT: its
 //     `params0.axisType.indexOf('time')` gate can never match, because the axis models this port
 //     instantiates report the MAIN type only ("xAxis") where upstream reports "xAxis.time". The gap is
-//     in `EChartsXAxisModel`/`EChartsYAxisModel` (core/ECharts.swift), NOT here — see the PORT-TODO on
+//     in `EChartsXAxisModel`/`EChartsYAxisModel` (core/ECharts.swift), NOT here — see the TODO on
 //     `isTimeAxis` in `_showTooltipContent`, and the test that pins both halves
 //     (`ZZTooltipFormatterTests.testStringFormatterTimeAxisPrePassIsDormantOnTheKnownAxisTypeGap`).
 //   - `showDelay`/`hideDelay` timers (`_showOrMove` / `hideLater`) — NO LONGER DEFERRED: `_showOrMove`
@@ -87,14 +87,14 @@
 //   - `findPointFromSeries` (the data-driven showTip position) — NO LONGER DEFERRED: it is wired in
 //     `manuallyShowTip`, which `EChartsView` routes the item-path `showTip` action to. `target` and
 //     `positionDefault` are threaded too; still deferred on that path: `position: payload.position`
-//     (see the PORT-TODO there).
+//     (see the TODO there).
 //
 // ARCHITECTURE (see MEMORY / phase brief):
 //   Upstream `TooltipView` is a `ComponentView` that reaches the live zrender via `api.getZr()`. In THIS
 //   port `ECharts` is render-once with NO live zr; the live zr lives in `EChartsView`. So this view is
 //   a PLAIN class OWNED by `EChartsView`, constructed over the live `zr` passed in. Its `TooltipRichContent`
 //   adds its `ZRText` to THAT zr, so the tooltip floats above the chart and is not cleared on re-render.
-//   PORT-NOTE (deferred): re-unify with `ComponentView` (init/render(ecModel, api) + the `_componentViewFactories`
+//   TODO: re-unify with `ComponentView` (init/render(ecModel, api) + the `_componentViewFactories`
 //   registry) once `ECharts` grows a live zr / `ExtensionAPI.getZr()`.
 //
 // ============================================================================
@@ -129,12 +129,12 @@ import ZRenderKit
 //   `dataByCoordSys` tree axisTrigger built. Modeled as a `struct` (a plain data bag, no identity —
 //   PORTING.md §4).
 //
-// PORT-TODO: two upstream fields are NOT modeled here, because both are already-documented deferrals
+// TODO: two upstream fields are NOT modeled here, because both are already-documented deferrals
 //   elsewhere in this file and nothing would read them:
 //     - `tooltipOption` — the per-dispatch tooltip-option override, `buildTooltipModel([e.tooltipOption],
-//       …)` in `_showAxisTooltip`; see the deferral PORT-NOTE on `_showAxisTooltip`.
+//       …)` in `_showAxisTooltip`; see the deferral note on `_showAxisTooltip`.
 //     - `position` — the per-dispatch position override (`e.position`, threaded into
-//       `_showTooltipContent`'s `positionExpr`); see the PORT-TODO in `manuallyShowTip`.
+//       `_showTooltipContent`'s `positionExpr`); see the TODO in `manuallyShowTip`.
 //   Add the field AND its consumer together when either lands.
 public struct TryShowParams {
     // upstream: `target?: ECElement` — the hovered element. `Element` here (`ECElement` is a protocol
@@ -175,7 +175,7 @@ public struct TryShowParams {
 // upstream `type TooltipCallbackDataParams = CallbackDataParams & { axisDim?, axisIndex?, axisType?,
 //   axisId?, axisValue?, axisValueLabel?, marker? }` (TooltipView.ts:127). Swift has no intersection
 //   type and a `struct` cannot gain stored properties in an `extension`, so the extra slots were added
-//   to `CallbackDataParams` itself (util/types.swift — see the PORT-NOTE there) and this alias keeps
+//   to `CallbackDataParams` itself (util/types.swift — see the note there) and this alias keeps
 //   upstream's spelling at the call sites.
 public typealias TooltipCallbackDataParams = CallbackDataParams
 
@@ -246,7 +246,7 @@ public final class TooltipView {
     //   built tree against them to decide whether the content can be left alone and only MOVED.
     //   Every path that invalidates the shown content clears BOTH (the item path in `tryShow`, `hide()`,
     //   `dispose()`), exactly where upstream does.
-    //   PORT-NOTE (deferred): upstream's `_keepShow` also reads `_lastDataByCoordSys` (to re-show the axis
+    //   TODO: upstream's `_keepShow` also reads `_lastDataByCoordSys` (to re-show the axis
     //     tooltip after a refresh, via `manuallyShowTip({x, y, dataByCoordSys})`); `_keepShow` itself is
     //     still deferred (it needs the `render`-time re-entry this port has no ComponentView for).
     private var _lastDataByCoordSys: [DataByCoordSys]?
@@ -315,14 +315,14 @@ public final class TooltipView {
         if let dataByCoordSys = dataByCoordSys, !dataByCoordSys.isEmpty {
             // upstream: `this._showAxisTooltip(dataByCoordSys, e);` — this port's `_showAxisTooltip`
             //   takes the two `e` fields it reads (`e.offsetX`/`e.offsetY`, upstream's `point`) instead
-            //   of the whole bag, because `e.tooltipOption` is deferred there (see its PORT-NOTE).
+            //   of the whole bag, because `e.tooltipOption` is deferred there (see its note).
             self._showAxisTooltip(dataByCoordSys, x: e.offsetX ?? 0, y: e.offsetY ?? 0)
         }
         else if let el = el {
             let ecData = innerStore.getECData(el)
             if ecData.ssrType == .legend {
                 // Don't trigger tooltip for legend tooltip item
-                //   PORT-NOTE: DORMANT but ported verbatim — `ssrType = .legend` is only ever stamped by
+                //   DORMANT but ported verbatim — `ssrType = .legend` is only ever stamped by
                 //   upstream's server-side-rendering path (`LegendView` under `ecModel.ssr`), which is
                 //   not ported (see LegendView.swift:316). Kept so the guard is already in place when
                 //   SSR lands, and so this branch diffs cleanly against upstream.
@@ -358,7 +358,7 @@ public final class TooltipView {
             }
             else if let cmptDispatcher = cmptDispatcher {
                 // upstream: `this._showComponentItemTooltip(e, cmptDispatcher, dispatchAction)`. This
-                //   port's signature takes the `e` fields it consumes (task-2 shape), see its PORT-NOTE.
+                //   port's signature takes the `e` fields it consumes (task-2 shape), see its note.
                 self._showComponentItemTooltip(
                     el: cmptDispatcher,
                     point: [e.offsetX ?? 0, e.offsetY ?? 0],
@@ -404,14 +404,14 @@ public final class TooltipView {
     //   `_showOrMove` → `_showTooltipContent` — is `tryShow(seriesModel:…)` below, which is also
     //   this port's pre-resolved public entry (`manuallyShowTip` uses it), so the two are one body.
     //
-    //   PORT-TODO: `const dataModel = ecData.dataModel || seriesModel;` ("For example, graph link" —
+    //   TODO: `const dataModel = ecData.dataModel || seriesModel;` ("For example, graph link" —
     //     markPoint/markLine/markArea stamp `getECData(el).dataModel = <MarkerModel>`, and upstream
     //     builds the whole tooltip off THAT model: `dataModel.getData(dataType)`,
     //     `dataModel.getDataParams`, `dataModel.formatTooltip`, `'item_' + dataModel.name + '_' + …`,
     //     and `dataModel` as the middle cascade layer). It cannot be threaded through this port's build
     //     half yet: `ECData.dataModel` is typed `DataModel` (util/types.swift), a protocol that
     //     deliberately does NOT refine `Model` ("a Swift protocol cannot refine a class" — see the
-    //     PORT-NOTE on `DataModel`), while the build half needs a real `Model` for `buildTooltipModel`'s
+    //     note on `DataModel`), while the build half needs a real `Model` for `buildTooltipModel`'s
     //     cascade plus `.name`. So a marker element's tooltip is currently built from its OWNING series
     //     (`ecModel.getSeriesByIndex(ecData.seriesIndex)`), which is what the pre-dispatcher code did
     //     too — no regression, but the marker's own `tooltip`/`formatTooltip` is not consulted. Fixing
@@ -472,10 +472,10 @@ public final class TooltipView {
     //   element: `manuallyShowTip` (the `showTip` action) and any host that resolved the hover itself.
     //   The hover path no longer pre-resolves anything — it calls `_tryShow` and reaches here through
     //   `_showSeriesItemTooltip`.
-    //   PORT-NOTE (invented name — nothing to grep for upstream): `tryShow` is NOT an upstream symbol;
+    //   note (invented name — nothing to grep for upstream): `tryShow` is NOT an upstream symbol;
     //     it is the second half of upstream's single `_showSeriesItemTooltip`, split out only because
     //     `manuallyShowTip` must be able to enter with a series/dataIndex it resolved itself from a
-    //     datum that may have NO graphic element (see the divergence PORT-NOTE there). Diff this body
+    //     datum that may have NO graphic element (see the divergence note there). Diff this body
     //     against TooltipView.ts:674-733 and `_showSeriesItemTooltip` above against :659-673.
     //
     //   - `seriesModel`: the resolved series (upstream `ecModel.getSeriesByIndex(ecData.seriesIndex)`).
@@ -540,7 +540,7 @@ public final class TooltipView {
         // upstream `_showSeriesItemTooltip` guard (TooltipView.ts:690): trigger must be nil or 'item'.
         let tooltipTrigger = tooltipModel.get("trigger") as? String
         if let t = tooltipTrigger, t != "item" {
-            // PORT-NOTE: this item-only entry bails on trigger:'axis'; the axis tooltip IS ported
+            // this item-only entry bails on trigger:'axis'; the axis tooltip IS ported
             //   (`_showAxisTooltip`) and reached via the axisTrigger path (EChartsView), not from here.
             return false
         }
@@ -568,7 +568,7 @@ public final class TooltipView {
 
         let markupText: String?
         if let frag = seriesTooltipResult.frag {
-            // PORT-NOTE (deferred): upstream wraps the frag with `{ valueFormatter }` from the model.
+            // TODO: upstream wraps the frag with `{ valueFormatter }` from the model.
             markupText = buildTooltipMarkup(
                 frag, markupStyleCreator, self._renderMode, orderMode, useUTC, textStyle
             )
@@ -600,7 +600,7 @@ public final class TooltipView {
                 x: x,
                 y: y,
                 // upstream: `e.position` — the payload `position` override. Not threaded by the slim
-                //   entry (see the PORT-TODO in `manuallyShowTip`), so `_showTooltipContent` falls back
+                //   entry (see the TODO in `manuallyShowTip`), so `_showTooltipContent` falls back
                 //   to the model's `position`.
                 positionExpr: nil,
                 el: el,
@@ -614,7 +614,7 @@ public final class TooltipView {
     // _showOrMove — ported from upstream `_showOrMove` (TooltipView.ts:517). Every show path funnels its
     //   "actually put the content on screen" step through here so `tooltip.showDelay` takes effect.
     //
-    //   PORT-NOTE (adaptation, faithful): browser `setTimeout(cb, delay)` / `clearTimeout(id)` →
+    //   note (adaptation, faithful): browser `setTimeout(cb, delay)` / `clearTimeout(id)` →
     //     `DispatchQueue.main.asyncAfter` over a cancellable `DispatchWorkItem` — the substitution
     //     `util/throttle.swift` already makes (upstream delays are MILLISECONDS, hence `/ 1000`).
     //     Upstream's `cb = bind(cb, this)` has no analogue: a Swift closure already carries its own
@@ -637,7 +637,7 @@ public final class TooltipView {
         // upstream: delay > 0 ? (this._showTimout = setTimeout(cb, delay)) : cb();
         if delay > 0 {
             let work = DispatchWorkItem { [weak self] in
-                // PORT-NOTE (adaptation): release the slot BEFORE running `cb`. Upstream's `_showTimout`
+                // note (adaptation): release the slot BEFORE running `cb`. Upstream's `_showTimout`
                 //   is a plain `setTimeout` id (a number), so a fired timer retains nothing; a
                 //   `DispatchWorkItem` retains its closure — and therefore the captured `SeriesModel`,
                 //   params and markup — until the slot is reassigned. Clearing first is safe (a replaced
@@ -663,7 +663,7 @@ public final class TooltipView {
     //   /*multipleSeries*/ true)` fragment (e.g. "seriesName 20"). The sections are collected into one
     //   article section, built to a markup string, and shown in the SAME box on the live zr near the pointer.
     //
-    //   DEFERRED (faithful PORT-NOTEs):
+    //   DEFERRED (faithful notes):
     //     - `axisPointerViewHelper.getValueLabel` full path (formatter callback + getAxisRawValue) — the
     //       label here is the `scale.parse + scale.getLabel` (viewHelper is Phase 36). The
     //       `label.formatter` override is not applied.
@@ -771,7 +771,7 @@ public final class TooltipView {
                         series.formatTooltip(dataIndex, true, nil)
                     )
                     if let frag = seriesTooltipResult.frag {
-                        // PORT-NOTE (deferred): upstream wraps the frag with `{ valueFormatter }` from
+                        // TODO: upstream wraps the frag with `{ valueFormatter }` from
                         //   buildTooltipModel([series], globalTooltipModel).get('valueFormatter').
                         axisSectionMarkup.blocks?.append(frag)
                     }
@@ -822,7 +822,7 @@ public final class TooltipView {
             guard let self = self else { return }
             // (the memo is updated by the call itself, so it must run before the branch is taken)
             let contentNotChanged = self._updateContentNotChangedOnAxis(dataByCoordSys, cbParamsList)
-            // PORT-NOTE (divergence, safety — no upstream analogue): `&& self._tooltipContent.el != nil`.
+            // note (divergence, safety — no upstream analogue): `&& self._tooltipContent.el != nil`.
             //   `TooltipRichContent.getSize()` (upstream TooltipRichContent.ts:118) reads `this.el`
             //   unguarded, and the richText `el` only exists once `setContent` has run. With
             //   `showContent: false` (or `show: false`) `_showTooltipContent` returns BEFORE building it,
@@ -884,12 +884,12 @@ public final class TooltipView {
     //   default content is the config's `content` (the item name), and the `formatter` receives the
     //   config's `formatterParams` rather than a datum's `CallbackDataParams`.
     //
-    //   PORT-NOTE (signature): upstream is `private _showComponentItemTooltip(e, el, dispatchAction)`.
+    //   note (signature): upstream is `private _showComponentItemTooltip(e, el, dispatchAction)`.
     //     Like `_showAxisTooltip` (same reason — this view is NOT a `ComponentView`; the host
     //     `EChartsView` owns it and drives the hover, see ARCHITECTURE), it is `public` here and takes
     //     the pieces of `TryShowParams` this port threads: `el` (upstream's `cmptDispatcher`), the
     //     pointer `point` (`e.offsetX`/`e.offsetY`) and `positionDefault`. `e.position` (the
-    //     per-dispatch override) is not threaded — the same PORT-TODO as `tryShow`, see `manuallyShowTip`.
+    //     per-dispatch override) is not threaded — the same TODO as `tryShow`, see `manuallyShowTip`.
     //   The dispatchAction seam is the same pending merge closure used upstream. The component leg's
     //   trailing showTip therefore wins over an axis hideTip produced by the same mousemove.
     // ------------------------------------------------------------------------
@@ -921,7 +921,7 @@ public final class TooltipView {
             return
         }
         // upstream: let tooltipOpt = tooltipConfig.option || {};
-        //   PORT-NOTE: `ECData.TooltipConfig.option` is non-Optional in this port (`setTooltipConfig`
+        //   `ECData.TooltipConfig.option` is non-Optional in this port (`setTooltipConfig`
         //     always builds one), so the `|| {}` fallback has no analogue.
         var tooltipOpt = tooltipConfig.option
         // upstream: let encodeHTMLContent = tooltipOpt.encodeHTMLContent;
@@ -932,7 +932,7 @@ public final class TooltipView {
         //       tooltipOpt = { content: content, /* Fixed formatter */ formatter: content };
         //       encodeHTMLContent = true;   // can't know if the content needs encoding → encode
         //   }
-        //   PORT-NOTE (divergence, TYPE): no analogue. Upstream's `tooltipConfig.option` is `string |
+        //   note (divergence, TYPE): no analogue. Upstream's `tooltipConfig.option` is `string |
         //     ComponentItemTooltipOption`; this port types it as the struct alone, and the string arm is
         //     already normalized PROVIDER-side — `setTooltipConfig` (util/graphic.swift) turns a `String`
         //     `itemTooltipOption` into `{formatter: <string>}` and always sets `content: itemName` and
@@ -944,7 +944,7 @@ public final class TooltipView {
         //       tooltipOpt = clone(tooltipOpt);      // clone might be unnecessary?
         //       tooltipOpt.content = encodeHTML(tooltipOpt.content);
         //   }
-        //   PORT-NOTE (divergence, RENDER MODE): kept verbatim but DORMANT — `_renderMode` is FORCED
+        //   note (divergence, RENDER MODE): kept verbatim but DORMANT — `_renderMode` is FORCED
         //     `.richText` in this native port (no DOM host), so `isHTMLRenderMode` is always false and
         //     the content is never HTML-escaped. That is upstream's own behaviour for renderMode
         //     'richText' (escaping `<`/`&` would be visible literal text in a `ZRText`), NOT a gap.
@@ -1019,7 +1019,7 @@ public final class TooltipView {
                 asyncTicket: asyncTicket,
                 x: x,
                 y: y,
-                // upstream `e.position` — see the signature PORT-TODO above.
+                // upstream `e.position` — see the signature TODO above.
                 positionExpr: nil,
                 el: el,
                 markupStyleCreator: markupStyleCreator
@@ -1086,7 +1086,7 @@ public final class TooltipView {
         //     `formatter(params, asyncTicket, callback) => string`,
         //     where `callback(cbTicket, html)` may be invoked LATER (async content). Both the
         //     synchronous return path and the async ticket path are ported.
-        //     PORT-NOTE: `util.isFunction` is unreliable for Swift closures (no introspectable
+        //     `util.isFunction` is unreliable for Swift closures (no introspectable
         //       metadata), so "is callable" is resolved STATICALLY by casting the option value to the
         //       formatter signature — the established closure-in-option idiom (model/mixin/
         //       dataFormat.swift:197). The CANONICAL shape is the already-ported
@@ -1101,7 +1101,7 @@ public final class TooltipView {
         //       path, the list for the axis path) — exactly what upstream hands the JS function; an
         //       array-typed closure is NOT invoked with a synthesized one-element array, and vice versa.
         //
-        //   PORT-NOTE: upstream's `html: string | HTMLElement | HTMLElement[]` union (and the final
+        //   upstream's `html: string | HTMLElement | HTMLElement[]` union (and the final
         //     `else { html = formatter }` arm, which assigns a non-string non-function `formatter` —
         //     i.e. an `HTMLElement`) has no analogue here: renderMode is FORCED 'richText' and the
         //     content host is a `ZRText`. A non-string/non-closure `formatter` is therefore ignored
@@ -1129,7 +1129,7 @@ public final class TooltipView {
                 //   and the time-axis pre-pass is skipped — the same result as `nil` here.
                 case .component: params0 = nil
                 }
-                // PORT-TODO: this test is DORMANT in the port. `axisType` is `axisModel.type`
+                // TODO: this test is DORMANT in the port. `axisType` is `axisModel.type`
                 //   (component/axisPointer/axisTrigger.swift, faithful to axisTrigger.ts), and upstream's
                 //   `ComponentModel.type` is `<mainType>.<subType>` — 'xAxis.time'. But the axis models
                 //   `ECharts.setOption` actually instantiates (`EChartsXAxisModel` / `EChartsYAxisModel`,
@@ -1235,16 +1235,16 @@ public final class TooltipView {
             // The COMPONENT-item path (`_showComponentItemTooltip`): upstream hands the SAME
             //   `formatter(params, asyncTicket, callback)` call the component's `formatterParams`
             //   (`{componentType, name, $vars, ...extra}`) instead of a datum's params — see the
-            //   `.component` PORT-NOTE on `TopLevelFormatterParams` (component/tooltip/TooltipModel.swift).
+            //   `.component` note on `TopLevelFormatterParams` (component/tooltip/TooltipModel.swift).
             //   The Swift closure must therefore be spelled at THAT params type; both arities are
             //   accepted for the same reason as above.
-            //   PORT-NOTE (Swift constraint): a component formatter reaches here off
+            //   note (Swift constraint): a component formatter reaches here off
             //     `ECData.TooltipConfig.option.common`, which is a `CommonTooltipOption<Any>` — so the
-            //     type its own PORT-NOTE (`TooltipFormatterCallback<FormatterParams>`, util/types.swift)
+            //     type its own note (`TooltipFormatterCallback<FormatterParams>`, util/types.swift)
             //     tells a user to spell is `TooltipFormatterCallback<Any>` HERE. Swift dynamic casts
             //     between function types are EXACT, so BOTH spellings must be accepted or the documented
             //     one is silently dropped and the user gets the default item-name content instead (the
-            //     same silent-drop the `position` callback PORT-NOTE warns about). The `Any`-spelled arms
+            //     same silent-drop the `position` callback note warns about). The `Any`-spelled arms
             //     come last so a precisely-typed formatter still wins.
             if let formatter = formatter as? TooltipFormatterCallback<ComponentItemTooltipLabelFormatterParams> {
                 self._ticket = asyncTicket
@@ -1270,9 +1270,9 @@ public final class TooltipView {
     // _getNearestPoint — upstream (TooltipView.ts:884). The tooltip box's BORDER colour: on the axis
     //   path (or whenever `params` is the LIST) the model's `borderColor` else `defaultBorderColor`;
     //   on the item path the hovered datum's OWN colour, so the border matches the hovered series.
-    //   PORT-NOTE: upstream returns the single-field object `{ color }`; a one-field Swift tuple is not
+    //   upstream returns the single-field object `{ color }`; a one-field Swift tuple is not
     //     expressible, so the value itself is returned (the sole call site reads `.color`).
-    //   PORT-NOTE: upstream's `ZRColor` return narrows to `ColorString` here — `TooltipRichContent.
+    //   upstream's `ZRColor` return narrows to `ColorString` here — `TooltipRichContent.
     //     setContent` takes the border colour as a `String?` (upstream casts it `as string` too), and
     //     `params.borderColor` is already a `String?` on `CallbackDataParams`.
     // ------------------------------------------------------------------------
@@ -1318,22 +1318,22 @@ public final class TooltipView {
     //   when no positionExpr; then applies `confineTooltipPosition` gated by `shouldTooltipConfine`
     //   (true for richText unless `confine:false`).
     //
-    //   PORT-NOTE (divergence, faithful): upstream hands the callback `content.el`, typed
+    //   note (divergence, faithful): upstream hands the callback `content.el`, typed
     //     `HTMLDivElement | ZRText` — the HTML host's DIV or the richText host's `ZRText`. This port
     //     forces renderMode 'richText' (no DOM host), so the third callback argument is ALWAYS the
     //     `TooltipRichContent`'s `ZRText` (the `TooltipPositionCallback` typealias types it `Any?`,
     //     matching the upstream union).
-    //   PORT-NOTE (signature reconciliation): upstream's `params` here is the SAME
+    //   note (signature reconciliation): upstream's `params` here is the SAME
     //     `TooltipCallbackDataParams | TooltipCallbackDataParams[]` union the `formatter` receives, so it
     //     is threaded as the ported `TopLevelFormatterParams` enum (component/tooltip/TooltipModel.swift)
     //     and unwrapped to the `TooltipPositionCallbackParams` (= `Any`) arm the callback signature names
     //     — `.single` → one `CallbackDataParams`, `.multiple` → the `[CallbackDataParams]` list, exactly
     //     what upstream passes on the item / axis paths respectively.
-    //   PORT-NOTE (divergence): upstream's `isObject(positionExpr)` arm receives a plain JS object cast
+    //   note (divergence): upstream's `isObject(positionExpr)` arm receives a plain JS object cast
     //     to `BoxLayoutOptionMixin`. In this port an option object is an `[String: Any]` bag, so BOTH the
     //     bag AND the typed `TooltipBoxLayoutOption` (the arm the `TooltipPositionCallback` return union
     //     names) are accepted; the typed struct is normalized into the bag `getLayoutRect` reads.
-    //   PORT-NOTE (divergence, LANGUAGE constraint — no upstream analogue): upstream's `isFunction(
+    //   note (divergence, LANGUAGE constraint — no upstream analogue): upstream's `isFunction(
     //     positionExpr)` accepts ANY callable. Swift's `as? TooltipPositionCallback` is an EXACT function
     //     -type cast: a closure written with a structurally-similar but differently-spelled signature
     //     (`-> [Double]` instead of `-> Any`, a `CallbackDataParams` params slot instead of
@@ -1341,7 +1341,7 @@ public final class TooltipView {
     //     degrading to the default `refixTooltipPosition` placement. A `position` callback MUST therefore
     //     be stored annotated: `["position": (cb as TooltipPositionCallback)]` (see the same note on
     //     `CommonTooltipOption.position`, util/types.swift).
-    //   PORT-NOTE (divergence): upstream's string-keyword branch is gated on the ELEMENT
+    //   note (divergence): upstream's string-keyword branch is gated on the ELEMENT
     //     (`isString(positionExpr) && el`) because `el.getBoundingRect()` is non-null there. This port's
     //     `Element.getBoundingRect()` returns `BoundingRect?` and the BASE implementation returns nil
     //     (Sources/ZRenderKit/Element.swift), so the branch is gated on the RECT instead: a non-nil `el`
@@ -1409,7 +1409,7 @@ public final class TooltipView {
             vAlign = nil
         }
         // Specify tooltip position by string 'top' 'bottom' 'left' 'right' around graphic element
-        // upstream: `else if (isString(positionExpr) && el)` — gated on `rect` here, see the PORT-NOTE
+        // upstream: `else if (isString(positionExpr) && el)` — gated on `rect` here, see the note
         //   above (`el.getBoundingRect()` is Optional in this port and nil on the Element base).
         else if let positionStr = positionExpr as? String, let rect = rect {
             let pos = calcTooltipPosition(
@@ -1477,16 +1477,16 @@ public final class TooltipView {
     //   NOT `axisDim`/`axisIndex` — kept verbatim; the axis id already identifies the axis) plus, per
     //   series entry, `seriesIndex`/`dataIndex`; finally the hovered series' `cbParams.data` identity.
     //
-    //   PORT-NOTE (adaptation): upstream's `arr[i] || {} as T` out-of-range reads become bounds-checked
+    //   note (adaptation): upstream's `arr[i] || {} as T` out-of-range reads become bounds-checked
     //     Optionals — an absent entry then fails every `===` below exactly like a `{}` placeholder's
     //     `undefined` fields do. (`contentNotChanged` is only ever ANDed, never re-raised, so upstream's
     //     `each` — which does not break — and these loops agree on the result regardless of order.)
-    //   PORT-NOTE (adaptation): upstream `lastItem.value === thisItem.value` is JS strict equality over a
+    //   note (adaptation): upstream `lastItem.value === thisItem.value` is JS strict equality over a
     //     `ScaleDataValue` (`number | string | Date`); `tooltipStrictEquals` below is that same-type-only
     //     test — the file-local `===` helper idiom `visual/VisualMapping.swift:986` and
     //     `data/helper/dataValueHelper.swift:422` already use, under a scoped name because this copy
     //     covers strictly more value kinds than either of those two (see its own note).
-    //   PORT-NOTE (divergence, LANGUAGE constraint): upstream's LAST test is `lastCbParams.data !==
+    //   note (divergence, LANGUAGE constraint): upstream's LAST test is `lastCbParams.data !==
     //     cbParams.data`, an IDENTITY comparison of the raw data item (`data.getRawDataItem`). A raw item
     //     is a Swift VALUE in this port (a `Double`, a `[String: Any]` bag, an `[Any]` row), so reference
     //     identity is unrepresentable for the non-class cases; `tooltipStrictEquals` therefore compares
@@ -1577,7 +1577,7 @@ public final class TooltipView {
     //   WHY it exists: upstream's per-mousemove `_tryShow` item leg nulls `_lastDataByCoordSys` on every
     //   pointer move (TooltipView.ts:477/511), so a re-render can never leave stale content under the
     //   memo. This port only runs `_tryShow` on element ENTER (see `_updateContentNotChangedOnAxis`'s
-    //   wiring PORT-NOTE), so the invalidation has to come from the RENDER side instead:
+    //   wiring note), so the invalidation has to come from the RENDER side instead:
     //   `EChartsView._afterSetOption()` calls this after every `setOption` / post-action re-sync.
     //   Deliberately NOT called from `setModel(_:)` — `EChartsView._ensureTooltipView()` runs that
     //   immediately before every `_showAxisTooltip`, which would disable the no-change branch entirely.
@@ -1592,7 +1592,7 @@ public final class TooltipView {
     //   hide happens one hop later in `manuallyHideTip` (TooltipView.ts:398):
     //       `if (this._tooltipModel) { tooltipContent.hideLater(this._tooltipModel.get('hideDelay')); }`
     //   This port has no `update:'tooltip:manuallyHideTip'` view routing (see installTooltipActions'
-    //   PORT-NOTE), so `EChartsView` calls `hide()` for BOTH hops — the `_hide` leave/mouseout leg and
+    //   note), so `EChartsView` calls `hide()` for BOTH hops — the `_hide` leave/mouseout leg and
     //   the `hideTip` action. Hence `hideLater` (i.e. `tooltip.hideDelay`) lives here: the box stays up
     //   for `hideDelay` ms after the pointer leaves, exactly as upstream, and `isShow()` flips to false
     //   immediately (upstream `hideLater` sets `_show = false` up front "to avoid invoke hideLater
@@ -1601,7 +1601,7 @@ public final class TooltipView {
     //   A pending DELAYED SHOW is deliberately NOT cancelled here: upstream `_hide`/`manuallyHideTip`
     //   never touch `_showTimout` (only `_showOrMove`'s own `clearTimeout` does), so a `showDelay` timer
     //   armed before the pointer left still fires. Faithful — see PORTING.md (fidelity over improvement).
-    //   PORT-NOTE (divergence, small): when `_globalTooltipModel` is nil upstream skips the hide
+    //   note (divergence, small): when `_globalTooltipModel` is nil upstream skips the hide
     //     entirely (`if (this._tooltipModel)`); here that degrades to an IMMEDIATE hide
     //     (`hideLater(nil)`) so a model-less view can never strand a visible box.
     // ------------------------------------------------------------------------
@@ -1677,10 +1677,10 @@ public final class TooltipView {
         //   argument of a `position` CALLBACK work on the action-driven path too. `positionDefault:
         //   'bottom'` is threaded as well (see the `tryShow` doc): "When manully trigger, the mouse is not
         //   on the el, so we'd better to position tooltip on the bottom of the el".
-        // PORT-TODO: `position: payload.position` — the per-dispatch position override
+        // TODO: `position: payload.position` — the per-dispatch position override
         //   (`TryShowParams.position`). `tryShow` has no `position` parameter yet, so a `showTip` payload
         //   carrying its own `position` is ignored and the model's (or the 'bottom' default) is used.
-        // PORT-NOTE (divergence, deliberate — the ONE entry that does NOT go through `_tryShow`):
+        // note (divergence, deliberate — the ONE entry that does NOT go through `_tryShow`):
         //   upstream hands this to `_tryShow({offsetX, offsetY, target: pointInfo.el, …})` and lets the
         //   dispatcher walk re-derive the series/dataIndex from `pointInfo.el`'s `ECData`. This entry
         //   calls the BUILD half (`tryShow`) directly with the series/dataIndex it has ALREADY resolved
@@ -1714,7 +1714,7 @@ public final class TooltipView {
 
     // upstream `manuallyHideTip` (TooltipView.ts:389) — the `update:'tooltip:manuallyHideTip'` target.
     //   Its content line — `tooltipContent.hideLater(this._tooltipModel.get('hideDelay'))` — is `hide()`
-    //   (see the PORT-NOTEs there), which ALSO performs upstream's
+    //   (see the notes there), which ALSO performs upstream's
     //   `this._lastX = this._lastY = this._lastDataByCoordSys = null; this._cbParamsList = null;` reset
     //   (TooltipView.ts:401-402) — all four fields, since `hide()` stands in for both hops.
     //   The upstream second hideTip dispatch is unnecessary in this host because the action listener is
@@ -1811,7 +1811,7 @@ private func elementAtOrNil<T>(_ arr: [T], _ i: Int) -> T? {
 // tooltipStrictEquals — upstream `a === b` for the value kinds `_updateContentNotChangedOnAxis` compares
 //   (a `ScaleDataValue` axis value: number | string | Date; and a raw data item: number | string | array
 //   | object). Same-type only, exactly like JS (mixed types are never `===`).
-//   PORT-NOTE (divergence, LANGUAGE constraint): JS `===` on two objects is REFERENCE identity. A raw
+//   note (divergence, LANGUAGE constraint): JS `===` on two objects is REFERENCE identity. A raw
 //     data item is a Swift VALUE here (an `[Any]` row, a `[String: Any]` bag), for which identity is
 //     unrepresentable, so those arms compare STRUCTURALLY (element/key-wise, recursively). Class
 //     instances still compare by `===`, matching upstream exactly. The structural arms are strictly more
@@ -1851,7 +1851,7 @@ private func tooltipStrictEquals(_ a: Any?, _ b: Any?) -> Bool {
     // Date === Date  (a `ScaleDataValue` arm; JS compares Date OBJECTS by reference, but a Swift `Date`
     //   is a value — same divergence as the collection arms below)
     if let da = a as? Date { return (b as? Date) == da }
-    // structural arms (see the PORT-NOTE above) — tested BEFORE the class arm so a data item that IS a
+    // structural arms (see the note above) — tested BEFORE the class arm so a data item that IS a
     //   collection (including a bridged NSArray/NSDictionary) compares by content, not by box identity.
     if let aa = a as? [Any], let bb = b as? [Any] {
         if aa.count != bb.count { return false }
@@ -1930,7 +1930,7 @@ private func buildTooltipModel(
     return resultModel
 }
 
-// PORT-NOTE (adaptation, NOT an upstream function — nothing to grep for upstream). Upstream's
+// note (adaptation, NOT an upstream function — nothing to grep for upstream). Upstream's
 //   `ecData.tooltipConfig.option` is already a plain JS object, so `buildTooltipModel` can drop it
 //   straight into a `new Model(...)`. In THIS port it is the statically-typed
 //   `ComponentItemTooltipOption<Any>` struct (util/innerStore.swift's `ECData.TooltipConfig`,
@@ -1950,7 +1950,7 @@ private func componentItemTooltipOptionBag(_ opt: ComponentItemTooltipOption<Any
     return bag
 }
 
-// The `CommonTooltipOption<T>` half of `componentItemTooltipOptionBag` (same PORT-NOTE). Field order
+// The `CommonTooltipOption<T>` half of `componentItemTooltipOptionBag` (same note). Field order
 //   follows the struct declaration in util/types.swift, which follows upstream's interface.
 private func commonTooltipOptionBag(_ o: CommonTooltipOption<Any>) -> [String: Any] {
     var bag: [String: Any] = [:]
@@ -2131,7 +2131,7 @@ private func tplParamFromComponentItemFormatterParams(
 //   actions. The action DESCRIPTORS are still registered faithfully (type/event/update) so the payloads
 //   flow through the ported dispatchAction pipeline.
 //
-// PORT-NOTE (deferred): per-instance `update`-field routing (`tooltip:manuallyShowTip`) — needs the
+// TODO: per-instance `update`-field routing (`tooltip:manuallyShowTip`) — needs the
 //   ComponentView update dispatch, which the path does not have. Multi-chart correctness (each
 //   chart's own tooltip view) rides on that routing; the single-chart headless path is driven by
 //   `EChartsView` invoking `manuallyShowTip`/`manuallyHideTip` on its owned view.
@@ -2156,6 +2156,6 @@ public func installTooltipActions(_ registers: EChartsExtensionInstallRegisters)
     hideTip.update = "tooltip:manuallyHideTip"
     registerAction(hideTip, tooltipNoopAction)
 
-    // PORT-NOTE: `use(installAxisPointer)` (install.ts:27) — the trigger:'axis' path IS ported; axisPointer
+    // `use(installAxisPointer)` (install.ts:27) — the trigger:'axis' path IS ported; axisPointer
     //   is installed via EChartsView's axisTrigger wiring (component/axisPointer), not a tooltip-side use().
 }

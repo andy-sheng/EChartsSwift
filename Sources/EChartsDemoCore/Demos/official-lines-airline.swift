@@ -58,7 +58,7 @@ private let flightsData: [String: Any] = {
 //   `data.routes.map(a => [getAirportCoord(a[1]), getAirportCoord(a[2])])`
 // — airports[i] is [name, city, country, longitude, latitude]; a route is [airlineIdx, srcIdx, dstIdx].
 // 65,663 [[lon, lat], [lon, lat]] pairs. This is a pure data transform (not a JS closure the option
-// carries), so it is pre-computed here rather than PORT-NOTE'd away.
+// carries), so it is pre-computed here rather than note'd away.
 private let airlineRoutes: [[[Double]]] = {
     guard let airports = flightsData["airports"] as? [[Any]],
           let routes = flightsData["routes"] as? [[Any]] else { return [] }

@@ -26,17 +26,17 @@ import ZRenderKit
 // import Scale from '../../scale/Scale';                                 -> Scale (scale/Scale.swift)
 // import CartesianAxisModel, { CartesianAxisPosition } from './AxisModel';
 //                                                                        -> CartesianAxisModel / CartesianAxisPosition (coord/cartesian/AxisModel.swift)
-//   PORT-NOTE: coord/cartesian/AxisModel.swift is a sibling landing this phase; conventional API:
+//   coord/cartesian/AxisModel.swift is a sibling landing this phase; conventional API:
 //     - `CartesianAxisModel` (open class : AxisBaseModel)
 //     - `public typealias CartesianAxisPosition = String`  (upstream: 'top' | 'bottom' | 'left' | 'right')
 // import Grid from './Grid';                                             -> Grid (coord/cartesian/Grid.swift)
-//   PORT-NOTE: coord/cartesian/Grid.swift is a sibling landing this phase; referenced here only as a
+//   coord/cartesian/Grid.swift is a sibling landing this phase; referenced here only as a
 //     back-pointer type (`grid` field). Grid also injects the function-typed fields
 //     `getAxesOnZeroOf` / `toGlobalCoord` / `toLocalCoord` on each Axis2D instance.
 // import { OptionAxisType } from '../axisCommonTypes';                   -> OptionAxisType (String alias; coord/axisHelper.swift / axisCommonTypes.swift)
 // import OrdinalScale from '../../scale/Ordinal';                        -> OrdinalScale (scale/Ordinal.swift)
 // import type AxisBuilder from '../../component/axis/AxisBuilder';       -> AxisBuilder (component/axis/AxisBuilder — Phase 6b)
-//   PORT-NOTE: `AxisBuilder` (component/axis/AxisBuilder.swift) is ported; it is a *type-only* reference
+//   `AxisBuilder` (component/axis/AxisBuilder.swift) is ported; it is a *type-only* reference
 //     here (used solely to type the `axisBuilder` field). The former type-only placeholder at the bottom
 //     of this file has been removed now that the real AxisBuilder has landed.
 
@@ -83,7 +83,7 @@ public final class Axis2D: Axis {
      * Axis model. Injected outside
      */
     // upstream: model: CartesianAxisModel;
-    // PORT-NOTE: upstream narrows the inherited `model: AxisBaseModel` (base `Axis`) to
+    // upstream narrows the inherited `model: AxisBaseModel` (base `Axis`) to
     //   `CartesianAxisModel`. Swift cannot narrow the type of an inherited settable stored property
     //   (property overrides are invariant), so the inherited `model: AxisBaseModel!` is reused as-is;
     //   callers needing `CartesianAxisModel` cast. The dynamic option bag (`model.option`) is

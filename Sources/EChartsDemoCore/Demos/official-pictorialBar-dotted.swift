@@ -23,7 +23,7 @@
 //   3. The trailing `export {};` is dropped — a bare export is a SyntaxError in the reference pane's
 //      classic script and would blank the whole page.
 //   No `drive`: the example is a single static `option` — it never touches `myChart`, sets no timer and
-//   registers no handler. No PORT-NOTE either: the option has NO function-valued key (no formatter, no
+//   registers no handler. No note either: the option has NO function-valued key (no formatter, no
 //   symbolSize callback), so the Swift option mirrors the JS one key-for-key with nothing dropped.
 //
 // NATIVE PANE: the two gradient `itemStyle.color`s are the same shape official-bar-gradient.swift

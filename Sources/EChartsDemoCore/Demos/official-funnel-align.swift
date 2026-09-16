@@ -12,7 +12,7 @@
 // unchanged — the native `option` mirrors the JS one key-for-key. The four series' identical `data`
 // arrays are hoisted into one file-scope `private let` (same values, four references).
 //
-// PORT-NOTE (native pane only, framework gap — not a demo simplification): `toolbox.feature.dataView`
+// note (native pane only, framework gap — not a demo simplification): `toolbox.feature.dataView`
 // is kept in the Swift option to stay faithful, but EChartsKit does not register a `dataView` feature
 // (component/toolbox/toolboxFeatures.swift: it is the HTML-overlay table editor, DEFERRED as a host-DOM
 // feature). ToolboxView skips unregistered features, so the native toolbox draws only the `restore` +
@@ -143,7 +143,7 @@ option = {
                 "orient": "vertical",
                 "top": "center",
                 "feature": [
-                    // PORT-NOTE: `dataView` is unregistered in EChartsKit (DOM overlay editor, deferred);
+                    // `dataView` is unregistered in EChartsKit (DOM overlay editor, deferred);
                     // ToolboxView skips it, so this key is inert natively but kept for option fidelity.
                     "dataView": ["readOnly": false] as [String: Any],
                     "restore": [:] as [String: Any],

@@ -25,7 +25,7 @@ import ZRenderKit
 //   import * as zrUtil from 'zrender/src/core/util';                    -> `util.*` (ZRenderKit).
 //   import ComponentModel from '../../model/Component';                 -> ComponentModel (model/Component.swift).
 //   import type Parallel from './Parallel';                             -> Parallel (coord/parallel/Parallel.swift; coord-sys master).
-//       PORT-NOTE: `Parallel` (the 5th coordinate-system master) is ported (coord/parallel/Parallel.swift).
+//       `Parallel` (the 5th coordinate-system master) is ported (coord/parallel/Parallel.swift).
 //       `coordinateSystem` is typed via `CoordinateSystemMaster?` below (mirroring PolarModel);
 //       narrow via `as? Parallel` at use.
 //   import {
@@ -48,14 +48,14 @@ public let COORD_SYS_TYPE_PARALLEL = "parallel"
 public let COMPONENT_TYPE_PARALLEL = COORD_SYS_TYPE_PARALLEL
 
 // upstream: export type ParallelLayoutDirection = 'horizontal' | 'vertical';
-//   PORT-NOTE: no string unions in Swift → a `String` alias (option is read from the dynamic bag).
+//   no string unions in Swift → a `String` alias (option is read from the dynamic bag).
 public typealias ParallelLayoutDirection = String
 
 // upstream:
 // export interface ParallelCoordinateSystemOption extends
 //     ComponentOption, ComponentOnCalendarOptionMixin,
 //     ComponentOnMatrixOptionMixin, BoxLayoutOptionMixin { ... }
-//   PORT-NOTE: `ParallelCoordinateSystemOption` describes the dynamic option shape (mainType/layout/
+//   `ParallelCoordinateSystemOption` describes the dynamic option shape (mainType/layout/
 //   axisExpand*/left/top/right/bottom/parallelAxisDefault plus the box/calendar/matrix mixins); modeled as
 //   the dynamic option bag ([String: Any]) per CONVENTIONS §2 — no standalone Swift struct emitted.
 
@@ -74,7 +74,7 @@ public final class ParallelModel: ComponentModel, CoordinateSystemHostModel {
     public override class var dependencies: [String] { return ["parallelAxis"] }
 
     // coordinateSystem: Parallel;
-    //   PORT-NOTE: upstream types this the concrete `Parallel` (a `CoordinateSystemMaster`), injected by
+    //   upstream types this the concrete `Parallel` (a `CoordinateSystemMaster`), injected by
     //   parallelCreator once the coordinate system is built. `Parallel` (coord/parallel/Parallel.swift) is
     //   ported; typed here as the `CoordinateSystemMaster?` required by
     //   `CoordinateSystemHostModel` (narrow via `as? Parallel` at use).
@@ -115,7 +115,7 @@ public final class ParallelModel: ComponentModel, CoordinateSystemHostModel {
             // naming?
             "axisExpandable": false,
             // axisExpandCenter: null,
-            //   PORT-NOTE: upstream value is `null`; NSNull() retains the key in the [String: Any] bag.
+            //   upstream value is `null`; NSNull() retains the key in the [String: Any] bag.
             "axisExpandCenter": NSNull(),
             "axisExpandCount": 0.0,
             "axisExpandWidth": 50.0,      // FIXME '10%' ?
@@ -127,7 +127,7 @@ public final class ParallelModel: ComponentModel, CoordinateSystemHostModel {
             "axisExpandTriggerOn": "click", // 'mousemove' or 'click'
 
             // parallelAxisDefault: null
-            //   PORT-NOTE: upstream value is `null`; NSNull() retains the key.
+            //   upstream value is `null`; NSNull() retains the key.
             "parallelAxisDefault": NSNull()
         ] as [String: Any]
     }
@@ -148,7 +148,7 @@ public final class ParallelModel: ComponentModel, CoordinateSystemHostModel {
     public override func mergeOption(_ newOption: ModelOption?, _ ecModel: GlobalModel?) {
         // const thisOption = this.option;
         // newOption && zrUtil.merge(thisOption, newOption, true);
-        //   PORT-NOTE: upstream mutates `this.option` in place; Swift option bags are value types, so
+        //   upstream mutates `this.option` in place; Swift option bags are value types, so
         //   read-modify-write `self.option`. `{}` is truthy in JS, so only nil skips the merge.
         if let source = newOption as? [String: Any],
            var thisOption = self.option as? [String: Any] {
@@ -180,7 +180,7 @@ public final class ParallelModel: ComponentModel, CoordinateSystemHostModel {
     }
 
     // setAxisExpand(opt: { axisExpandable?, axisExpandCenter?, axisExpandCount?, axisExpandWidth?, axisExpandWindow? }): void
-    //   PORT-NOTE: TS object-param modeled as the dynamic `[String: Any]` bag.
+    //   TS object-param modeled as the dynamic `[String: Any]` bag.
     public func setAxisExpand(_ opt: [String: Any]) {
         // zrUtil.each(['axisExpandable', 'axisExpandCenter', 'axisExpandCount', 'axisExpandWidth', 'axisExpandWindow'],
         //     function (name) { if (opt.hasOwnProperty(name)) { this.option[name] = opt[name]; } }, this);
@@ -254,7 +254,7 @@ private func jsNumStr(_ v: Any?) -> String {
         return String(d)
     }
     if let s = v as? String { return s }
-    // PORT-NOTE: JS would stringify other values (e.g. `undefined` -> "undefined"); `dim` is always a
+    // JS would stringify other values (e.g. `undefined` -> "undefined"); `dim` is always a
     //   number/string in practice, so non-number/non-string falls back to "".
     return ""
 }

@@ -619,7 +619,7 @@ func resizeChart(_ chart: EChartsView, width: Double, height: Double) {
 - **API 外形接近官方，覆盖范围尚不完整。** `lazyUpdate`、`replaceMerge`、按单个 handler 执行 `off`、跨图表 `connect` 等不能直接照搬 Web 调用。
 - **渲染环境不同。** 没有浏览器 DOM、CSS 或 HTML tooltip；`renderer: "canvas"` 表示原生后端，不能据此使用 DOM Canvas 方法或假定存在 SVG 导出。
 - **配置支持需要逐项验证。** 常用图表已有实现和示例，但复杂 formatter、组合坐标系、渐进绘制、动画与交互仍可能存在差异。`useDirtyRect` 等字段存在不等于相关优化完整可用。
-- **option 是动态字典。** 拼写错误、未实现的字段或不匹配的 closure 类型，不一定能在编译时被发现。遇到问题可对照具体示例、测试和源码中的 `PORT-TODO`。
+- **option 是动态字典。** 拼写错误、未实现的字段或不匹配的 closure 类型，不一定能在编译时被发现。遇到问题可对照具体示例、测试和源码中的 `TODO`。
 - **性能和像素一致性持续改进。** 仓库保留 Native/Web 对照与交互测试；不能把某个场景通过推广为所有图表都已达到 Web 版本表现。
 
 ## 示例与开发

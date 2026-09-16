@@ -27,7 +27,7 @@ import ZRenderKit
 
 // upstream imports:
 //   import Parallel from './Parallel';                                    -> Parallel (coord/parallel/Parallel.swift;
-//       the parallel coord-sys master). PORT-NOTE: ported sibling. This file references it (constructor +
+//       the parallel coord-sys master). note: ported sibling. This file references it (constructor +
 //       `.name`/`.resize`/`.model`/`.dimensions`/`.getAxis`); the return type below is the upstream
 //       `CoordinateSystemMaster[]` (not `[Parallel]`), so only the body depends on Parallel.
 //   import GlobalModel from '../../model/Global';                         -> GlobalModel (model/Global.swift).

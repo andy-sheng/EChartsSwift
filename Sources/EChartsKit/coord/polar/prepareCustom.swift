@@ -27,7 +27,7 @@ import ZRenderKit
 // import { calcBandWidth } from '../axisBand';                        -> calcBandWidth (coord/axisBand.swift)
 // // import AngleAxis from './AngleAxis';                             (commented out upstream too)
 //
-// PORT-NOTE: `Polar` / `RadiusAxis` / `AngleAxis` (coord/polar/{Polar,RadiusAxis,AngleAxis}.swift) are
+// `Polar` / `RadiusAxis` / `AngleAxis` (coord/polar/{Polar,RadiusAxis,AngleAxis}.swift) are
 //   the polar coordinate-system classes ported alongside this file in the same phase. They expose:
 //     Polar:      cx, cy, getRadiusAxis(), getAngleAxis(), coordToPoint([radius, angle]) -> [Double]
 //     RadiusAxis: dataToRadius(_), getExtent() -> [Double], dataToCoord(_) , type  (extends Axis)
@@ -49,7 +49,7 @@ private func dataToCoordSize(_ coordSys: Polar, _ dataSize: [Double], _ dataItem
     return util.map(["Radius", "Angle"]) { (dim: String, dimIdx: Int) -> Double in
         // const getterName = 'get' + dim + 'Axis';
         // const axis = this[getterName]() as RadiusAxis;   // TODO: TYPE Check Angle Axis
-        //   PORT-NOTE: both RadiusAxis and AngleAxis extend the base `Axis`; `calcBandWidth` / `dataToCoord`
+        //   both RadiusAxis and AngleAxis extend the base `Axis`; `calcBandWidth` / `dataToCoord`
         //   / `type` are on that base, so `axis` is typed as `Axis` here.
         let axis: Axis = (dim == "Radius") ? coordSys.getRadiusAxis() : coordSys.getAngleAxis()
         // const val = dataItem[dimIdx];
@@ -121,7 +121,7 @@ public func polarPrepareCustom(_ coordSys: Polar) -> [String: Any] {
 }
 
 // JS truthiness for the `dataItem || [0, 0]` guard: a nil/empty `dataItem` is falsy.
-// PORT-NOTE: mirrors the jsTruthy helpers used across the port (CONVENTIONS §6); an empty array is
+// mirrors the jsTruthy helpers used across the port (CONVENTIONS §6); an empty array is
 //   truthy in JS (only nil/undefined here triggers the fallback), so only nil is treated as falsy.
 private func jsTruthyArray(_ value: [Double]?) -> Bool {
     return value != nil

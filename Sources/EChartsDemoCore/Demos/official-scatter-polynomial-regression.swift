@@ -160,7 +160,7 @@ option = {
 """#,
         option: [
             // dataset[0] = the raw 18 pairs; dataset[1] = the cubic fit.
-            // PORT-NOTE: the `ecStat:regression` transform is DECLARED here exactly as upstream, but its
+            // the `ecStat:regression` transform is DECLARED here exactly as upstream, but its
             // implementation (`ecStat.transform.regression`, a JS function registered via
             // echarts.registerTransform) has no EChartsKit counterpart — see the header. This is the one
             // reason nativeSupported is false.

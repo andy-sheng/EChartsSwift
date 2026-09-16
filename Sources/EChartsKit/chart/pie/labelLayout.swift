@@ -572,7 +572,7 @@ func pieLabelLayout(_ seriesModel: PieSeriesModel) {
                 // upstream: labelLine.setShape({ points: linePoints }) — a PARTIAL object that
                 //   `extend`s into the existing shape, preserving fields set earlier (notably
                 //   `smooth`, stamped by `labelGuideHelper.setLabelLineStyle`).
-                // PORT-NOTE: Swift's `Path.setShape(_ obj: PathShape)` REPLACES the shape wholesale
+                // Swift's `Path.setShape(_ obj: PathShape)` REPLACES the shape wholesale
                 //   (Path.swift), so a partial-object upstream call must be read-modify-write here or
                 //   `smooth` (and any other previously set field) is silently reset to its default —
                 //   which would make `buildLabelLinePath`'s bezier rounded-corner branch unreachable.

@@ -30,7 +30,7 @@ import ZRenderKit
 //   import { SERIES_TYPE_PICTORIAL_BAR } from '../../layout/barCommon';  -> layout/barCommon.swift.
 
 // export function install(registers) { ... }
-// PORT-NOTE: registration boilerplate lives in the Orchestrate/Integrate driver (core/ECharts.swift),
+// registration boilerplate lives in the Orchestrate/Integrate driver (core/ECharts.swift),
 //   not this render-layer file (same convention as boxplotInstall.swift). All five registration calls are
 //   accounted for there — see the `-- chart/bar/installPictorialBar.ts --` block in `installOnce()` and the
 //   layout stage; the mapping is tabulated under INTEGRATION SURFACE below.
@@ -52,7 +52,7 @@ import ZRenderKit
 //     }
 //
 // INTEGRATION SURFACE (WIRED in `ECharts.installOnce()` — core/ECharts.swift; bullets in upstream
-//   `install()` order. Ported except where a PORT-NOTE below records a deferral/deviation):
+//   `install()` order. Ported except where a note below records a deferral/deviation):
 //   - registerChartView:   `_chartViewFactories["pictorialBar"] = { PictorialBarView() }`
 //                          (chart/bar/PictorialBarView.swift)
 //   - registerSeriesModel: `ComponentModel.registerClass(PictorialBarSeriesModel.self)`
@@ -70,11 +70,11 @@ import ZRenderKit
 //                          cheap early-out, not a behaviour change — see the canonical GUARD note on the
 //                          `if` itself in core/ECharts.swift (layout stage,
 //                          `-- chart/bar/installPictorialBar.ts --`).
-//                          PORT-NOTE (deferred): `createProgressiveLayout` does not port upstream's
+//                          TODO: `createProgressiveLayout` does not port upstream's
 //                          `plan: createRenderPlanner()` — layout/barGrid.swift sets `handler.plan = nil`
 //                          (the ported `StageHandlerPlan` typealias cannot express "no reset"), so the
 //                          `reset` stage re-runs every pass instead of being plan-gated.
-//                          PORT-NOTE (ordering deviation): upstream's `PRIORITY.VISUAL.PROGRESSIVE_LAYOUT`
+//                          note (ordering deviation): upstream's `PRIORITY.VISUAL.PROGRESSIVE_LAYOUT`
 //                          places this after EVERY overall layout stage; the driver has no priority buckets
 //                          and calls the two pictorialBar stages inline back-to-back, so later overall
 //                          stages (pieLayout, funnelLayout, candlestickLayout, boxplotLayout,

@@ -3,7 +3,7 @@
 // component + CalendarView draw the month/day-cell grid (split-line outline Polylines), the per-day
 // cell rects, and the day/week/month/year labels (ZRText), with all cell geometry coming from the
 // Calendar coord (date → cell [x,y]). Renders on BOTH panes: native (EChartsKit) and echarts.js.
-// PORT-NOTE (deferred): a scatter/heatmap series ON the calendar is a follow-up demo; this file
+// TODO: a scatter/heatmap series ON the calendar is a follow-up demo; this file
 // intentionally renders the calendar backdrop only.
 extension EChartsDemoRegistry {
     static let demo_calendar_basic = EChartsDemo(

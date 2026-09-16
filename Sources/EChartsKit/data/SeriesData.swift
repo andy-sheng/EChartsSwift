@@ -50,7 +50,7 @@ import ZRenderKit
 //   -> referenced as `util.isObject` / `util.map` at call sites.
 
 // const CtorInt32Array = typeof Int32Array === 'undefined' ? Array : Int32Array;
-//   -> PORT-NOTE: Swift always has typed storage; the feature-detection branch is dropped.
+//   -> note: Swift always has typed storage; the feature-detection branch is dropped.
 //      Inverted-index buffers are modeled as `ContiguousArray<Int>` (CONVENTIONS §1).
 
 // Use prefix to avoid index to be the same as otherIdList[idx],
@@ -68,7 +68,7 @@ public typealias ItrParamDims = Any
 // type CtxOrList / EachCb0..2 / FilterCb0..2 / MapArrayCb0..2 / MapCb1..2
 //   -> the arity-specialized + `this`-bound callbacks are collapsed to the array-arg forms
 //      already declared on `DataStore` (EachCb / FilterCb / MapCb). The last array element is
-//      the data index (as Double). The `ctx`/`this`-binding argument is dropped (PORT-NOTE).
+//      the data index (as Double). The `ctx`/`this`-binding argument is dropped (note).
 public typealias MapArrayCb = (_ args: [ParsedValue]) -> Any?
 
 // type SeriesDimensionDefineLoose = string | object | SeriesDimensionDefine;
@@ -109,10 +109,10 @@ public struct DefaultDataVisual {
     public var liftZ: Double?
     // For legend.
     public var legendIcon: String?
-    public var legendLineStyle: Any?   // PORT-NOTE: concrete type is LineStyleProps (model/mixin/lineStyle); typed loosely as Any here
+    public var legendLineStyle: Any?   // concrete type is LineStyleProps (model/mixin/lineStyle); typed loosely as Any here
 
     // visualMap will inject visualMeta data
-    public var visualMeta: [Any]?      // PORT-NOTE: element type is VisualMeta (component/visualMap/VisualMapModel.swift); typed loosely as [Any] here
+    public var visualMeta: [Any]?      // element type is VisualMeta (component/visualMap/VisualMapModel.swift); typed loosely as [Any] here
 
     // If color is encoded from palette
     public var colorFromPalette: Bool?
@@ -120,13 +120,13 @@ public struct DefaultDataVisual {
     public var decal: DecalObject?
 }
 
-public struct DataCalculationInfo {   // PORT-NOTE: upstream generic <SERIES_MODEL>
+public struct DataCalculationInfo {   // upstream generic <SERIES_MODEL>
     public var stackedDimension: DimensionName
     public var stackedByDimension: DimensionName
     public var isStackedByIndex: Bool
     public var stackedOverDimension: DimensionName
     public var stackResultDimension: DimensionName
-    public var stackedOnSeries: Model?   // PORT-NOTE: SERIES_MODEL (model layer, Phase 5c)
+    public var stackedOnSeries: Model?   // SERIES_MODEL (model layer, Phase 5c)
 }
 
 // -----------------------------
@@ -215,11 +215,11 @@ public final class SeriesData: DataStackSeriesData {
     private var _dimSummary: DimensionSummary!
 
     // key: dim, value: extent
-    // PORT-NOTE: upstream `Record<SeriesDimensionName, ArrayLike<number>>` (the value is a
+    // upstream `Record<SeriesDimensionName, ArrayLike<number>>` (the value is a
     //   `CtorInt32Array`). Modeled as `ContiguousArray<Int>` (CONVENTIONS §1).
     private var _invertedIndicesMap: [SeriesDimensionName: ContiguousArray<Int>] = [:]
 
-    // PORT-NOTE: upstream `DataCalculationInfo<HostModel>`; stored as a dynamic bag so
+    // upstream `DataCalculationInfo<HostModel>`; stored as a dynamic bag so
     //   `getCalculationInfo(key)`/`setCalculationInfo(kvObject)` (and `dataStackHelper`) can
     //   read/write by string key. See `DataCalculationInfo` struct above for the documented shape.
     private var _calculationInfo: [String: Any] = [:]
@@ -242,7 +242,7 @@ public final class SeriesData: DataStackSeriesData {
 
     private var __wrappedMethods: [String]?
 
-    // PORT NOTE: upstream `wrapMethod` rebinds `this[methodName]` so registered injections fire when the
+    // upstream `wrapMethod` rebinds `this[methodName]` so registered injections fire when the
     //   method runs. Swift can not replace a method by string name, so instead `wrapMethod` stores the
     //   injection closures here, keyed by method name, and the ported methods that support wrapping invoke
     //   them explicitly (`cloneShallow`, the TRANSFERABLE_METHODS `map`/`downSample`/`minmaxDownSample`/
@@ -278,7 +278,7 @@ public final class SeriesData: DataStackSeriesData {
      *        For example, ['someDimName', {name: 'someDimName', type: 'someDimType'}, ...].
      *        Dimensions should be concrete names like x, y, z, lng, lat, angle, radius
      */
-    // PORT-NOTE: upstream is generic `SeriesData<HostModel extends Model, Visual extends
+    // upstream is generic `SeriesData<HostModel extends Model, Visual extends
     //   DefaultDataVisual>`. The generics are dropped (the type is referenced as a plain
     //   `SeriesData` throughout the codebase): `HostModel` -> the `Model` placeholder, and
     //   `Visual` -> dynamic `[String: Any]` visual storage (`getVisual`/`setVisual` take String).
@@ -309,7 +309,7 @@ public final class SeriesData: DataStackSeriesData {
         var invertedIndicesMap: [SeriesDimensionName: ContiguousArray<Int>] = [:]
         let needsHasOwn = false
         // const emptyObj = {};
-        //   PORT-NOTE: upstream uses `(emptyObj as any)[dimensionName] != null` to detect a
+        //   upstream uses `(emptyObj as any)[dimensionName] != null` to detect a
         //   dimension name that collides with `Object.prototype` (e.g. 'constructor') and then
         //   switches `_getDimInfo` to a `hasOwnProperty` form. Swift `Dictionary` has no
         //   prototype, so this collision never happens; `needsHasOwn` stays `false`.
@@ -330,7 +330,7 @@ public final class SeriesData: DataStackSeriesData {
             }
             else if !(dimInfoInput is SeriesDimensionDefine) {
                 // new SeriesDimensionDefine(dimInfoInput)  — object-literal form
-                // PORT-NOTE (deferred): `SeriesDimensionDefine.init` accepts only another
+                // TODO: `SeriesDimensionDefine.init` accepts only another
                 //   `SeriesDimensionDefine`; the object-literal dimension case is reduced to copying the
                 //   recognized `name` field — richer fields (type/coordDim) on a dict would be dropped, but
                 //   the model layer (Phase 5c) produces SeriesDimensionDefine objects, so this path is not
@@ -436,7 +436,7 @@ public final class SeriesData: DataStackSeriesData {
         if let sourceDimDef = sourceDimDef, let name = sourceDimDef.name {
             return name
         }
-        return ""   // PORT-NOTE: getDimension returns a non-optional String; upstream may return undefined — the "" fallback stands in.
+        return ""   // getDimension returns a non-optional String; upstream may return undefined — the "" fallback stands in.
     }
 
     /**
@@ -456,7 +456,7 @@ public final class SeriesData: DataStackSeriesData {
 
         let dimInfo = self._getDimInfo(dimAsName(dim))
         return dimInfo != nil
-            ? dimInfo!.storeDimIndex ?? -1   // PORT-NOTE: storeDimIndex is Optional in the port; upstream assumes it set — the -1 fallback matches the "not found" return.
+            ? dimInfo!.storeDimIndex ?? -1   // storeDimIndex is Optional in the port; upstream assumes it set — the -1 fallback matches the "not found" return.
             : self._dimOmitted
             ? self._schema!.getSourceDimensionIndex(dimAsName(dim))
             : -1
@@ -491,7 +491,7 @@ public final class SeriesData: DataStackSeriesData {
     private func _getStoreDimIndex(_ dim: DimensionLoose) -> DimensionIndex {
         let dimIdx = self.getDimensionIndex(dim)
         // if __DEV__ { if (dimIdx == null) throw new Error('Unknown dimension ' + dim); }
-        //   PORT-NOTE: `getDimensionIndex` returns a non-optional `DimensionIndex` (-1 if not
+        //   `getDimensionIndex` returns a non-optional `DimensionIndex` (-1 if not
         //   found) so the null check can never fire here.
         return dimIdx
     }
@@ -644,7 +644,7 @@ public final class SeriesData: DataStackSeriesData {
 
     private func _shouldMakeIdFromName() -> Bool {
         let provider = self._store.getProvider()
-        // PORT-NOTE: upstream final term is `!provider.fillStorage` (method presence). In the
+        // upstream final term is `!provider.fillStorage` (method presence). In the
         //   ported `DataProvider`, `fillStorage` is a no-op default and is only meaningfully
         //   mounted for the typed-array source format — which is already excluded by the
         //   `sourceFormat !== TYPED_ARRAY` term — so the `!provider.fillStorage` term is dropped.
@@ -757,7 +757,7 @@ public final class SeriesData: DataStackSeriesData {
         let ordinalMeta = self._store.getOrdinalMeta(dimIdx)
         if let ordinalMeta = ordinalMeta {
             // ordinalMeta.categories[ordinal as OrdinalNumber]
-            let oi = (ordinal as? Double) ?? Double.nan   // PORT-NOTE: numeric coercion (CONVENTIONS §1)
+            let oi = (ordinal as? Double) ?? Double.nan   // numeric coercion (CONVENTIONS §1)
             if oi.isFinite {
                 let i = Int(oi)
                 if i >= 0 && i < ordinalMeta.categories.count {
@@ -905,7 +905,7 @@ public final class SeriesData: DataStackSeriesData {
      *  list.each(function (idx) {})
      */
     public func each(_ cb: @escaping EachCb) {
-        // ctxCompat / ctx dropped (PORT-NOTE: Swift closures have no `this` binding).
+        // ctxCompat / ctx dropped (note: Swift closures have no `this` binding).
         self._store.each([], cb)
     }
     public func each(_ dims: ItrParamDims, _ cb: @escaping EachCb) {
@@ -1071,7 +1071,7 @@ public final class SeriesData: DataStackSeriesData {
         // (model/Model has landed — Phase 5c — so this is now the faithful implementation.)
         let hostModel = self.hostModel
         // upstream: `getRawDataItem(idx) as ModelOption`. `OptionDataItem` and `ModelOption` are both the
-        //   `Any` PORT-NOTE alias, so the TS assertion cast is a no-op here — pass through directly
+        //   `Any` note alias, so the TS assertion cast is a no-op here — pass through directly
         //   (a conditional `as?` between two `Any` aliases always succeeds → warning).
         let dataItem: ModelOption = self.getRawDataItem(idx)
         var model = Model(dataItem, hostModel, hostModel?.ecModel)
@@ -1259,12 +1259,12 @@ public final class SeriesData: DataStackSeriesData {
      */
     public func setItemGraphicEl(_ idx: Int, _ el: Element?) {
         // const seriesIndex = this.hostModel && (this.hostModel as any).seriesIndex;
-        //   (was a PORT-NOTE defaulting to 0 — with a live SeriesModel host the real index is stamped,
+        //   (was a note defaulting to 0 — with a live SeriesModel host the real index is stamped,
         //   so the focus/blur fan-out targets the right series in MULTI-series charts; a hardcoded 0
         //   made hovering series 1 blur against series 0's identity.)
         let seriesIndex: Double = (self.hostModel as? SeriesModel)?.seriesIndex ?? 0
 
-        // PORT-NOTE: `innerStore.setCommonECData` requires a non-optional `SeriesDataType` (sibling port);
+        // `innerStore.setCommonECData` requires a non-optional `SeriesDataType` (sibling port);
         //   upstream `this.dataType` may be undefined for main series data, reconciled here to `.main`.
         innerStore.setCommonECData(seriesIndex, self.dataType ?? .main, Double(idx), el)
 
@@ -1277,7 +1277,7 @@ public final class SeriesData: DataStackSeriesData {
 
     public func eachItemGraphicEl(
         _ cb: (_ el: Element, _ idx: Int) -> Void,
-        _ context: Any? = nil   // PORT-NOTE: `this`-binding dropped (Swift closures capture)
+        _ context: Any? = nil   // `this`-binding dropped (Swift closures capture)
     ) {
         util.each(self._graphicEls) { el, idx in
             if let el = el {
@@ -1318,7 +1318,7 @@ public final class SeriesData: DataStackSeriesData {
         SeriesData.transferProperties(list!, self)
         list!._store = self._store
 
-        // PORT NOTE: fire the injections `linkSeriesData` registered on `cloneShallow`. Because
+        // fire the injections `linkSeriesData` registered on `cloneShallow`. Because
         //   `cloneShallow` is also in TRANSFERABLE_METHODS it carries TWO injections on a mainData, run
         //   here in registration order: transferInjection (re-point the sibling datas at the clone) then
         //   cloneShallowInjection (clone the sibling datas). Upstream does this via the `wrapMethod`
@@ -1339,7 +1339,7 @@ public final class SeriesData: DataStackSeriesData {
         _ methodName: String,   // FunctionPropertyNames<SeriesData>
         _ injectFunction: @escaping (_ args: Any...) -> Any?
     ) {
-        // PORT NOTE: upstream dynamically rebinds `this[methodName]` to run the original method then the
+        // upstream dynamically rebinds `this[methodName]` to run the original method then the
         //   injection. Swift cannot replace a method by string name, so the injection is STORED here (keyed
         //   by method name) and the ported wrappable methods invoke it explicitly. The injection is fed the
         //   original method's result (a new `SeriesData`), matching upstream's `[res].concat(arguments)`.
@@ -1455,7 +1455,7 @@ public final class SeriesData: DataStackSeriesData {
     }
 
     private static func transferProperties(_ target: SeriesData, _ source: SeriesData) {
-        // PORT-NOTE: upstream copies `TRANSFERABLE_PROPERTIES.concat(source.__wrappedMethods||[])`
+        // upstream copies `TRANSFERABLE_PROPERTIES.concat(source.__wrappedMethods||[])`
         //   by string name with a `hasOwnProperty` guard. Swift has typed stored properties, so
         //   the existing ones are copied explicitly (`_rawData`/`_dimValueGetter` are legacy list
         //   entries that no longer exist on this class and are skipped).
@@ -1495,7 +1495,7 @@ public final class SeriesData: DataStackSeriesData {
         //   the ported closure captures the REGISTERED list where upstream rebinds `this`, so copying it
         //   would re-link against the original instead of the clone. Reachable only from a clone-of-a-clone
         //   (`mapDataStatistic.swift`'s `series.setData(data.cloneShallow())` on `getData()`).
-        //   // PORT-TODO: to carry those too, first change `wrapMethod` to pass the receiver into the
+        //   // TODO: to carry those too, first change `wrapMethod` to pass the receiver into the
         //   stored closure instead of capturing it.
         target._getItemModelInjections = source._getItemModelInjections
 
@@ -1535,7 +1535,7 @@ public final class SeriesData: DataStackSeriesData {
     // ----------------------------------------------------------------------------------
     // upstream: `interface SeriesData { getLinkedData(...); getLinkedDataAll(); }` (TS
     // declaration-merging), implemented by Graph.ts / Tree.ts.
-    // PORT-NOTE: upstream runtime-attaches these to the instance (linkSeriesData.ts:182-183). Swift can't
+    // upstream runtime-attaches these to the instance (linkSeriesData.ts:182-183). Swift can't
     //   attach methods at runtime, so the real logic lives as `LinkSeriesData.getLinkedData(thisData:)` /
     //   `.getLinkedDataAll(thisData:)` static funcs (data/helper/linkSeriesData.swift), and Series.swift
     //   routes through those. These instance stubs mirror the declaration-merged signature and are unused

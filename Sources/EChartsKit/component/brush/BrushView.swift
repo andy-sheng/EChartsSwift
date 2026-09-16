@@ -51,7 +51,7 @@ public final class BrushView: ComponentView {
 
         // (this._brushController = new BrushController(api.getZr())).on('brush', bind(this._onBrush, this)).mount();
         //
-        // PORT-NOTE (zr availability): upstream's `ECharts` OWNS the ZRender, so `api.getZr()` is live in
+        // note (zr availability): upstream's `ECharts` OWNS the ZRender, so `api.getZr()` is live in
         //   `init`. This port's `ECharts` driver is host-independent and owns none — the live host
         //   (`EChartsView`) owns it and wires `ec.getRoot()` into it AFTER the first `setOption`
         //   (`_syncRoot`), so `api.getZr()` (which resolves the zr through the root's `__zr` back-pointer)
@@ -88,7 +88,7 @@ public final class BrushView: ComponentView {
     }
 
     // updateTransform(brushModel, ecModel, api, payload)
-    //   PORT-NOTE: must OVERRIDE the base 4-param `ComponentView.updateTransform(_:_:_:_:) -> Bool?`
+    //   must OVERRIDE the base 4-param `ComponentView.updateTransform(_:_:_:_:) -> Bool?`
     //   that `ECharts.updateTransform()` dispatches through. A narrower `BrushModel` first param (or a
     //   `Void` return) does NOT witness the hook, so the driver silently took the base `nil` → full
     //   render path and this body — whose layout must be recomputed mandatorily on a transform-only
@@ -129,7 +129,7 @@ public final class BrushView: ComponentView {
         self.api = api
         guard let brushController = self._ensureController() else { return }
 
-        // See `applyTakeGlobalCursor`'s PORT-NOTE (stage order): upstream's visual stage has already run
+        // See `applyTakeGlobalCursor`'s note (stage order): upstream's visual stage has already run
         //   `setBrushOption` by the time this view renders; in this driver it has not, so arm the paint
         //   cursor here as well (idempotent — brushVisual makes the identical call later in the frame).
         applyTakeGlobalCursor(brushModel, payload)

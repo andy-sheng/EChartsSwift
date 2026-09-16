@@ -40,11 +40,11 @@ import ZRenderKit
 //   import { createBandWidthBasedAxisContainShapeHandler, createMetricsNonOrdinalLinearPositiveMinGap,
 //            makeAxisStatKey } from '../helper/axisSnippets';
 //       -> chart/helper/axisSnippets.ts NOT ported; the three used helpers are provided as local
-//          PORT-NOTE (deferred) stubs at the bottom (mirrors layout/barGrid.swift + layout/barCommon.swift).
+//          TODO: stubs at the bottom (mirrors layout/barGrid.swift + layout/barCommon.swift).
 //   import { calcBandWidth } from '../../coord/axisBand';              -> `calcBandWidth` (coord/axisBand.swift).
 
 // const callOnlyOnce = makeCallOnlyOnce();
-// PORT-NOTE: `makeCallOnlyOnce()` is generic (`<Host: AnyObject>`); specialize to the registrar type
+// `makeCallOnlyOnce()` is generic (`<Host: AnyObject>`); specialize to the registrar type
 //   (same as layout/barGrid.swift).
 private let callOnlyOnce: (EChartsExtensionInstallRegisters, () -> Void) -> Void = model.makeCallOnlyOnce()
 
@@ -100,7 +100,7 @@ public let candlestickLayout: StageHandler = {
     handler.seriesType = SERIES_TYPE_CANDLESTICK
 
     // plan: createRenderPlanner(),
-    // PORT-NOTE: `createRenderPlanner()` yields the upstream 1-arg planner `(SeriesModel) ->
+    // `createRenderPlanner()` yields the upstream 1-arg planner `(SeriesModel) ->
     //   StageHandlerPlanReturn?` (nil-for-no-reset), while `StageHandlerPlan` is the 4-arg
     //   `(SeriesModel, GlobalModel, ExtensionAPI, Payload?) -> StageHandlerPlanReturn?`; the planner is
     //   created ONCE here (as upstream, so its `makeInner` large/progressive state persists across calls)
@@ -238,7 +238,7 @@ public let candlestickLayout: StageHandler = {
         }
 
         // ----- largeProgress -----
-        // PORT-NOTE (deferred): the large-mode layout produces the flat `largePoints` buffer consumed only
+        // TODO: the large-mode layout produces the flat `largePoints` buffer consumed only
         //   by the DEFERRED large draw path (`LargeBoxPath` in CandlestickView), which is not yet ported.
         //   Ported here for structural fidelity; it is unreachable on the normal render path.
         func largeProgress(_ params: StageHandlerProgressParams, _ data: SeriesData) {
@@ -246,7 +246,7 @@ public let candlestickLayout: StageHandler = {
             var points = vendor.createFloat32Array(params.count * 4)
             var offset = 0
             var point: [Double]?
-            // PORT-NOTE: upstream reuses scratch `tmpIn`/`tmpOut` arrays with `dataToPoint(tmpIn, null, tmpOut)`
+            // upstream reuses scratch `tmpIn`/`tmpOut` arrays with `dataToPoint(tmpIn, null, tmpOut)`
             //   (out-param). The ported `dataToPoint` is value-returning (CONVENTIONS §3), so a fresh 2-vec
             //   is built per call instead.
             var tmpIn: [Double] = [0, 0]
@@ -340,7 +340,7 @@ private func calculateCandleWidth(_ seriesModel: CandlestickSeriesModel, _ data:
         )
     ).w
 
-    // PORT-NOTE: the option bag stores explicit-null defaults as `NSNull()` (codebase convention;
+    // the option bag stores explicit-null defaults as `NSNull()` (codebase convention;
     //   see BarSeries.swift). `retrieve2` checks `!= nil`, so `NSNull` would wrongly win over the
     //   fallback; `candlestickDenull` collapses `NSNull` -> nil first (JS `null` == nil, CONVENTIONS §6).
     let barMaxWidth = number.parsePercent(
@@ -382,7 +382,7 @@ public func registerCandlestickAxisHandlers(_ registers: EChartsExtensionInstall
 }
 
 // ============================================================================
-// PORT-NOTE: local helpers (NOT in upstream candlestickLayout.ts).
+// local helpers (NOT in upstream candlestickLayout.ts).
 // ============================================================================
 
 // `store.get(...)` returns `ParsedValue` (Any); numeric candlestick values are stored as `Double`.
@@ -414,7 +414,7 @@ private func candlestickTruthy(_ v: Any?) -> Bool {
 }
 
 // ============================================================================
-// PORT-NOTE (deferred): stubs for `chart/helper/axisSnippets.ts` (PREREQ, not yet ported). Mirror the
+// TODO: stubs for `chart/helper/axisSnippets.ts` (PREREQ, not yet ported). Mirror the
 //   upstream one-liners so this file compiles; remove them and import the real symbols from
 //   chart/helper/axisSnippets.swift when it lands (same pattern as layout/barGrid.swift +
 //   layout/barCommon.swift).

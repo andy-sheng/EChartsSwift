@@ -4,7 +4,7 @@
 // HISTORY: MapView's inlined `createCompoundPath` used to do an `initProps({ style: { opacity: 0 } })`
 // fade-in, and this file asserted it. That was a port INVENTION — upstream `component/helper/MapDraw.ts`
 // contains no `initProps` / `updateProps` call at all, so map regions never fade in. The switchover of
-// MapView onto the shared `MapDraw` retired it (see the PORT-NOTE at the top of MapView.swift); the
+// MapView onto the shared `MapDraw` retired it (see the note at the top of MapView.swift); the
 // "fades in" case below is inverted to lock the upstream behaviour in.
 import XCTest
 @testable import EChartsKit

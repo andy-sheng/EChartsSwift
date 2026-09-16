@@ -136,7 +136,7 @@ final class GroupUnitTests: XCTestCase {
         let context: [String: Any] = ["foo": 2]
         // NOTE: upstream also asserts `expect(this.foo).toBe(2)` inside the callback, verifying the
         // callback `this` is bound to `context`. The Swift port does NOT bind `context` as `this`
-        // (Group.swift PORT-NOTE: closures capture, context is accepted but unused), so that
+        // (Group.swift note: closures capture, context is accepted but unused), so that
         // sub-assertion is not expressible and is omitted; the iteration/order assertions remain.
         group.eachChild({ child, idx in
             indices.append(idx)

@@ -43,7 +43,7 @@ import ZRenderKit
 //        static-render scope). `setLabelStyle` (selector labels) -> `label/labelStyle.setLabelStyle`
 //        (ported; wired in `_createSelector`).
 //   import {makeBackground} from '../helper/listComponent';
-//     -> PORT-NOTE (deferred): requires `component/helper/listComponent` (NOT ported). A faithful minimal
+//     -> TODO: requires `component/helper/listComponent` (NOT ported). A faithful minimal
 //        `makeBackground` lives at the bottom of this file (delete once component/helper/listComponent.swift lands).
 //   import * as layoutUtil from '../../util/layout';                 -> `layout.*` (util/layout.swift):
 //        `layout.createBoxLayoutReference` / `layout.getLayoutRect` / `layout.box` / `layout.markNewline`.
@@ -154,7 +154,7 @@ open class LegendView: ComponentView {
     ) {
         let legendModel = model as! LegendModel
 
-        // PORT-NOTE: defensive lazy init of the persistent content/selector groups. Upstream relies on
+        // defensive lazy init of the persistent content/selector groups. Upstream relies on
         //   the pipeline calling `init(ecModel, api)` before `render`; other ported views (TitleView /
         //   CartesianAxisView) build their groups in `render`, so we guarantee the groups exist here.
         if self._contentGroup == nil {
@@ -259,7 +259,7 @@ open class LegendView: ComponentView {
                 let g = Group()
                 // @ts-ignore
                 // g.newline = true;
-                layout.markNewline(g)   // PORT-NOTE (language): JS `g.newline = true` modeled as a NewlineElement flag via side table (util/layout.swift).
+                layout.markNewline(g)   // note (language): JS `g.newline = true` modeled as a NewlineElement flag via side table (util/layout.swift).
                 _ = contentGroup.add(g)
                 return
             }
@@ -312,7 +312,7 @@ open class LegendView: ComponentView {
                     return nil
                 }, nil)
 
-                // PORT-NOTE (platform): SSR wiring — `if (ecModel.ssr) { itemGroup.eachChild(child => {
+                // note (platform): SSR wiring — `if (ecModel.ssr) { itemGroup.eachChild(child => {
                 //   getECData(child).seriesIndex/dataIndex/ssrType = ... }) }` — server-side rendering is
                 //   a browser/SSR concern, N/A in the native host.
 
@@ -394,7 +394,7 @@ open class LegendView: ComponentView {
             }
 
             // if (__DEV__) { if (!legendDrawnMap.get(name)) { console.warn(name + ' series not exists...'); } }
-            // PORT-NOTE: __DEV__ warning dropped (dev-only diagnostic).
+            // __DEV__ warning dropped (dev-only diagnostic).
         }
 
         // if (selector) { this._createSelector(selector, legendModel, api, orient, selectorPosition); }
@@ -585,7 +585,7 @@ open class LegendView: ComponentView {
 
         // itemGroup.add(new graphic.Text({ style: createTextStyle(textStyleModel, {text, x, y, fill, align,
         //   verticalAlign}, {inheritColor: textColor}) }));
-        // PORT-NOTE: the `{inheritColor: textColor}` 3rd arg (labelStyle rich behavior) is out of static-render scope.
+        // the `{inheritColor: textColor}` 3rd arg (labelStyle rich behavior) is out of static-render scope.
         var textStyle = createTextStyle(
             textStyleModel,
             text: content,
@@ -618,14 +618,14 @@ open class LegendView: ComponentView {
         // }
         let tooltipModel = legendItemModel.getModel("tooltip")
         if legendJsTruthy(tooltipModel.get("show")) {
-            // PORT-NOTE: `tooltipModel.option` is the raw `[String: Any]` option bag here (not a typed
+            // `tooltipModel.option` is the raw `[String: Any]` option bag here (not a typed
             //   `CommonTooltipOption<Any>`). The provider handles that: `setTooltipConfig`
             //   (util/graphic.swift) has a `[String: Any]` arm that bridges the bag through
             //   `commonTooltipOptionFromOptionBag`, so the USER-SUPPLIED fields (`formatter`,
             //   `backgroundColor`, `position`, ...) DO reach `ecData.tooltipConfig.option.common` and
             //   from there `TooltipView._showComponentItemTooltip`'s cascade. (This used to claim the
             //   bag was dropped WHOLESALE — that stopped being true when the provider grew the bag arm.)
-            // PORT-TODO: the bridge is a WHITELIST, not a pass-through —
+            // TODO: the bridge is a WHITELIST, not a pass-through —
             //   `commonTooltipOptionFromOptionBag` carries only the declared `CommonTooltipOption`
             //   fields, so a bag key outside that set is still dropped from
             //   `ecData.tooltipConfig.option`: `showContent` (read by
@@ -866,7 +866,7 @@ private func getDefaultLegendIcon(_ opt: LegendIconParams) -> ECSymbol {
     )
 
     // icon.setStyle(opt.itemStyle);
-    // PORT-NOTE: `ECSymbol.setStyle` — the concrete conformer is a `Path` (`SymbolPath`); bridge the
+    // `ECSymbol.setStyle` — the concrete conformer is a `Path` (`SymbolPath`); bridge the
     //   dynamic style bag via `barStyleFromDict` + `useStyle` (same seam as the rest of the port).
     let iconPath = icon as! Path
     iconPath.useStyle(barStyleFromDict(opt.itemStyle))
@@ -909,7 +909,7 @@ private func dispatchSelectAction(
 }
 
 // function dispatchHighlightAction(seriesName, dataName, api, excludeSeriesId)
-//   PORT-NOTE: upstream guards with `if (!api.usingTHL())`. `ExtensionAPI.usingTHL` is abstract-only in
+//   upstream guards with `if (!api.usingTHL())`. `ExtensionAPI.usingTHL` is abstract-only in
 //   this port (no concrete override — it would fatalError), so the guard is omitted and the action is
 //   dispatched directly, matching how legend hover was already wired.
 private func dispatchHighlightAction(
@@ -942,7 +942,7 @@ private func dispatchDownplayAction(
 // export default LegendView;  -> `open class LegendView` above.
 
 // ============================================================================
-// PORT-NOTE helpers — NOT part of legend/LegendView.ts upstream. These reproduce out-of-phase
+// note helpers — NOT part of legend/LegendView.ts upstream. These reproduce out-of-phase
 // sibling APIs / JS idioms so the static legend render compiles. Delete each when its real
 // sibling lands and call the sibling directly.
 // ============================================================================
@@ -971,11 +971,11 @@ private func legendReplaceOnce(_ s: String, _ target: String, _ replacement: Str
 /// Bridge a dynamic style-bag color value (`String`) to `ZRColor` for `createSymbol`.
 private func legendZRColor(_ v: Any) -> ZRenderKit.ZRColor? {
     if let s = v as? String { return .string(s) }
-    // PORT-NOTE (deferred): gradient/pattern color objects not bridged (out of static-render scope).
+    // TODO: gradient/pattern color objects not bridged (out of static-render scope).
     return nil
 }
 
-/// PORT-NOTE (deferred): requires `component/helper/listComponent` — faithful minimal reproduction of its `makeBackground`.
+/// TODO: requires `component/helper/listComponent` — faithful minimal reproduction of its `makeBackground`.
 ///   Delete when component/helper/listComponent.swift lands and call `makeBackground(rect, model)` directly.
 ///   upstream:
 ///     const padding = formatUtil.normalizeCssArray(componentModel.get('padding'));

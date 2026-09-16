@@ -33,7 +33,7 @@ import ZRenderKit
 //   import ExtensionAPI / GeoModel / MapSeries / GlobalModel / Geo / Model / SeriesData → same names
 //     (`MapSeriesModel` for MapSeries — the Swift class name already chosen in chart/map/MapSeries.swift).
 //   import { Payload, ECElement, InnerFocus, ... } from '../../util/types';  → util/types.swift.
-//   import GeoView / MapView                                  → see the `fromView` PORT-NOTE on `draw`.
+//   import GeoView / MapView                                  → see the `fromView` note on `draw`.
 //   import { setLabelStyle, getLabelStatesModels } from '../../label/labelStyle';  → `labelStyle.*`.
 //   import { getECData } from '../../util/innerStore';        → `innerStore.getECData`.
 //   import { createOrUpdatePatternFromDecal } from '../../util/decal';  → `createOrUpdatePatternFromDecal`.
@@ -75,7 +75,7 @@ private typealias RegionName = String
  */
 // upstream: const OPTION_STYLE_ENABLED_TAGS + the three `createHashMap` lookups built from it.
 //   A `Set` is the same membership lookup (`map.get(tag) != null` → `set.contains(tag)`).
-// PORT-NOTE (scope): all of these are module-private in upstream TS and are file-private here. The
+// note (scope): all of these are module-private in upstream TS and are file-private here. The
 //   names are generic enough to collide with a future sibling geo/region port if left module-`internal`.
 private let OPTION_STYLE_ENABLED_TAGS: [SVGNodeTagLower] = [
     "rect", "circle", "line", "ellipse", "polygon", "polyline", "path"
@@ -109,7 +109,7 @@ private func getFixedItemStyle(_ model: Model) -> [String: Any] {
 // Using fill in style if stroke not exits.
 // TODO Not sure yet. Perhaps a separate `lineStyle`?
 // upstream: function fixLineStyle(styleHost: { style: graphic.Path['style'] })
-//   PORT-NOTE: upstream's one duck-typed function covers BOTH the live `path.style` and each
+//   upstream's one duck-typed function covers BOTH the live `path.style` and each
 //   `path.states[name].style` bag. Swift types those differently (`PathStyleProps` vs `[String: Any]`),
 //   so it is emitted as two overloads with identical semantics.
 private func fixLineStyle(_ styleHost: Path) {
@@ -134,7 +134,7 @@ public final class MapDraw {
     private var uid: String
 
     // upstream: private _controller: RoamController;
-    //   PORT-NOTE: upstream constructs it optimistically from `api.getZr()`. The Swift `getZr()` is
+    //   upstream constructs it optimistically from `api.getZr()`. The Swift `getZr()` is
     //   Optional (a model-only ExtensionAPI has no zr), so this is an IUO — explicitly annotated
     //   (MEMORY: a `let`-bound IUO infers `Optional`), and every use is nil-guarded.
     private var _controller: RoamController!
@@ -195,7 +195,7 @@ public final class MapDraw {
     }
 
     // upstream: draw(mapOrGeoModel, ecModel, api, fromView: MapView | GeoView, payload): void
-    //   PORT-NOTE (registry TRAP 1 — the `MapView | GeoView` union): `MapView` extends `ChartView` while
+    //   note (registry TRAP 1 — the `MapView | GeoView` union): `MapView` extends `ChartView` while
     //   `GeoView` extends `ComponentView`, and this port has NO common base for the two. `fromView` is
     //   UNUSED by upstream's body (it is only forwarded to `_updateMapSelectHandler`, which ignores it),
     //   so it is typed `AnyObject?` rather than inventing a protocol that risks the witness trap.
@@ -223,10 +223,10 @@ public final class MapDraw {
         }
 
         // upstream: const geo = mapOrGeoModel.coordinateSystem;
-        //   PORT-NOTE: `MapOrGeoModel` erases to `ComponentModel`, which declares no `coordinateSystem`
+        //   `MapOrGeoModel` erases to `ComponentModel`, which declares no `coordinateSystem`
         //   (each subclass does). `geoRoamHostCoordSys` (roamHelperGeo.swift) is the already-ported
         //   GeoModel/MapSeriesModel dispatch for exactly this — reuse it (PORTING §2).
-        //   PORT-NOTE (§12): `Geo.view` is `View!` (genuinely nilable), so it is folded into the guard
+        //   note (§12): `Geo.view` is `View!` (genuinely nilable), so it is folded into the guard
         //   rather than force-unwrapped — matching `__updateOnOwnRoam` below.
         guard let geo = geoRoamHostCoordSys(mapOrGeoModel), let viewCoordSys = geo.view else {
             return
@@ -318,8 +318,8 @@ public final class MapDraw {
         let regionsGroup = self._regionsGroup
         let projection = geo.projection
         // upstream: const projectionStream = projection && projection.stream;
-        //   PORT-TODO: the ported `GeoProjection` protocol (coord/geo/Region.swift) has NO `stream`
-        //   member yet (see the consolidation PORT-NOTE in geoTypes.swift), so the d3-style
+        //   TODO: the ported `GeoProjection` protocol (coord/geo/Region.swift) has NO `stream`
+        //   member yet (see the consolidation note in geoTypes.swift), so the d3-style
         //   clip/resample stream path is unreachable; `projectPolys` below is ported and dormant.
         let projectionStream: ((ProjectionStream) -> ProjectionStream)? = nil
 
@@ -373,7 +373,7 @@ public final class MapDraw {
                 _ = regionsGroup.add(newGroup)
 
                 dataIdx = data != nil ? data!.indexOfName(regionName) : nil
-                // PORT-NOTE: `indexOfName` returns -1 on a miss (the common case: a GeoJSON has hundreds
+                // `indexOfName` returns -1 on a miss (the common case: a GeoJSON has hundreds
                 //   of regions, the series data a handful). Upstream builds a `Model` over `undefined`
                 //   and continues; here `getItemModel(-1)` would trap, so the miss yields a nil model
                 //   (every consumer below is `regionModel?` / guard-let). The geo branch goes through the
@@ -401,7 +401,7 @@ public final class MapDraw {
                     var polys: [[[Double]]] = [polyGeo.exterior]
                     polys.append(contentsOf: polyGeo.interiors ?? [])
                     // upstream: if (projectionStream) { polys = projectPolys(polys, projectionStream); }
-                    //   (see the `projectionStream` PORT-TODO above.)
+                    //   (see the `projectionStream` TODO above.)
                     for poly in polys {
                         var shape = PolygonShape()
                         shape.points = transformPolygonPoints(poly)
@@ -525,7 +525,7 @@ public final class MapDraw {
             // Otherwise it might bring some unexpected result. For example,
             // an area hovered that make some inner city can not be clicked.
             // upstream: (el as ECElement).z2EmphasisLift = 0;
-            //   PORT-TODO: no scene-graph class conforms to `ECElement` yet (util/types.swift models the
+            //   TODO: no scene-graph class conforms to `ECElement` yet (util/types.swift models the
             //   TS interface augmentation as a protocol), so this is a no-op cast — the states engine may
             //   still apply the default emphasis z2 lift to an SVG region on hover.
             if let ec = el as? ECElement {
@@ -581,7 +581,7 @@ public final class MapDraw {
                     // PENDING: clear those settings to SVG elements when `_freeSVG`.
                     // (Currently it happen not to be needed.)
                     states.setDefaultStateProxy(disp)
-                    // PORT-NOTE: upstream `const style = el.ensureState('blur').style || {}` mutates a
+                    // upstream `const style = el.ensureState('blur').style || {}` mutates a
                     //   THROWAWAY `{}` when the state has no style bag and never assigns it back — see
                     //   its own comment below. So only write back when a bag already exists; otherwise
                     //   elements that never went through `applyOptionStyleForRegion` (text/tspan/image)
@@ -703,7 +703,7 @@ public final class MapDraw {
 
         if jsTruthy(mapOrGeoModel.get("selectedMode")) {
 
-            // PORT-NOTE (§12 / repo convention): `regionsGroup` is a strong descendant of `self.group`,
+            // note (§12 / repo convention): `regionsGroup` is a strong descendant of `self.group`,
             //   which `self` owns, so a strong capture here closes a retain cycle that leaks the whole
             //   region scene subtree per chart/setOption. Capture weakly (as RoamController/LineDraw do).
             _ = regionsGroup.on("mousedown", { [weak self] _, _ in
@@ -751,7 +751,7 @@ private func applyOptionStyleForRegion(
     // and some use `lineStyle`, it might confuse users.
     // (3) Most SVG use <path>, where can not detect whether to draw a "line"
     // or a filled shape, so use `itemStyle` for <path>.
-    // PORT-NOTE: upstream's `regionModel` is never null, so the styles are read unconditionally. Here a
+    // upstream's `regionModel` is never null, so the styles are read unconditionally. Here a
     //   region with no data item / no geo region option yields a nil model — fall back to empty style
     //   bags rather than returning early, so the state machinery (ensureState + setDefaultStateProxy)
     //   below is still installed and hover/select/blur stay alive on such an element.
@@ -768,7 +768,7 @@ private func applyOptionStyleForRegion(
     let blurStyle = blurStyleModel.map { getFixedItemStyle($0) } ?? [:]
 
     // Update the itemStyle if has data visual
-    // PORT-NOTE: no `dataIndex >= 0` guard — upstream has none, and `getItemVisual(-1, ...)` falls
+    // no `dataIndex >= 0` guard — upstream has none, and `getItemVisual(-1, ...)` falls
     //   through to the SERIES-level visual (SeriesData.swift:1128 is index-safe), which is how a region
     //   with no matching data item still gets the series style/decal under visualMap encoding.
     if let data = data, let dataIndex = dataIndex {
@@ -789,7 +789,7 @@ private func applyOptionStyleForRegion(
     // SVG text, tspan and image can be named but not supporeted
     // to be styled by region option yet.
     // upstream: el.setStyle(normalStyle); el.style.strokeNoScale = true;
-    //   PORT-NOTE: `Displayable.setStyle` takes the typed `CommonStyleProps` and `strokeNoScale` lives on
+    //   `Displayable.setStyle` takes the typed `CommonStyleProps` and `strokeNoScale` lives on
     //   `PathStyleProps`, so the dynamic itemStyle bag is MERGED into the element's existing path style
     //   (upstream `setStyle` is a merge — a geoSVG shape must keep its authored `fill` when the region
     //   option sets no color). Non-`Path` displayables (SVG <text>/<image>) keep their style untouched,
@@ -819,7 +819,7 @@ private func resetLabelForRegion(
     guard let regionModel = regionModel else { return }
 
     // upstream: const isDataNaN = data && isNaN(data.get(data.mapDimension('value'), dataIdx) as number);
-    //   PORT-NOTE: the value read goes through `mapDrawToNumber` (MEMORY: Int-vs-Double option/store trap —
+    //   the value read goes through `mapDrawToNumber` (MEMORY: Int-vs-Double option/store trap —
     //   `as? Double` returns nil for an Int/NSNumber-boxed store value, which would make EVERY region
     //   report NaN and draw a label). A missing `value` dimension is `isNaN(undefined)` upstream → true.
     var isDataNaN = false
@@ -846,7 +846,7 @@ private func resetLabelForRegion(
     if (isGeoModel(mapOrGeoModel) || isDataNaN) || showLabelFromLayout {
 
         // upstream: const query = !isGeoModel(mapOrGeoModel) ? dataIdx : regionName;
-        //   PORT-TODO (behavioural gap): `SetLabelStyleOpt.labelDataIndex` is a `Double?` (the numeric-index
+        //   TODO (behavioural gap): `SetLabelStyleOpt.labelDataIndex` is a `Double?` (the numeric-index
         //   form only), so a NAME-keyed geo query is not representable. For the geo component the formatted
         //   region label is resolved eagerly here for the NORMAL state only and passed as `defaultText`
         //   (same deviation as GeoView's inlined subset), so a per-state `formatter` under
@@ -949,7 +949,7 @@ private func resetEventTriggerForRegion(
         // (2) only the last element will be kept in `data`, so that if trigger tooltip
         // by `dispatchAction`, only the last one can be found and triggered. That might be
         // not correct. We will fix it in future if anyone demanding that.
-        // PORT-NOTE: `indexOfName` returns -1 for a region with no matching data item (the normal case
+        // `indexOfName` returns -1 for a region with no matching data item (the normal case
         //   for a map series over a full GeoJSON). Upstream's `this._graphicEls[-1] = el` is harmless JS;
         //   the Swift `sparseSet` would trap on `arr[-1] = el`, so skip the stamp. `dataIndex: -1` means
         //   "no data item" and the stamp is only consumed by tooltip/highlight index lookups.
@@ -1002,7 +1002,7 @@ private func resetStateTriggerForRegion(
     _ regionModel: RegionModel?
 ) -> InnerFocus? {
     // upstream: el.highDownSilentOnTouch = !!mapOrGeoModel.get('selectedMode');
-    //   (see the ECElement PORT-TODO in `_buildSVG` — no scene-graph class conforms yet.)
+    //   (see the ECElement TODO in `_buildSVG` — no scene-graph class conforms yet.)
     if let ec = el as? ECElement {
         ec.highDownSilentOnTouch = jsTruthy(mapOrGeoModel.get("selectedMode"))
     }
@@ -1022,8 +1022,8 @@ private func resetStateTriggerForRegion(
 }
 
 // upstream: function projectPolys(rings, createStream, isLine?)
-//   PORT-TODO (dormant): reachable only once `GeoProjection.stream` lands (see the `projectionStream`
-//   PORT-TODO in `_buildGeoJSON`). Ported now so the stream path is a one-line wiring when it does.
+//   TODO (dormant): reachable only once `GeoProjection.stream` lands (see the `projectionStream`
+//   TODO in `_buildGeoJSON`). Ported now so the stream path is a one-line wiring when it does.
 private func projectPolys(
     _ rings: [[[Double]]],   // Polygons include exterior and interiors. Or polylines.
     _ createStream: (ProjectionStream) -> ProjectionStream,
@@ -1088,7 +1088,7 @@ private func getRegionModel(_ mapOrGeoModel: MapOrGeoModel, _ regionName: String
 
 
 // ============================================================================
-// PORT-NOTE helpers — NOT part of MapDraw.ts upstream. They bridge the dynamic
+// note helpers — NOT part of MapDraw.ts upstream. They bridge the dynamic
 // `[String: Any]` itemStyle bag (`Model.getItemStyle()`) onto the typed
 // `PathStyleProps`, reproducing upstream's duck-typed `el.setStyle(styleBag)`
 // MERGE. Mirrors the (private) `mapPathStyleFromDict` in MapView.swift —

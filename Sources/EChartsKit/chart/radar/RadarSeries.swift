@@ -66,7 +66,7 @@ import ZRenderKit
 // }
 
 // upstream: export const SERIES_TYPE_RADAR = 'radar';
-//   PORT-NOTE (single-module dedupe): upstream RadarSeries.ts re-declares/exports this constant, but
+//   note (single-module dedupe): upstream RadarSeries.ts re-declares/exports this constant, but
 //   coord/radar/RadarModel.swift already declares the module-level `public let SERIES_TYPE_RADAR`
 //   (= COORD_SYS_TYPE_RADAR). In a single Swift module the two `public let`s collide, so this
 //   re-declaration is dropped and the RadarModel one is used (same value "radar").
@@ -164,7 +164,7 @@ open class RadarSeriesModel: SeriesModel {
         if dataIndex != nil {
             let data = self.getData()
             // const coordSys = this.coordinateSystem;
-            // PORT-NOTE: `coordinateSystem` is `Radar?` here (upstream is non-optional `Radar`); the Swift
+            // `coordinateSystem` is `Radar?` here (upstream is non-optional `Radar`); the Swift
             //   optionality is handled safely by guarding and returning nil when unresolved.
             guard let coordSys = self.radarCoordinateSystem else { return nil }
 

@@ -49,7 +49,7 @@ import ZRenderKit
 //   import { TextStyleProps, TextProps } from 'zrender/src/graphic/Text';
 //     → ZRenderKit `TextStyleProps` / `TextProps` (`TextProps` = `DisplayableProps` = `ElementProps`).
 //   import { LocaleOption, getLocaleModel } from '../../core/locale';
-//     → PORT-NOTE: `core/locale` is ported (core/locale.swift, `getLocaleModel(_:)`). `ecModel.getLocaleModel()`
+//     → note: `core/locale` is ported (core/locale.swift, `getLocaleModel(_:)`). `ecModel.getLocaleModel()`
 //       (→ `Model`) supplies the default locale; the by-name `getLocaleModel(nameMap)` reassignment at the
 //       call sites below is not wired (the default localeModel is kept).
 //   import type Model from '../../model/Model';                   → `Model`.
@@ -530,7 +530,7 @@ public final class CalendarView: ComponentView {
             nameMap = (nameMapRaw as? [Any]) ?? []
         }
         _ = nameMapRaw
-        // PORT-NOTE: the default EN localeModel (core/locale.swift) provides `time.monthAbbr`; this EN
+        // the default EN localeModel (core/locale.swift) provides `time.monthAbbr`; this EN
         //   fallback is a defensive guard for a custom locale that omits it, keeping the `nameMap[m-1]`
         //   index below in range so month labels render.
         if nameMap.isEmpty { nameMap = calendarEnMonthAbbr }
@@ -660,7 +660,7 @@ public final class CalendarView: ComponentView {
             }
             else {
                 var abbr = (localeModel.get(["time", "dayOfWeekAbbr"]) as? [Any]) ?? []
-                // PORT-NOTE: the default EN localeModel (core/locale.swift) provides `time.dayOfWeekAbbr`;
+                // the default EN localeModel (core/locale.swift) provides `time.dayOfWeekAbbr`;
                 //   this EN fallback is a defensive guard so the `nameMap[day]` index (day 0..6) stays in range.
                 if abbr.isEmpty { abbr = calendarEnDayOfWeekAbbr }
                 nameMap = util.map(abbr) { val, _ -> Any in
@@ -714,7 +714,7 @@ public final class CalendarView: ComponentView {
     }
 
     // Apply an element-level `TextProps` bag (from `_yearTextPositionControl`) to a ZRText.
-    //   PORT-NOTE: NOT part of CalendarView.ts. Upstream calls `yearText.attr(props)`, but ZRText.attr
+    //   NOT part of CalendarView.ts. Upstream calls `yearText.attr(props)`, but ZRText.attr
     //   routes the `"style"` key through `Displayable.attrKV`, which merges via `CommonStyleProps` and
     //   drops the text-only `align`/`verticalAlign` fields. This helper applies rotation/x/y at the
     //   element level and merges `align`/`verticalAlign` into the ZRText's `textStyle` directly, matching
@@ -736,7 +736,7 @@ public final class CalendarView: ComponentView {
 
 
 // ============================================================================
-// PORT-NOTE helpers — NOT part of CalendarView.ts upstream. They reproduce the
+// note helpers — NOT part of CalendarView.ts upstream. They reproduce the
 // dynamic-option-read coercions, the minimal `createTextStyle`, the style-bag →
 // PathStyleProps bridge, the number[][] → [VectorArray] conversion, and the
 // JS `Date.setMonth` replacement referenced above. Local convenience bridges over
@@ -776,7 +776,7 @@ private func calendarCreateTextStyle(_ textStyleModel: Model, _ text: String?) -
     return labelStyle.createTextStyle(textStyleModel, specified)
 }
 
-/// PORT-NOTE: a local `useStyle`-style bridge (upstream lives in `util/graphic`, which is ported as
+/// a local `useStyle`-style bridge (upstream lives in `util/graphic`, which is ported as
 ///   util/graphic.swift). Maps the dynamic style bag ([String: Any] — the `getItemStyle()` / `getLineStyle()`
 ///   result) onto the typed `PathStyleProps`. Same deviation as SingleAxisView.pathStyleFromDict; numbers
 ///   are read via `numOpt` (Int|Double|NSNumber) to avoid the Int-drop trap.
@@ -821,7 +821,7 @@ private func pointsToVector(_ points: [[Double]]) -> [VectorArray] {
     return points.map { VectorArray($0.count > 0 ? $0[0] : 0, $0.count > 1 ? $0[1] : 0) }
 }
 
-/// PORT-NOTE: replacement for the JS `date.setMonth(date.getMonth() + n)` in-place mutation.
+/// replacement for the JS `date.setMonth(date.getMonth() + n)` in-place mutation.
 ///   Foundation.Date is a value type, so this returns a new Date `n` months later. Uses a Gregorian
 ///   calendar in the current timezone to match JS local `Date` semantics (cf. util/time.swift's non-UTC
 ///   getters, which use `TimeZone.current`). Reconcile with the `Calendar` coord's date parsing (which
@@ -832,7 +832,7 @@ private func calendarSetMonthPlus(_ date: Foundation.Date, _ n: Int) -> Foundati
     return cal.date(byAdding: .month, value: n, to: date) ?? date
 }
 
-// PORT-NOTE bridge: echarts' EN locale (mirrors core/locale/EN.ts `time.monthAbbr` / `time.dayOfWeekAbbr`,
+// note bridge: echarts' EN locale (mirrors core/locale/EN.ts `time.monthAbbr` / `time.dayOfWeekAbbr`,
 //   ported as i18n/langEN.swift) — used as the defensive fallback above.
 // Used as a fallback when the (not-yet-ported) locale model supplies no month/day names, so the
 // calendar month/week label index lookups stay in range. Remove once core/locale lands.

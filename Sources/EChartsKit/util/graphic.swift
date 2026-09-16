@@ -2,7 +2,7 @@
 // (Partial: `expandOrShrinkRect` / `expandRectOnOneDimension`, the transform helpers, the shape-class
 //  registry, and `createIcon` are landed here so far.
 //  Also landed: clipRectByRect, groupTransition, setTooltipConfig, calcZ2Range, extendPath.
-//  PORT-NOTE (deferred): extendShape (needs a `Path.extend` runtime-subclass synthesizer in ZRenderKit)
+//  TODO: extendShape (needs a `Path.extend` runtime-subclass synthesizer in ZRenderKit)
 //  and a few driver-layer helpers (traverseElements/traverseUpdateZ/decomposeTransform/…) are not ported here yet.)
 
 import Foundation
@@ -77,7 +77,7 @@ public func ensureCopyRect(_ target: BoundingRect?, _ source: BoundingRect) -> B
 /// upstream: export function ensureCopyTransform(target, source)
 /// Create or copy to the existing transform to avoid modifying `source`. `nil` if no transform,
 /// following zrender's convention (enables bypassing unnecessary calculation).
-/// PORT-NOTE: `matrix.copy` is value-returning here (CONVENTIONS §3), so the incoming `target`
+/// `matrix.copy` is value-returning here (CONVENTIONS §3), so the incoming `target`
 /// scratch buffer is unused and a fresh MatrixArray is returned.
 public func ensureCopyTransform(_ target: MatrixArray?, _ source: MatrixArray?) -> MatrixArray? {
     guard let source = source else { return nil }
@@ -142,7 +142,7 @@ public func getTransform(_ target: Transformable?, _ ancestor: Transformable? = 
  * @return [x, y]
  */
 // upstream: export function applyTransform(target, transform: Transformable | matrix.MatrixArray, invert?)
-//   PORT-NOTE: the `Transformable` arm of the union (`transform = Transformable.getLocalTransform(transform)`)
+//   the `Transformable` arm of the union (`transform = Transformable.getLocalTransform(transform)`)
 //   is dropped — every call site in the ported code passes a MatrixArray. Pass
 //   `Transformable.getLocalTransform(t)` explicitly if a Transformable is ever needed.
 public func applyTransform(
@@ -342,7 +342,7 @@ public func groupTransition(_ g1: Group?, _ g2: Group?, _ animatableModel: Model
             "rotation": el.rotation
         ]
         // if (isPath(el)) { obj.shape = clone(el.shape); }
-        //   PORT-NOTE: upstream's `clone(el.shape)` yields a plain object whose keys `animateTo`
+        //   upstream's `clone(el.shape)` yields a plain object whose keys `animateTo`
         //     recurses into and tweens one by one. A Swift `PathShape` is a struct, for which
         //     `util.isObject` is false, so handing the struct itself to `updateProps` would make
         //     `animateToShallow` treat "shape" as ONE discrete leaf key (VALUE_TYPE_UNKOWN ->
@@ -379,9 +379,9 @@ public func groupTransition(_ g1: Group?, _ g2: Group?, _ animatableModel: Model
 // ============================================================================
 
 // upstream: export function setTooltipConfig(opt: { el, componentModel, itemName, itemTooltipOption?, formatterParamsExtra? }): void
-//   PORT-NOTE: upstream's single options bag is spread to labeled parameters here.
+//   upstream's single options bag is spread to labeled parameters here.
 //   `itemTooltipOption` is `string | CommonTooltipOption<unknown>` -> `Any?`.
-//   PORT-NOTE: `formatterParamsExtra` is `KeyValuePairs<String, Any>`, not `[String: Any]`, because
+//   `formatterParamsExtra` is `KeyValuePairs<String, Any>`, not `[String: Any]`, because
 //     its key order is load-bearing: the keys are appended to `formatterParams.$vars`, and
 //     `format.formatTpl` maps `$vars` POSITIONALLY onto `TPL_VAR_ALIAS` (`a`/`b`/`c`/...). A Swift
 //     `Dictionary` iterates in hash-seeded (per-process random) order, so `{b}`/`{c}`/`{d}` in a
@@ -406,7 +406,7 @@ public func setTooltipConfig(
         itemTooltipOptionObj = o
         hasTooltipOptionObj = true
     }
-    // PORT-NOTE: upstream `itemTooltipOption` is already the parsed option object, but in this port most
+    // upstream `itemTooltipOption` is already the parsed option object, but in this port most
     //   callers read it straight off a model (`regionModel.get('tooltip')` in MapDraw,
     //   `matrixModel.getShallow('tooltip', true)` in MatrixView), so it arrives as the dynamic
     //   `[String: Any]` option bag. Without this arm the whole per-item tooltip option (formatter,
@@ -430,7 +430,7 @@ public func setTooltipConfig(
 
     // if (formatterParamsExtra) { each(keys(...), key => { if (!hasOwn(formatterParams, key)) {...} }); }
     if let formatterParamsExtra = formatterParamsExtra {
-        // PORT-NOTE: upstream's `each(keys(formatterParamsExtra), ...)` walks JS object
+        // upstream's `each(keys(formatterParamsExtra), ...)` walks JS object
         //   insertion order; iterating the `KeyValuePairs` preserves that order faithfully
         //   (see the `$vars`/`TPL_VAR_ALIAS` note on the signature above).
         for (key, value) in formatterParamsExtra {
@@ -445,7 +445,7 @@ public func setTooltipConfig(
     ecData.componentMainType = mainType
     ecData.componentIndex = componentIndex
     // ecData.tooltipConfig = { name, option: defaults({ content, encodeHTMLContent, formatterParams }, itemTooltipOptionObj) };
-    //   PORT-NOTE: `defaults` merges the CommonTooltipOption fields (`itemTooltipOptionObj`) beneath the
+    //   `defaults` merges the CommonTooltipOption fields (`itemTooltipOptionObj`) beneath the
     //     own `content`/`encodeHTMLContent`/`formatterParams`; in this model the common tooltip fields
     //     live on `ComponentItemTooltipOption.common`, so the merge is expressed structurally.
     ecData.tooltipConfig = ECData.TooltipConfig(
@@ -459,7 +459,7 @@ public func setTooltipConfig(
     )
 }
 
-// PORT-NOTE: NOT an upstream function. Bridges a dynamic `[String: Any]` option bag (what
+// NOT an upstream function. Bridges a dynamic `[String: Any]` option bag (what
 //   `model.get('tooltip')` returns in this port) onto the statically-typed `CommonTooltipOption<Any>`
 //   that `ecData.tooltipConfig.option.common` holds, so `setTooltipConfig`'s `itemTooltipOption` keeps
 //   upstream's semantics (`defaults({content, encodeHTMLContent, formatterParams}, itemTooltipOptionObj)`).
@@ -585,7 +585,7 @@ public func calcZ2Range(_ el: Element) -> (min: Double, max: Double) {
 // ============================================================================
 // extendPath (upstream util/graphic.ts:118-127) — user-facing "extend a Path subclass from an SVG path
 //   string" API. Mirrors upstream `extendPath = pathTool.extendFromString`.
-//   PORT-NOTE: `extendShape` (upstream :114-116, `Path.extend(opts)`) is NOT ported here — it needs a
+//   `extendShape` (upstream :114-116, `Path.extend(opts)`) is NOT ported here — it needs a
 //     `Path.extend` runtime-subclass synthesizer in ZRenderKit's Path, which does not exist yet.
 // ============================================================================
 
@@ -658,7 +658,7 @@ public func getShapeClass(_ name: String) -> ((ElementProps?) -> Path)? {
 //       }
 //   }
 //
-//   PORT-NOTE (event handlers): upstream's `opt` may also carry the native handler props
+//   note (event handlers): upstream's `opt` may also carry the native handler props
 //   (`onmousemove`/`onmousedown`/`drift`/`ondragend`) — those live at the event seam (CONVENTIONS §9)
 //   and are NOT modeled on `DisplayableProps` here. Callers (BaseAxisPointer) wire them onto the
 //   returned element AFTER construction (via `el.on(...)` + `el.driftHandler`). The `opt` bag passed

@@ -82,7 +82,7 @@ public func getDecalFromPalette(
     _ requestNum: Double? = nil
 ) -> [String: Any]? {
     // upstream: const defaultDecals = normalizeToArray((ecModel as Model<AriaOptionMixin>).get(['aria', 'decal', 'decals']));
-    // PORT-NOTE: upstream casts ecModel to `Model<AriaOptionMixin>` purely for typing `get`;
+    // upstream casts ecModel to `Model<AriaOptionMixin>` purely for typing `get`;
     //   here GlobalModel conforms to PaletteMixin (upstream `mixin(GlobalModel, PaletteMixin)`),
     //   which exposes `get`, so the cast targets PaletteMixin. Decals are the dynamic option bag
     //   `[String: Any]` (see the innerDecal note above).

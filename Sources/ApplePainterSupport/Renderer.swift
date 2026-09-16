@@ -42,7 +42,7 @@ public struct PaintStyle {
     public var miterLimit: Double = 10
 
     /// nonzero (`.winding`) vs even-odd. zrender's `PathStyleProps` has no fill-rule field;
-    /// canvas defaults to nonzero. PORT-NOTE: even-odd is never selected this phase.
+    /// canvas defaults to nonzero. note: even-odd is never selected this phase.
     public var fillRule: CGPathFillRule = .winding
 
     /// Global element alpha (`style.opacity`), applied to ALL subsequent paint ops via
@@ -63,7 +63,7 @@ public struct PaintStyle {
     /// Gradient stroke object. Stroked via `replacePathWithStrokedPath` + clip + gradient draw.
     public var strokeGradient: Gradient?
 
-    /// Pattern fill object (best-effort tiled image). PORT-NOTE: the CoreGraphics tiled-image draw
+    /// Pattern fill object (best-effort tiled image). note: the CoreGraphics tiled-image draw
     /// covers the common `repeat` case; exotic per-pattern `rotation`/`scaleX`/`scaleY` transforms
     /// have no direct CGPattern analog here and are approximated rather than matched pixel-for-pixel.
     public var fillPattern: Pattern?

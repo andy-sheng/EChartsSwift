@@ -15,7 +15,7 @@
 //   - NATIVE PANE: `series[].universalTransition.delay` is dropped — it is a JS closure
 //     (`(idx, total) => (idx / total) * 1000`, which staggers the categories' morphs) and a Swift
 //     `[String: Any]` option cannot carry a function. The web pane keeps it verbatim, so the reference
-//     pane's rows cascade where the native pane's five rows morph in unison. Marked PORT-NOTE below.
+//     pane's rows cascade where the native pane's five rows morph in unison. Marked note below.
 //   - The TS type annotations (`const labelSetting: echarts.PictorialBarSeriesOption['label']`, the
 //     `makeOption` signature, `type: type as 'pictorialBar'`, `delay: function (idx: number, ...)`) and
 //     the trailing `export {}` are dropped from webOptionJS — a classic script cannot parse them.
@@ -114,7 +114,7 @@ private func pictorialBarTransitionOption(_ type: String, _ symbol: String? = ni
                 "symbolRepeat": true,
                 "symbolSize": ["80%", "60%"],
                 "barCategoryGap": "40%",
-                // PORT-NOTE: universalTransition.delay omitted — a JS closure
+                // universalTransition.delay omitted — a JS closure
                 // `function (idx, total) { return (idx / total) * 1000; }`, staggering each category's
                 // morph by up to 1s. A Swift [String: Any] option cannot carry a function, so the
                 // native pane morphs all five rows at once instead of cascading them.
@@ -129,7 +129,7 @@ private func pictorialBarTransitionOption(_ type: String, _ symbol: String? = ni
                 "label": pictorialBarTransitionLabelSetting,
                 "symbolRepeat": true,
                 "symbolSize": ["80%", "60%"],
-                // PORT-NOTE: universalTransition.delay omitted — the same closure as series[0].
+                // universalTransition.delay omitted — the same closure as series[0].
                 "universalTransition": ["enabled": true] as [String: Any],
                 "data": pictorialBarTransitionData(pictorialBarTransitionValues2016, symbol) as [Any]
             ] as [String: Any]

@@ -13,7 +13,7 @@
 //     in for Math.random(), and the SAME frozen rows feed BOTH panes: spliced into webOptionJS as a JSON
 //     literal, and used verbatim as the native `series.data`. Row count (9), date strings and shape
 //     ([dayStr, value]) are unchanged.
-//   - `tooltip.position` is a JS closure and is dropped from the native option (see PORT-NOTE); with
+//   - `tooltip.position` is a JS closure and is dropped from the native option (see note); with
 //     `triggerOn: 'none'` the tooltip only ever appears via the axisPointer handle, which a static
 //     snapshot never shows. The reference pane keeps it.
 //   - `xAxis.axisPointer.label.formatter` is represented natively by the equivalent Swift closure;
@@ -207,7 +207,7 @@ option = {
             ] as [String: Any],
             "tooltip": [
                 "triggerOn": "none"
-                // PORT-NOTE: tooltip.position omitted — JS closure `function (pt) { return [pt[0], 130]; }`,
+                // tooltip.position omitted — JS closure `function (pt) { return [pt[0], 130]; }`,
                 // which pins the tooltip box to the axisPointer handle's x and a fixed y of 130px.
             ] as [String: Any],
             "toolbox": [

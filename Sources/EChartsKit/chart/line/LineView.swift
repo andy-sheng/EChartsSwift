@@ -653,7 +653,7 @@ open class LineView: ChartView {
     ) {
         self.ensureInit()
 
-        // PORT-NOTE (deferred): only cartesian2d + polar are handled here; geo/single/calendar line
+        // TODO: only cartesian2d + polar are handled here; geo/single/calendar line
         //   coordinate systems are not yet wired into this view's render path.
         guard let coordSys = LineCoordSys.from(seriesModel.coordinateSystem) else { return }
         let group = self.group
@@ -963,7 +963,7 @@ open class LineView: ChartView {
         let triggerEvent = seriesModel.get("triggerEvent")
         let triggerLineEvent = seriesModel.get("triggerLineEvent")
 
-        // PORT-NOTE: upstream warns via `warnDeprecated('triggerLineEvent', ...)` in __DEV__; the
+        // upstream warns via `warnDeprecated('triggerLineEvent', ...)` in __DEV__; the
         //   `warnDeprecated` helper is not ported, so the deprecation warning is omitted (behaviorally
         //   inert — the option is still honored below).
 

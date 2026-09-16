@@ -31,7 +31,7 @@ import ZRenderKit
 //   import GlobalModel from '../../model/Global';                       -> `GlobalModel`.
 //   import ExtensionAPI from '../../core/ExtensionAPI';                 -> `ExtensionAPI`.
 //   import { extend } from 'zrender/src/core/util';                     -> `util.extend`.
-//   import { deprecateReplaceLog } from '../../util/log';               -> PORT-NOTE: dev-only deprecation log (skipped).
+//   import { deprecateReplaceLog } from '../../util/log';               -> note: dev-only deprecation log (skipped).
 //   import { EChartsExtensionInstallRegisters } from '../../extension'; -> `EChartsExtensionInstallRegisters`.
 //   import { retrieveTargetInfo, aboveViewRoot } from '../helper/treeHelper';  -> `treeHelper.*` (sibling helper).
 

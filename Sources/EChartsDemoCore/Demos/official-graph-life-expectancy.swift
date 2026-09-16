@@ -15,7 +15,7 @@
 //     wrapper, the TS type annotations and the trailing `export {};` are gone. The NATIVE pane parses the
 //     same bytes and runs the same reshape in Swift.
 //   - NATIVE PANE: `animationDelay` is a JS closure (`idx => idx * 100`) and cannot ride in a Swift
-//     option — see the PORT-NOTE. Consequence: native nodes animate in together instead of cascading
+//     option — see the note. Consequence: native nodes animate in together instead of cascading
 //     100ms apart per index. Geometry and colour are unaffected.
 //   - Node `name`: JS keeps the raw year NUMBER (`item[4]`); the Swift option carries that same year as a
 //     String. echarts renders the name as label text either way, so the two panes print the same "1960".

@@ -189,7 +189,7 @@ open class TimelineModel: ComponentModel {
         // const data = this._data = new SeriesData([{name:'value', type:dimType}], this);
         // PORT-DEVIATION: the object-literal dimension `{name, type}` loses its `type` through
         //   `SeriesData.init` (its object-literal branch copies only `name` — see SeriesData.swift
-        //   PORT-NOTE). Build the `SeriesDimensionDefine` directly so the store dim TYPE (ordinal/
+        //   note). Build the `SeriesDimensionDefine` directly so the store dim TYPE (ordinal/
         //   time/number) is honored (time date-strings must parse as time, not float).
         let dim = SeriesDimensionDefine()
         dim.name = "value"

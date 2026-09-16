@@ -11,7 +11,7 @@
 //      reload, which would make the two panes undiffable; with the seed, the reference pane and the
 //      Swift pane generate the SAME 20,000 values. The generation loop is otherwise verbatim, so the
 //      data is NOT inlined — each pane runs the same algorithm.
-//   2. `tooltip.position` is a JS closure; omitted from the Swift option (see the PORT-NOTE below).
+//   2. `tooltip.position` is a JS closure; omitted from the Swift option (see the note below).
 //   3. (Was a deviation; now fixed.) The gradient `areaStyle.color` renders as a gradient on the
 //      native pane. EChartsKit's style bridge (`barStyleFromDict`, shared by LineView's area pass)
 //      now converts a gradient option dict `{type:'linear'|'radial', ...}` (or an EChartsKit
@@ -164,7 +164,7 @@ option = {
 };
 """#,
         option: [
-            // PORT-NOTE: tooltip.position omitted — the JS closure `function (pt) { return [pt[0], '10%']; }`
+            // tooltip.position omitted — the JS closure `function (pt) { return [pt[0], '10%']; }`
             //   pins the tooltip box to the pointer's x at 10% of the canvas height. No Swift equivalent;
             //   a tooltip never shows in the gallery's static frame anyway.
             "tooltip": [

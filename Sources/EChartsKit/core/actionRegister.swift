@@ -38,7 +38,7 @@ func registerBuiltinActions() {
 
     // registerAction({ type: SELECT_ACTION_TYPE, event: SELECT_CHANGED_EVENT_TYPE, update: SELECT_ACTION_TYPE,
     //                   action: noop, refineEvent: makeSelectChangedEvent, publishNonRefinedEvent: true });
-    // PORT-NOTE (deferred): requires `makeSelectChangedEvent` (echarts.ts:3415, itself needs
+    // TODO: requires `makeSelectChangedEvent` (echarts.ts:3415, itself needs
     //   getAllSelectedIndices) + the message-center emission — the whole refineEvent/event path is
     //   DEFERRED (see ECharts.doDispatchAction, ECharts.swift:2190). Registering with `refineEvent == nil`
     //   makes `nonRefinedEventType` resolve to 'selectchanged' instead of the action type; harmless while
@@ -49,7 +49,7 @@ func registerBuiltinActions() {
         info.update = selType
         info.action = noopAction
         info.publishNonRefinedEvent = true
-        // info.refineEvent = makeSelectChangedEvent   // PORT-NOTE (deferred, see above).
+        // info.refineEvent = makeSelectChangedEvent   // note (deferred, see above).
         registerAction(info, nil)
     }
 }

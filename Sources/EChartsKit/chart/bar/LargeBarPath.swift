@@ -13,7 +13,7 @@ import ZRenderKit
 // upstream: interface LagePathShape { points: ArrayLike<number>; } (bar/BarView.ts:1096) — the packed
 //   `largePoints`, 3 numbers per bar: `[startX, startY, sizeAlongValueAxis]`.
 public struct LargeBarPathShape: PathShape {
-    // PORT-TODO: PORTING.md section 7 — an upstream `ArrayLike<number>` fed by a `Float32Array`
+    // TODO: PORTING.md section 7 — an upstream `ArrayLike<number>` fed by a `Float32Array`
     //   (`vendor.createFloat32Array` in layout/barGrid) should be `ContiguousArray<Double>`. Kept
     //   `[Double]` to match `util/vendor.createFloat32Array`'s current return type (vendor.swift:75)
     //   and the `getLayout("largePoints")` boxing; migrate this, `LargeBarPath.largeDataIndices` and
@@ -30,7 +30,7 @@ public final class LargeBarPath: Path {
     public override var largeRectsAreCompound: Bool { true }
     // upstream: baseDimIdx (0 when the value axis is vertical, 1 when horizontal), largeDataIndices, barWidth.
     public var baseDimIdx: Int = 0
-    // PORT-TODO: PORTING.md section 7 — upstream `Float32Array` buffer; should be
+    // TODO: PORTING.md section 7 — upstream `Float32Array` buffer; should be
     //   `ContiguousArray<Double>` (see the note on `LargeBarPathShape.points`).
     public var largeDataIndices: [Double] = []
     public var barWidth: Double = 0
@@ -213,7 +213,7 @@ func barCreateLarge(_ seriesModel: BarSeriesModel, _ group: ZRenderKit.Group) {
 //   free it — at 500k bars each orphaned `LargeBarPath` pins its whole packed `points` array (~12 MB per
 //   re-render). `BarView._clear` MUST `off()` the outgoing large paths before `group.removeAll()`; it
 //   does. (A `[weak el]` capture never helped: the cycle is through `ctx`, not the closure.)
-// PORT-TODO (framework): `EventHandler.ctx` should be held weakly/unowned in the `context ?? self` case
+// TODO (framework): `EventHandler.ctx` should be held weakly/unowned in the `context ?? self` case
 //   — upstream JS GC collects that self-cycle freely. Track separately; it affects every `Element.on`.
 private let largePathHitHandler: EventCallback = { thisCtx, args in
     guard let largePath = thisCtx as? LargeBarPath,
@@ -262,7 +262,7 @@ func largePathFindDataIndex(_ largePath: LargeBarPath, _ x: Double, _ y: Double)
     let largeDataIndices = largePath.largeDataIndices
     let barWidth = largePath.barWidth
 
-    // PORT-NOTE: upstream bounds the loop by `points.length / 3` alone and reads `largeDataIndices[i]`
+    // upstream bounds the loop by `points.length / 3` alone and reads `largeDataIndices[i]`
     //   — an out-of-range typed-array read yields `undefined` in JS (harmless), but traps in Swift.
     //   `points` and `largeDataIndices` come from two independent `getLayout(...) as? [Double]` reads
     //   (either of which can fall through to `[]`), so bound by BOTH.

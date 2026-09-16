@@ -15,7 +15,7 @@
 //     same 0..300 range, and the SAME array is used by BOTH panes: spliced into webOptionJS as a JSON
 //     literal that the example's own push-loop reads instead of `Math.random() * 300`. The loop, and
 //     everything else in the option, is verbatim.
-//   - PORT-NOTE below: ONE JS closure is dropped — tooltip.formatter. The two scatter LABEL formatters
+//   - note below: ONE JS closure is dropped — tooltip.formatter. The two scatter LABEL formatters
 //     (which are what DRAW the day number / lunar day / solar term — i.e. the whole point of this
 //     example) DO cross: `DataFormatMixin.getFormattedLabel` casts `label.formatter` to a Swift
 //     `(CallbackDataParams) -> String` and SymbolElement routes every scatter label through it, so they
@@ -503,7 +503,7 @@ option = {
 };
 """#,
         option: [
-            // PORT-NOTE: tooltip.formatter omitted — the JS closure returned
+            // tooltip.formatter omitted — the JS closure returned
             // '降雨量: ' + params.value[1].toFixed(2). Unlike label.formatter (wired below as a real Swift
             // closure), the tooltip `formatter` OVERRIDE is not read by the port at all: TooltipView
             // defers it (component/tooltip/TooltipView.swift — "the `formatter` (string/function)

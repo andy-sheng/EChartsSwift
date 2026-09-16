@@ -1,6 +1,6 @@
 // Ported from echarts/src/core/CoordinateSystem.ts — keep in sync with upstream
 //
-// PORT-NOTE: The Swift file is named `CoordinateSystemManager.swift` (after this module's default
+// The Swift file is named `CoordinateSystemManager.swift` (after this module's default
 //   export) rather than `CoordinateSystem.swift`, because SwiftPM cannot compile two source files
 //   with the same basename in one target, and `coord/CoordinateSystem.swift` already exists in
 //   EChartsKit (mirroring `echarts/src/coord/CoordinateSystem.ts`). The upstream provenance for
@@ -21,7 +21,7 @@ import ZRenderKit
 // import { CoordinateSystemDataCoord, NullUndefined } from '../util/types';  -> util/types.swift
 //   NullUndefined collapses to Optional (CONVENTIONS §6).
 
-// PORT-NOTE: upstream `type CoordinateSystemCreatorMap = {[type: string]: CoordinateSystemCreator}`
+// upstream `type CoordinateSystemCreatorMap = {[type: string]: CoordinateSystemCreator}`
 //   is a plain object literal iterated by `zrUtil.each` in insertion order. Modeled as the
 //   insertion-ordered `HashMap` shim (util/modelUtil.swift) so `.each`/`.get`/`.set` mirror the
 //   upstream object semantics; replace with `util.HashMap` once ZRenderKit ports it.
@@ -70,7 +70,7 @@ public final class CoordinateSystemManager {
                         // Disallow `update` is a brutal way to ensure `_nonSeriesBoxMasterList`s are ready to
                         // serve after `create`. But if `update` has to be involved in `_nonSeriesBoxMasterList`
                         // for some future case, more complicated mechanisms need to be introduced.
-                        // PORT-NOTE: `zrUtil.each(list, master => zrUtil.assert(!master.update))` checks the
+                        // `zrUtil.each(list, master => zrUtil.assert(!master.update))` checks the
                         //   optional `update` method is *absent*. In the Swift port `update` is a protocol
                         //   requirement with a no-op default, so its presence cannot be detected at runtime;
                         //   the assertion is omitted.
@@ -130,7 +130,7 @@ public typealias BoxCoordinateSystemCoordFrom = Double
 // type BoxCoordinateSystemGetCoord2 = (model: ComponentModel) => CoordinateSystemDataCoord;
 public typealias BoxCoordinateSystemGetCoord2 = (_ model: ComponentModel) -> CoordinateSystemDataCoord
 
-// PORT-NOTE: TS object-param `opt: {...}` modeled as a param struct (CONVENTIONS style, see modelUtil.swift).
+// TS object-param `opt: {...}` modeled as a param struct (CONVENTIONS style, see modelUtil.swift).
 public struct RegisterLayOutOnCoordSysUsageOpt {
     // `SomeSeries.type` or `SomeComponent.type`
     public var fullType: ComponentFullType // ComponentModel['type']
@@ -142,7 +142,7 @@ public struct RegisterLayOutOnCoordSysUsageOpt {
     }
 }
 
-// PORT-NOTE: upstream stores `{getCoord2: BoxCoordinateSystemGetCoord2 | NullUndefined}` and mutates
+// upstream stores `{getCoord2: BoxCoordinateSystemGetCoord2 | NullUndefined}` and mutates
 //   its `.getCoord2` through the value returned by `map.set(...)`. Modeled as a `final class` so the
 //   mutation is observed through the stored reference (a struct would mutate a copy).
 final class CoordSysUseStore {
@@ -307,7 +307,7 @@ public func decideCoordSysUsageKind(
  *  and then call `injectCoordSysByOption({coordSysType: 'bbb', ..., isDefaultDataCoordSys: true})`
  *  once for each series/components.
  */
-// PORT-NOTE: TS object-param `opt: {...}` modeled as a param struct (CONVENTIONS style, see modelUtil.swift).
+// TS object-param `opt: {...}` modeled as a param struct (CONVENTIONS style, see modelUtil.swift).
 public struct InjectCoordSysByOptionOpt {
     // series or component
     public var targetModel: ComponentModel
@@ -397,7 +397,7 @@ public let simpleCoordSysInjectionProvider: CoordSysInjectionProvider = { coordS
     // const coordSysModel = injectTargetModel.getReferringComponents(
     //     coordSysType, SINGLE_REFERRING
     // ).models[0] as (ComponentModel & {coordinateSystem: CoordinateSystem});
-    // PORT-NOTE: TS intersection cast `ComponentModel & {coordinateSystem: CoordinateSystem}` modeled
+    // TS intersection cast `ComponentModel & {coordinateSystem: CoordinateSystem}` modeled
     //   as `as? CoordinateSystemHostModel` (the protocol that declares `coordinateSystem`). Its property
     //   type is `CoordinateSystemMaster?`, whereas upstream loosely types this as `CoordinateSystem`;
     //   bridged back with `as? CoordinateSystem` (runtime existential cast).

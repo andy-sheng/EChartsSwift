@@ -28,7 +28,7 @@ import ZRenderKit
 
 // upstream: type Constructor = new (...args: any) => any;
 //
-// PORT-NOTE: upstream `Constructor` is any JS class object. The registry needs to
+// upstream `Constructor` is any JS class object. The registry needs to
 //            (a) store it and (b) read its `type`. We model that as a metatype of a
 //            protocol the registered component/series classes conform to. Faithful
 //            mechanism (registry keyed by component type), not prototype mutation.
@@ -67,45 +67,45 @@ public enum clazz {
     }
 
     public static func isExtendedClass(_ clz: Any?) -> Bool {
-        // PORT-NOTE: upstream tags extended classes with IS_EXTENDED_CLASS via prototype
+        // upstream tags extended classes with IS_EXTENDED_CLASS via prototype
         //            mutation (`return !!(clz && clz[IS_EXTENDED_CLASS])`). Swift uses
         //            native subclassing, so there is no runtime "extended" tag to read.
         return false
     }
 
-    // PORT-NOTE: export interface ExtendableConstructor { new; $constructor; extend;
+    // export interface ExtendableConstructor { new; $constructor; extend;
     //            superCall; superApply; superClass; [IS_EXTENDED_CLASS]; }
     //            Describes the prototype-mounted shape produced by `enableClassExtend`.
     //            No Swift equivalent — native `class Sub: Super` replaces it.
 
     /// Implements `ExtendableConstructor` for `rootClz`.
     ///
-    /// PORT-NOTE: prototype-based `extend(proto)` machinery (clones the super class,
+    /// prototype-based `extend(proto)` machinery (clones the super class,
     ///            copies a proto bag onto the prototype, mounts extend/superCall/
     ///            superApply/superClass, tags IS_EXTENDED_CLASS). In Swift this is
     ///            replaced by native subclassing (`class Series: Component`) and
     ///            `super.method(...)`. Kept as a callable no-op so call sites that
     ///            still invoke it during porting compile.
     public static func enableClassExtend(_ rootClz: Any, _ mandatoryMethods: [String]? = nil) {
-        // no-op — see PORT-NOTE above
+        // no-op — see note above
     }
 
-    // PORT-NOTE: function isESClass(fn) — JS source-string inspection
+    // function isESClass(fn) — JS source-string inspection
     //            (`/^class\s/.test(Function.prototype.toString.call(fn))`).
     //            Not applicable to Swift; every Swift class is an "ES class".
 
     /// A work around to both support ts extend and this extend mechanism on sub-class.
     ///
-    /// PORT-NOTE: `SubClz.extend = SupperClz.extend` — prototype `extend` propagation.
+    /// `SubClz.extend = SupperClz.extend` — prototype `extend` propagation.
     ///            No Swift equivalent; native subclassing inherits behavior directly.
     public static func mountExtend(_ SubClz: Any, _ SupperClz: Any) {
-        // no-op — see PORT-NOTE above
+        // no-op — see note above
     }
 
-    // PORT-NOTE: export interface CheckableConstructor { new; isInstance(ins) }
+    // export interface CheckableConstructor { new; isInstance(ins) }
     //            Shape mounted by `enableClassCheck`.
 
-    // PORT-NOTE: let classBase = Math.round(Math.random() * 10);
+    // let classBase = Math.round(Math.random() * 10);
     //            A random offset used to generate per-class hidden attr keys for
     //            `enableClassCheck`. Not needed — Swift uses `is` / `as?`.
 
@@ -114,15 +114,15 @@ public enum clazz {
     /// cross domain or es module import in ec extensions.
     /// Mount a method "isInstance()" to Clz.
     ///
-    /// PORT-NOTE: mounts a hidden boolean on the prototype + an `isInstance()` static
+    /// mounts a hidden boolean on the prototype + an `isInstance()` static
     ///            that checks it (a cross-realm-safe `instanceof`). Swift type identity
     ///            is process-local and reliable, so use `obj is Clz` / `obj as? Clz`
     ///            at call sites instead. Kept as a callable no-op for porting.
     public static func enableClassCheck(_ target: Any) {
-        // no-op — see PORT-NOTE above
+        // no-op — see note above
     }
 
-    // PORT-NOTE: function superCall(context, methodName, ...args)
+    // function superCall(context, methodName, ...args)
     //            function superApply(context, methodName, args)
     //            Walk `this.superClass.prototype[methodName]` to avoid the dead-loop
     //            described in the upstream comment. Swift uses `super.method(...)`.
@@ -179,7 +179,7 @@ public final class ClassManagement: ClassManager {
         // otherwise users have to mount `type` on prototype manually.
         // For backward compat and enable instance visit type via `this.type`,
         // we still support fetch `type` from prototype.
-        // PORT-NOTE: upstream reads `(clz as any).type || clz.prototype.type`; here the
+        // upstream reads `(clz as any).type || clz.prototype.type`; here the
         //            static `type` is the single source of truth. An empty string is
         //            treated as "absent" (JS falsy), matching `if (componentFullType)`.
         let componentFullType = clz.type
@@ -188,7 +188,7 @@ public final class ClassManagement: ClassManager {
             clazz.checkClassType(componentFullType)
 
             // If only static type declared, we assign it to prototype mandatorily.
-            // PORT-NOTE: `clz.prototype.type = componentFullType` — no-op in Swift; the
+            // `clz.prototype.type = componentFullType` — no-op in Swift; the
             //            static `type` is already authoritative and immutable.
 
             let componentTypeInfo = clazz.parseClassType(componentFullType)
@@ -229,7 +229,7 @@ public final class ClassManagement: ClassManager {
         }
 
         if throwWhenNotFound && clz == nil {
-            // PORT-NOTE: upstream `throw new Error(...)`; faithful failure surfaced as
+            // upstream `throw new Error(...)`; faithful failure surfaced as
             //            a fatalError (no throwing signature to keep the API ergonomic).
             fatalError(
                 subType == nil
@@ -256,7 +256,7 @@ public final class ClassManagement: ClassManager {
         case .clz(let c):
             result.append(c)
         case nil:
-            // PORT-NOTE: upstream does `result.push(obj)` (pushes `undefined`) when the
+            // upstream does `result.push(obj)` (pushes `undefined`) when the
             //            main type is absent; a non-optional `[Constructor]` cannot hold a
             //            sentinel, so we skip. Callers never request an absent main type.
             break
@@ -274,7 +274,7 @@ public final class ClassManagement: ClassManager {
     /// @return Like ['aa', 'bb'], but can not be ['aa.xx']
     public func getAllClassMainTypes() -> [ComponentMainType] {
         var types: [String] = []
-        // PORT-NOTE: upstream iterates with zrUtil.each preserving insertion order;
+        // upstream iterates with zrUtil.each preserving insertion order;
         //            Swift Dictionary key order is unspecified. Callers treat the result
         //            as an unordered set of main types.
         for (type, _) in storage {

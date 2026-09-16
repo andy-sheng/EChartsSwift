@@ -29,7 +29,7 @@ import ZRenderKit
 //       -> coord/CoordinateSystem.swift. See the CoordinateSystem-drop note on the class below.
 //   import GlobalModel from '../../model/Global';                             -> GlobalModel.
 //   import ExtensionAPI from '../../core/ExtensionAPI';                       -> ExtensionAPI.
-//   import MatrixModel, {...} from './MatrixModel';                          -> MatrixModel (sibling, see PORT-NOTE).
+//   import MatrixModel, {...} from './MatrixModel';                          -> MatrixModel (sibling, see note).
 //   import { LayoutRect, getLayoutRect } from '../../util/layout';           -> LayoutRect / layout.getLayoutRect.
 //   import { ListIterator, ParsedModelFinder, ParsedModelFinderKnown } from '../../util/model';
 //       -> ListIterator / ParsedModelFinder(Known) (util/modelUtil.swift).
@@ -38,7 +38,7 @@ import ZRenderKit
 //   import { WH, XY } from '../../util/graphic';                             -> see the XY/WH dim-accessor note.
 //   import Model from '../../model/Model';                                   -> Model.
 //   import type { MatrixCellLayoutInfo, MatrixDimensionCell, MatrixDimPair, MatrixXYLocator } from './MatrixDim';
-//       -> siblings (see PORT-NOTE).
+//       -> siblings (see note).
 //   import { mathMax, mathMin, parsePositionSizeOption } from '../../util/number';  -> number.* (util/number.swift).
 //   import { createNaNRectLike, MatrixClampOption, MatrixCellLayoutInfoType, parseCoordRangeOption,
 //       resetXYLocatorRange, xyLocatorRangeToRectOneDim } from './matrixCoordHelper';
@@ -71,7 +71,7 @@ import ZRenderKit
 //         `MatrixClampOption` (none=0, all=1, body=2, corner=3) and `MatrixCellLayoutInfoType`
 //         (level=1, leaf=2, nonLeaf=3).
 //
-// PORT-NOTE (XY/WH): upstream `graphic.ts` exports `XY = ['x','y']` and `WH = ['width','height']`, used to
+// note (XY/WH): upstream `graphic.ts` exports `XY = ['x','y']` and `WH = ['width','height']`, used to
 //   index a `RectLike`/`Point` by dynamic string key. Swift `RectLike`/`Point` have named members, so the
 //   string-key indexing `obj[XY[i]]` / `obj[WH[i]]` is realized via the `rectGetXY`/`rectSetXY`/
 //   `rectGetWH`/`rectSetWH`/`pointGetXY` dim-accessors at the bottom of this file (should be hoisted to
@@ -221,7 +221,7 @@ public final class Matrix: CoordinateSystemMaster {
      */
     // upstream: dataToPoint(data, opt?, out?): number[] { ... }
     //   `out?` perf out-param dropped, value-returning (CONVENTIONS §3).
-    //   PORT-NOTE: upstream reuses the module-scratch `_dtpOutDataToLayout` for perf; here we
+    //   upstream reuses the module-scratch `_dtpOutDataToLayout` for perf; here we
     //   value-return a fresh `dataToLayout` result (same math, no shared scratch).
     public func dataToPoint(_ data: Any?, _ opt: MatrixDataToLayoutOpt? = nil) -> [Double] {
         // out = out || [];
@@ -285,7 +285,7 @@ public final class Matrix: CoordinateSystemMaster {
         let dataArr: [Any?] = matrixToAnyOptArray(data)
 
         // parseCoordRangeOption(outLocRange, null, data, dims, retrieve2(opt && opt.clamp, MatrixClampOption.none));
-        //   PORT-NOTE: `MatrixXYLocatorRange` is a value-type `[[Double]]`, and upstream mutates `locOut`
+        //   `MatrixXYLocatorRange` is a value-type `[[Double]]`, and upstream mutates `locOut`
         //   in place — so the faithful Swift form is `inout` (as `expandRangeByCellMerge` already is). The
         //   sibling `parseCoordRangeOption` now declares `_ locOut: inout MatrixXYLocatorRange` accordingly;
         //   this call passes `&outLocRange`.
@@ -339,7 +339,7 @@ public final class Matrix: CoordinateSystemMaster {
      * @implement
      */
     // upstream: pointToData(point, opt?, out?): MatrixXYLocator[] { ... }
-    //   `out?` perf out-param dropped, value-returning (CONVENTIONS §3). PORT-NOTE: upstream reuses the
+    //   `out?` perf out-param dropped, value-returning (CONVENTIONS §3). note: upstream reuses the
     //   module-scratch `_tmpCtxPointToData`; here a fresh `CtxPointToData` is allocated per call.
     public func pointToData(_ point: [Double], _ opt: MatrixPointToDataOpt? = nil) -> [Double] {
         // const dims = this._dims;

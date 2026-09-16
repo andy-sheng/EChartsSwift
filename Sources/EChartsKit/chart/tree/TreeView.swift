@@ -27,7 +27,7 @@ import ZRenderKit
 //       animation/basicTransition's updateProps/removeElement.
 //   import {getECData} from '../../util/innerStore';               -> `innerStore.getECData` (ported).
 //   import SymbolClz from '../helper/Symbol';                      -> `Symbol` (chart/helper/SymbolElement.swift).
-//       PORT NOTE: the node symbols are routed through the shared `SymbolDraw` (chart/helper/SymbolDraw),
+//       the node symbols are routed through the shared `SymbolDraw` (chart/helper/SymbolDraw),
 //       mirroring the port's GraphView — each node becomes a `Symbol` (Group) carrying colour, the
 //       useNameLabel node label, emphasis hover-scale, symbolRotate/offset and the entrance scale-in.
 //       `TreeSymbol.__edge` and its previous-position fields live directly on `Symbol`, matching upstream's
@@ -38,9 +38,9 @@ import ZRenderKit
 //   import { applyViewCoordSysTransToElement, calcCompensationScaleToPreserveNodeSize,
 //            VIEW_COORD_SYS_TRANS_OVERALL } from '../../coord/View';  -> coord/View IS ported (coord/View.swift);
 //       `applyViewCoordSysTransToElement` + `VIEW_COORD_SYS_TRANS_OVERALL` are wired in _updateViewCoordSys.
-//       PORT-NOTE (deferred): calcCompensationScaleToPreserveNodeSize (node/link roam scale) stays deferred.
+//       TODO: calcCompensationScaleToPreserveNodeSize (node/link roam scale) stays deferred.
 //   import RoamController from '../../component/helper/RoamController';   -> RoamController IS ported
-//       (component/helper/RoamController.swift); PORT-NOTE (deferred): roam is not wired into this view.
+//       (component/helper/RoamController.swift); TODO: roam is not wired into this view.
 //   import {parsePercent} from '../../util/number';                -> `number.parsePercent`.
 //   import ChartView from '../../view/Chart';                      -> ChartView (view/Chart.swift).
 //   import TreeSeriesModel, { TreeSeriesOption, TreeSeriesNodeItemOption, SERIES_TYPE_TREE } from './TreeSeries';
@@ -60,12 +60,12 @@ import ZRenderKit
 //          `tokens.color.neutral00` (='#fff') are still inlined as their upstream literals below.
 //   import { createIsInSelfByPointerCheckerEl, createViewCoordSysSimply, isRoamPayloadHasZoom,
 //            updateRoamControllerSimply } from '../../component/helper/roamHelper';
-//       -> PORT-NOTE: the VIEW-GROUP slice of roamHelper is ported (component/helper/roamHelperViewGroup.swift),
+//       -> note: the VIEW-GROUP slice of roamHelper is ported (component/helper/roamHelperViewGroup.swift),
 //          including `createViewCoordSysSimply` (called verbatim by _updateViewCoordSys),
 //          `createIsInSelfByPointerCheckerEl` → `viewGroupRoamPointerRect` and
 //          `updateRoamControllerSimply` → `updateViewGroupRoamControllerSimply`.
 
-// PORT-NOTE: `tokens.color.*` (visual/tokens.ts, ported) — inlined here as the upstream literal values
+// `tokens.color.*` (visual/tokens.ts, ported) — inlined here as the upstream literal values
 //   (neutral99='#000', neutral00='#fff'), semantically equivalent to the token lookup.
 private let tokens_color_neutral99 = "#000"
 private let tokens_color_neutral00 = "#fff"
@@ -73,7 +73,7 @@ private let tokens_color_neutral00 = "#fff"
 // upstream:
 //   type TreeSymbol = SymbolClz & { __edge; __radialOldRawX; __radialOldRawY; __radialRawX; __radialRawY;
 //     __oldX; __oldY };
-// PORT-NOTE: SymbolClz (upstream chart/helper/Symbol) IS ported as `Symbol`, including the TreeSymbol
+// SymbolClz (upstream chart/helper/Symbol) IS ported as `Symbol`, including the TreeSymbol
 //   extension fields used here.
 
 // upstream: class TreeEdgeShape { parentPoint; childPoints; orient; forkPosition; }
@@ -205,7 +205,7 @@ open class TreeView: ChartView {
     // upstream: private _mainGroup = new graphic.Group();
     private let _mainGroup = Group()
 
-    // PORT-NOTE: private _controller: RoamController;  — RoamController IS ported
+    // private _controller: RoamController;  — RoamController IS ported
     //   (component/helper/RoamController.swift) but roam is not wired in this view (deferred).
 
     // upstream: private _data: SeriesData<TreeSeriesModel>;
@@ -233,7 +233,7 @@ open class TreeView: ChartView {
     // upstream: init(ecModel, api) { this._controller = new RoamController(api.getZr());
     //   this.group.add(this._mainGroup); this._firstRender = true; }
     open override func init_(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
-        // PORT-NOTE (deferred): RoamController deferred (see the `_controller` note above).
+        // TODO: RoamController deferred (see the `_controller` note above).
         _ = self.group.add(self._mainGroup)
         self._firstRender = true
     }
@@ -278,11 +278,11 @@ open class TreeView: ChartView {
         //   The upstream `View` VIEW_COORD_SYS placement: builds the own coord sys over the node bounding box
         //   (`seriesModel.coordinateSystem`, which `TreeSeries.__ownRoamView()` hands to the roam modules) and
         //   applies its OVERALL trans to `this.group` via `applyViewCoordSysTransToElement`.
-        //   PORT-NOTE: the ROAM pan/zoom itself is NOT driven through this coord sys in the port — the
+        //   the ROAM pan/zoom itself is NOT driven through this coord sys in the port — the
         //   authorized view-group deviation (roamHelperViewGroup.swift) transforms `_mainGroup` directly at
         //   the END of render (see viewGroupRoamApplyStateToGroup below). To keep the two frames of reference
         //   from composing, `_updateViewCoordSys` explicitly resets the coord sys' roam option to neutral
-        //   (see the PORT-NOTE there) — dataRect == viewRect, zoom 1 — so the trans applied to `self.group`
+        //   (see the note there) — dataRect == viewRect, zoom 1 — so the trans applied to `self.group`
         //   is the identity unconditionally, i.e. placement-neutral; the call exists so the coord sys (and
         //   its sync-back element) is present and correct for `TreeSeries.__ownRoamView()` / `treeRoam`.
         self._updateViewCoordSys(seriesModel, api)
@@ -303,7 +303,7 @@ open class TreeView: ChartView {
         //   UPDATE path (reuse the node Symbol + `updateProps` its x/y) instead of rebuilding every node and
         //   replaying the entrance scale-in. This is the reset-on-update fix (cf. ScatterView's retained
         //   `_symbolDraw` and the GaugeView reset fix). The group is NOT wiped each render.
-        //   PORT-NOTE (deferred): node/link roam-scale + radial label rotation remain DEFERRED.
+        //   TODO: node/link roam-scale + radial label rotation remain DEFERRED.
         // ------------------------------------------------------------------------------------------
 
         // Symbol-visual stages populate the symbol / symbolSize / symbolRotate / symbolOffset /
@@ -458,7 +458,7 @@ open class TreeView: ChartView {
         }
 
         // this._updateNodeAndLinkScale(seriesModel);
-        //   PORT-NOTE (deferred): setSymbolScale / calcCompensationScaleToPreserveNodeSize (roam) not ported.
+        //   TODO: setSymbolScale / calcCompensationScaleToPreserveNodeSize (roam) not ported.
 
         // if (seriesModel.get('expandAndCollapse') === true) {
         //     data.eachItemGraphicEl(function (el, dataIndex) {
@@ -498,7 +498,7 @@ open class TreeView: ChartView {
         viewGroupRoamApplyStateToGroup(seriesModel, group, baseX, baseY)
 
         // this._firstRender = false;
-        //   PORT-NOTE: the two early `guard` bail-outs above (no `data.tree` / no `layoutInfo` — both
+        //   the two early `guard` bail-outs above (no `data.tree` / no `layoutInfo` — both
         //   non-null upstream) skip this on purpose: nothing was placed, so the NEXT render is still the
         //   first one and must apply the coord-sys trans synchronously rather than tween it.
         self._firstRender = false
@@ -545,7 +545,7 @@ open class TreeView: ChartView {
             }
             points.append([x, y])
         }
-        // PORT-NOTE (deviation): upstream passes EMPTY `min`/`max` arrays into `bbox.fromPoints`, so with
+        // note (deviation): upstream passes EMPTY `min`/`max` arrays into `bbox.fromPoints`, so with
         //   zero laid-out points they stay empty and `max[0] - min[0]` evaluates to NaN — the degenerate-box
         //   branch below is NOT taken and the coord sys ends up with a NaN dataRect (nothing renders). Swift
         //   has no NaN-by-missing-index, so the port bails out instead: with no points there is nothing to
@@ -579,7 +579,7 @@ open class TreeView: ChartView {
             seriesModel, api,
             min[0], min[1], max[0] - min[0], max[1] - min[1]
         )
-        // PORT-NOTE (deviation): the roam pan/zoom of this view lives OUTSIDE the coord sys — it is applied
+        // note (deviation): the roam pan/zoom of this view lives OUTSIDE the coord sys — it is applied
         //   to `_mainGroup` by viewGroupRoamApplyStateToGroup (roamHelperViewGroup.swift) in zr SCREEN-pixel
         //   units. `createViewCoordSysSimply` faithfully seeds the coord sys from the series' `center` /
         //   `zoom` / `scaleLimit` options, which would compose a SECOND (differently-anchored) transform onto
@@ -587,7 +587,7 @@ open class TreeView: ChartView {
         //   originX/originY disagree with the space they are applied in. So the roam option is reset to
         //   neutral here (center nil, zoom 1, no limit), which makes the OVERALL trans applied below the
         //   identity unconditionally and keeps this call placement-neutral.
-        //   PORT-TODO: honour `series.center` / `series.zoom` by seeding ViewGroupRoamState from them once
+        //   TODO: honour `series.center` / `series.zoom` by seeding ViewGroupRoamState from them once
         //   (as roamHelperGeo does) rather than through the coord sys.
         viewCoordSysSetRoamOption(ownCoordSys, nil, 1, nil)
         seriesModel.coordinateSystem = ownCoordSys
@@ -603,7 +603,7 @@ open class TreeView: ChartView {
         self._max = max
     }
 
-    // upstream: _updateNodeAndLinkScale(seriesModel)  — PORT-NOTE: setSymbolScale (roam) DEFERRED.
+    // upstream: _updateNodeAndLinkScale(seriesModel)  — note: setSymbolScale (roam) DEFERRED.
 
     private func removeTreeNode(
         _ data: SeriesData,
@@ -700,7 +700,7 @@ open class TreeView: ChartView {
 
     // upstream: dispose() { this._controller && this._controller.dispose(); }
     open override func dispose(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
-        // PORT-NOTE (deferred): RoamController.dispose DEFERRED (roam not wired into this view).
+        // TODO: RoamController.dispose DEFERRED (roam not wired into this view).
     }
 
     // upstream: remove() { this._mainGroup.removeAll(); this._data = null; }
@@ -1077,7 +1077,7 @@ func getEdgeShape(
         x2 = targetLayout.rawX
         y2 = targetLayout.rawY
 
-        // PORT-NOTE: `radialCoordinate(rad, r)` from sibling ./layoutHelper (exposed as
+        // `radialCoordinate(rad, r)` from sibling ./layoutHelper (exposed as
         //   `layoutHelper.radialCoordinate` returning `(x, y)`). `|| 0` reproduces JS
         //   falsy-fallthrough (0/NaN → 0) via `treeNumOr`.
         let radialCoor1 = layoutHelper.radialCoordinate(x1, y1)

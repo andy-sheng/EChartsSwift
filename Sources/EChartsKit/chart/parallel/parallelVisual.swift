@@ -46,7 +46,7 @@ public let parallelVisual: StageHandler = {
         //     active: seriesModel.get('activeOpacity'),
         //     inactive: seriesModel.get('inactiveOpacity')
         // };
-        // PORT-NOTE (CONVENTIONS trap 1): opacities are stored as bare `Int`/`Double` in the option bag,
+        // note (CONVENTIONS trap 1): opacities are stored as bare `Int`/`Double` in the option bag,
         //   so each is read through `numOpt` (a plain `as? Double` would silently drop an Int literal).
         let opacityMap: [String: Double?] = [
             "normal": numOpt(seriesModel.get(["lineStyle", "opacity"])),
@@ -57,7 +57,7 @@ public let parallelVisual: StageHandler = {
         // return { progress(params, data) { ... } };
         var executor = StageHandlerProgressExecutor()
         executor.progress = { (params: StageHandlerProgressParams, data: SeriesData) in
-            // PORT-NOTE: `Parallel.eachActiveState` is ported (coord/parallel/Parallel.swift) and called
+            // `Parallel.eachActiveState` is ported (coord/parallel/Parallel.swift) and called
             //   below. Without a live parallelAxis brush selection every row resolves to the
             //   'normal' state, giving each polyline the `lineStyle.opacity`. Body is ported faithfully.
             coordSys?.eachActiveState(data, { (activeState: ParallelActiveState, dataIndex: Int) in

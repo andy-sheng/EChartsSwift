@@ -34,8 +34,8 @@ import ZRenderKit
 //   import { windowOpen } from '../../util/format';                -> `windowOpen` (util/format.swift); wired in the nodeClick:'link' branch (a documented host-seam no-op natively).
 
 // upstream: interface DrawTreeNode extends TreeNode { parentNode; piece; children }
-// PORT-NOTE: TreeNode is not externally augmentable in Swift (see SunburstPiece.swift DrawTreeNode
-//   PORT-NOTE). The static render does not consult `node.piece`, so `TreeNode` is used directly.
+// TreeNode is not externally augmentable in Swift (see SunburstPiece.swift DrawTreeNode
+//   note). The static render does not consult `node.piece`, so `TreeNode` is used directly.
 
 // upstream: class SunburstView extends ChartView
 open class SunburstView: ChartView {
@@ -61,7 +61,7 @@ open class SunburstView: ChartView {
 
     // Persistent per-node SunburstPiece registry keyed by `node.getId()` — the port's stand-in for
     //   upstream's `node.piece` slot (TreeNode carries no `piece` field; see the DrawTreeNode
-    //   PORT-NOTE). `dualTravel` runs the DataDiffer add/update/remove against this map so an identity
+    //   note). `dualTravel` runs the DataDiffer add/update/remove against this map so an identity
     //   change (add/remove) at equal count reuses the RIGHT piece by id (not positionally), and an
     //   update MORPHS the matched wedge to its new angular span via `updateData(firstCreate: false)`.
     private var _pieceMap: [String: SunburstPiece] = [:]
@@ -274,7 +274,7 @@ open class SunburstView: ChartView {
 
             // viewRoot.piece.off('click'); self.virtualPiece.on('click', () => self._rootToNode(viewRoot.parentNode));
             //   Clicking the centre (the roll-up sector) roots back UP to the current view root's parent.
-            //   PORT-NOTE: upstream's `viewRoot.piece.off('click')` is intentionally NOT replicated — in
+            //   upstream's `viewRoot.piece.off('click')` is intentionally NOT replicated — in
             //   this port a node's own click handler drills via `_rootToNode(node)`, which is a guarded
             //   no-op when node IS the view root, so leaving it is harmless AND preserves the piece's
             //   handler for later renders (removing it would strand the reused piece with no click). The

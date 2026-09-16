@@ -32,7 +32,7 @@ import ZRenderKit
 // import ExtensionAPI from '../../core/ExtensionAPI';      -> EChartsKit `ExtensionAPI` (core/ExtensionAPI.swift).
 // import { Payload, Dictionary } from '../../util/types';  -> EChartsKit util/types.swift (`Payload`, `Dictionary<T>` = [String: T]).
 // import type BaseAxisPointer from '../axisPointer/BaseAxisPointer';
-//   -> PORT-NOTE: BaseAxisPointer is ported (component/axisPointer/BaseAxisPointer.swift), but this
+//   -> note: BaseAxisPointer is ported (component/axisPointer/BaseAxisPointer.swift), but this
 //      base-AxisView path is unused here (axisPointer is driven by AxisPointerView/globalListener instead);
 //      referenced in this file only via the `Any?`
 //      `_axisPointer` slot and the `AxisPointerConstructor` factory typealias below.
@@ -44,7 +44,7 @@ import ZRenderKit
 //       new(): BaseAxisPointer
 //   }
 //
-// PORT-NOTE: BaseAxisPointer IS ported (component/axisPointer/BaseAxisPointer.swift). The
+// BaseAxisPointer IS ported (component/axisPointer/BaseAxisPointer.swift). The
 //   `new(): BaseAxisPointer` constructor interface is modeled as a factory closure `() -> AnyObject`
 //   (the concrete registrant returns a BaseAxisPointer subclass). The registry starts empty and nothing
 //   registers into it in-scope, so `getAxisPointerClass` yields nil and the dispatch below short-circuits.
@@ -69,7 +69,7 @@ open class AxisView: ComponentView {
      * @private
      */
     // upstream: private _axisPointer: BaseAxisPointer;
-    // PORT-NOTE: BaseAxisPointer is ported; typed faithfully. Assigned only when the axisPointer registry
+    // BaseAxisPointer is ported; typed faithfully. Assigned only when the axisPointer registry
     //   is populated (never in-scope), so this stays nil in practice.
     private var _axisPointer: BaseAxisPointer?
 
@@ -83,7 +83,7 @@ open class AxisView: ComponentView {
     /**
      * @override
      */
-    // PORT-NOTE: upstream types `axisModel: AxisBaseModel`; Swift cannot narrow an override parameter
+    // upstream types `axisModel: AxisBaseModel`; Swift cannot narrow an override parameter
     //   (ComponentView.render takes ComponentModel), so the base type is kept and downcast where an
     //   AxisBaseModel is required. The render pipeline always passes an AxisBaseModel here.
     open override func render(_ axisModel: ComponentModel, _ ecModel: GlobalModel, _ api: ExtensionAPI, _ payload: Payload) {

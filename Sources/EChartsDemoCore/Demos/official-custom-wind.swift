@@ -26,7 +26,7 @@
 //  - `series` is a bare object upstream (`series: { type: 'custom', ... }`); the Swift option wraps it in the
 //    equivalent one-element array. `visualMap.min/max` are the JS-computed min/max magnitude, recomputed here
 //    from the same data rather than hardcoded.
-//  - `renderItem` omitted from the native option — see the PORT-NOTE.
+//  - `renderItem` omitted from the native option — see the note.
 // NOTE on the still-frame snapshot: with `progressive: 2000` the reference pane paints the 65k marks over
 // many frames, so a headless snapshot can catch a partially-drawn field; the live gallery pane shows it whole.
 import Foundation

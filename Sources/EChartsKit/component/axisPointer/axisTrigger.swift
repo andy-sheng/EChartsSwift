@@ -31,7 +31,7 @@
 // SCOPE / DEFERRED:
 //   - `updateModelActually` writes each axisPointer model's `status`/`value`/`seriesDataIndices` (the
 //     crosshair STATUS). It is ported (it is pure computation), but the DRAW of that crosshair (the
-//     axisPointer VIEW render) is Phase 36 — see the PORT-NOTE in `updateModelActually`.
+//     axisPointer VIEW render) is Phase 36 — see the note in `updateModelActually`.
 //   - `dispatchHighDownActually` (highlight/downplay fan-out on axis hover) IS ported — the Phase-30
 //     emphasis engine backs it. Its per-instance diff store is keyed on `api` (upstream keys on
 //     `api.getZr()`; this port's ExtensionAPI has no `getZr()` yet — documented deviation).
@@ -199,7 +199,7 @@ public func axisTrigger(
     }
 
     // upstream: if (illegalPoint(point)) { point = findPointFromSeries({seriesIndex, dataIndex}, ecModel).point; }
-    // PORT-NOTE (cross-file migration, wave 1 — consumer of `findPointFromSeries`): VERIFIED NO-OP.
+    // note (cross-file migration, wave 1 — consumer of `findPointFromSeries`): VERIFIED NO-OP.
     //   This consumer was already wired to the canonical sibling-file symbol
     //   (`@discardableResult public func findPointFromSeries(_ finder: FindPointFinder, _ ecModel:
     //   GlobalModel) -> (point: [Double], el: Element?)`, findPointFromSeries.swift) with the correct
@@ -468,7 +468,7 @@ fileprivate func showTooltip(
 
 // upstream: updateModelActually (axisTrigger.ts:384)
 //   Sets each axisPointer model's status/value/seriesDataIndices — the crosshair STATUS.
-//   PORT-NOTE (Phase 36): the DRAW of that crosshair is the axisPointer VIEW render; this only computes
+//   note (Phase 36): the DRAW of that crosshair is the axisPointer VIEW render; this only computes
 //   the status. When the axisPointer view lands, its `render` reads these `option` fields.
 fileprivate func updateModelActually(
     _ showValueMap: ShowValueMapBox,

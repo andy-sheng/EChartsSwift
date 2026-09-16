@@ -34,7 +34,7 @@ import ZRenderKit
 // import { CoordinateSystemHostModel } from '../CoordinateSystem';     -> CoordinateSystemHostModel (coord/CoordinateSystem.swift)
 // import tokens from '../../visual/tokens';                            -> tokens.* (visual/tokens.ts not ported yet; values inlined below, see NOTE)
 
-// PORT-NOTE: `Matrix` / `MatrixDim` / `MatrixBodyCorner` (coord/matrix/{Matrix,MatrixDim,MatrixBodyCorner}.swift)
+// `Matrix` / `MatrixDim` / `MatrixBodyCorner` (coord/matrix/{Matrix,MatrixDim,MatrixBodyCorner}.swift)
 //   are ported siblings. This file references those types:
 //   - `Matrix` is the coordinate-system master, registered via
 //     CoordinateSystemManager.register("matrix", <creator>) (matrix is a nonSeriesBox coord sys; see the
@@ -51,7 +51,7 @@ import ZRenderKit
 // export type MatrixCoordRangeOption / MatrixCoordValueOption / MatrixDimensionCellLooseOption
 // export interface MatrixDimensionModel extends Model<MatrixDimensionOption> {}
 // export interface MatrixLabelOption / MatrixLabelFormatterParams / MatrixCellStyleOption / MatrixTooltipFormatterParams
-//   PORT-NOTE: all of the above are TypeScript option/param interfaces describing the dynamic option
+//   all of the above are TypeScript option/param interfaces describing the dynamic option
 //   shape; per CONVENTIONS §2 they are modeled as the dynamic option bag ([String: Any]) and NOT emitted
 //   as standalone Swift structs. The rich `data[i].coord` cell-locating documentation (see upstream
 //   MatrixBodyCornerBaseOption) is consumed by Matrix / MatrixBodyCorner (later-phase siblings).
@@ -143,7 +143,7 @@ public final class MatrixModel: ComponentModel, CoordinateSystemHostModel {
     public override class var type: ComponentFullType { return "matrix" }
 
     // coordinateSystem: Matrix;
-    //   PORT-NOTE: upstream types this the concrete `Matrix` (a `CoordinateSystemMaster`), injected once
+    //   upstream types this the concrete `Matrix` (a `CoordinateSystemMaster`), injected once
     //   the coordinate system is built. `Matrix` (coord/matrix/Matrix.swift) is a sibling in a later phase;
     //   typed here as the `CoordinateSystemMaster?` required by `CoordinateSystemHostModel`
     //   (narrow via `as? Matrix` at use), mirroring PolarModel / CalendarModel.
@@ -160,7 +160,7 @@ public final class MatrixModel: ComponentModel, CoordinateSystemHostModel {
 
     // private _body: MatrixBodyCorner<'body'>;
     // private _corner: MatrixBodyCorner<'corner'>;
-    //   PORT-NOTE: upstream parameterizes `MatrixBodyCorner` by the string-literal kind ('body' / 'corner').
+    //   upstream parameterizes `MatrixBodyCorner` by the string-literal kind ('body' / 'corner').
     //   Swift has no string-literal generic param; the forward `MatrixBodyCorner` type is referenced
     //   non-generically here (the kind is also passed as the ctor's first arg). Re-narrow once the sibling
     //   lands (it may become an enum-parameterized or non-generic type).
@@ -173,7 +173,7 @@ public final class MatrixModel: ComponentModel, CoordinateSystemHostModel {
     }
 
     // optionUpdated(): void { ... }
-    //   PORT-NOTE: upstream overrides with a param-less `optionUpdated(): void`, narrowing the base
+    //   upstream overrides with a param-less `optionUpdated(): void`, narrowing the base
     //   `ComponentModel.optionUpdated(newCptOption, isInit)`. Swift overrides must match the base
     //   signature, so the two params are accepted and ignored here.
     public override func optionUpdated(_ newCptOption: ModelOption?, _ isInit: Bool) {

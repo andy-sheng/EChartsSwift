@@ -438,7 +438,7 @@ option = {
                                 "valueDim": "close"
                             ] as [String: Any]
                         ]
-                        // PORT-NOTE: markPoint.tooltip.formatter omitted — JS closure returning
+                        // markPoint.tooltip.formatter omitted — JS closure returning
                         // `param.name + '<br>' + (param.data.coord || '')`.
                     ] as [String: Any],
                     "markLine": [

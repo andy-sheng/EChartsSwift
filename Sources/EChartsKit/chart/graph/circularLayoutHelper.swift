@@ -239,7 +239,7 @@ public func rotateNodeLabel(
 ) {
     // const el = node.getGraphicEl() as Symbol;
     // need to check if el exists. '-' value may not create node element.
-    // PORT-NOTE: upstream casts the graphic el to `Symbol` (chart/helper/SymbolElement.swift, now ported)
+    // upstream casts the graphic el to `Symbol` (chart/helper/SymbolElement.swift, now ported)
     // and drives `el.getSymbolPath().setTextConfig(...)` / its emphasis state. Both are wired below.
     guard let el = node.getGraphicEl() as? Symbol else {
         return
@@ -314,7 +314,7 @@ private func asPoint(_ layout: Any?) -> [Double] {
 }
 
 // `node.getLayout().fixed` — a `fixed` flag carried on the node's layout object (set by force layout).
-// A plain `[x, y]` point layout has no `fixed`, so this reads false. PORT-NOTE: force layout stores
+// A plain `[x, y]` point layout has no `fixed`, so this reads false. note: force layout stores
 // the flag as an attached property on the point array (JS); modeled as a dict key here (semantically
 // equivalent — a non-dict layout has no flag either way).
 private func layoutFixed(_ layout: Any?) -> Bool {

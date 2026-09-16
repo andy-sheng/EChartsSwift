@@ -39,7 +39,7 @@ public func pointsLayout(_ seriesType: String, _ forceStoreInTypedArray: Bool = 
     handler.seriesType = seriesType
 
     // plan: createRenderPlanner(),
-    // PORT-NOTE: `createRenderPlanner()` yields the upstream 1-arg planner `(SeriesModel) ->
+    // `createRenderPlanner()` yields the upstream 1-arg planner `(SeriesModel) ->
     //   StageHandlerPlanReturn?` (nil-for-no-reset), while `StageHandlerPlan` is the 4-arg
     //   `(SeriesModel, GlobalModel, ExtensionAPI, Payload?) -> StageHandlerPlanReturn?`; the planner is
     //   created ONCE here (as upstream, so its `makeInner` large/progressive state persists across calls)

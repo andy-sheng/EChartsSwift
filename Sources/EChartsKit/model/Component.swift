@@ -40,14 +40,14 @@ import ZRenderKit
 
 // const inner = makeInner<{ defaultOption: ComponentOption }, ComponentModel>();
 //
-// PORT-NOTE: `inner` cached the auto-merged ancestor `defaultOption` for the legacy
+// `inner` cached the auto-merged ancestor `defaultOption` for the legacy
 //   `ParentClass.extend(subProto)` path inside `getDefaultOption`. That path is unreachable in the
 //   Swift port (`clazz.isExtendedClass` always returns false — native subclassing replaces the
 //   prototype `extend` machinery), so the `inner`/WeakMap cache is dropped together with the branch.
 
 // upstream: class ComponentModel<Opt extends ComponentOption = ComponentOption> extends Model<Opt>
 //
-// PORT-NOTE: the generic `Opt` is dropped per CONVENTIONS §2 (the dynamic option tree is modeled as
+// the generic `Opt` is dropped per CONVENTIONS §2 (the dynamic option tree is modeled as
 //   the `Any` bag; keyed access casts to `[String: Any]`). `ComponentModel` is the project's real
 //   reference type for components/series — `open class` (subclassed by Series/axis/grid/etc., and by
 //   each registered component model). It replaces the forward-reference placeholder
@@ -116,7 +116,7 @@ open class ComponentModel: Model, ClassManageable {
      */
     // upstream: protected defaultOption: ComponentOption
     //
-    // PORT-NOTE: upstream declares `defaultOption` as a `protected` instance (prototype) member, but
+    // upstream declares `defaultOption` as a `protected` instance (prototype) member, but
     //   its value is supplied by the subclass STATIC `defaultOption` (read via `(ctor as any)
     //   .defaultOption` in `getDefaultOption`). Per the doc block on `getDefaultOption`, ES-class
     //   subclasses MUST declare `static defaultOption`. We model it as an overridable class var;
@@ -143,7 +143,7 @@ open class ComponentModel: Model, ClassManageable {
     // Will be injected.
     // @see injectCoordinateSystem
     // upstream: boxCoordinateSystem?: CoordinateSystem | NullUndefined
-    // PORT-NOTE: coord/CoordinateSystem.swift is ported (protocol `CoordinateSystem`); this box is
+    // coord/CoordinateSystem.swift is ported (protocol `CoordinateSystem`); this box is
     //   still kept as `Any?`.
     public var boxCoordinateSystem: Any?
 
@@ -152,14 +152,14 @@ open class ComponentModel: Model, ClassManageable {
      * Only support 'box' now (left/right/top/bottom/width/height).
      */
     // upstream: static layoutMode: ComponentLayoutMode | ComponentLayoutMode['type']
-    // PORT-NOTE: union `ComponentLayoutMode | string` modeled as `Any?` (consumed by
+    // union `ComponentLayoutMode | string` modeled as `Any?` (consumed by
     //   `layout.fetchLayoutMode`).
     open class var layoutMode: Any? { return nil }
 
     /**
      * Prevent from auto set z, zlevel, z2 by the framework.
      */
-    // PORT-NOTE: upstream leaves `preventAutoZ: boolean` uninitialized (the caution above); Swift
+    // upstream leaves `preventAutoZ: boolean` uninitialized (the caution above); Swift
     //   requires a stored value, so it defaults to `false` (≡ JS `undefined` truthiness here).
     public var preventAutoZ: Bool = false
 
@@ -197,7 +197,7 @@ open class ComponentModel: Model, ClassManageable {
         // const layoutMode = layout.fetchLayoutMode(this);
         let layoutMode = layout.fetchLayoutMode(self)
         // const inputPositionParams = layoutMode ? layout.getLayoutParams(option as BoxLayoutOptionMixin) : {};
-        // PORT-NOTE: `option === self.option` at call, so capture the input position params from that
+        // `option === self.option` at call, so capture the input position params from that
         //   bag BEFORE the theme/default merges below (mirrors Series.mergeDefaultAndTheme).
         let inputPositionParams: [String: Any]
         if layoutMode != nil, let src = (self.option ?? option) as? [String: Any] {
@@ -209,7 +209,7 @@ open class ComponentModel: Model, ClassManageable {
 
         // const themeModel = ecModel.getTheme();
         // zrUtil.merge(option, themeModel.get(this.mainType));
-        // PORT-NOTE: mirrors mergeOption's value-type writeback (upstream mutates `option` in place;
+        // mirrors mergeOption's value-type writeback (upstream mutates `option` in place;
         //   at call time `option === self.option`). `overwrite` is false (theme must not clobber
         //   existing option values). Skipped when `ecModel` is nil (upstream `this.ecModel` is non-null).
         if var target = (self.option ?? option) as? [String: Any],
@@ -219,7 +219,7 @@ open class ComponentModel: Model, ClassManageable {
         }
 
         // zrUtil.merge(option, this.getDefaultOption());
-        // PORT-NOTE: upstream mutates the shared `option` object in place; Swift option bags are
+        // upstream mutates the shared `option` object in place; Swift option bags are
         //   value types, so merge the default option into a mutable copy and write it back to
         //   `self.option` (at call time `option === self.option`, mirroring Model.mergeOption's
         //   writeback). `overwrite` is false (defaults must not clobber existing option values).
@@ -232,7 +232,7 @@ open class ComponentModel: Model, ClassManageable {
         // if (layoutMode) {
         //     layout.mergeLayoutParam(option as BoxLayoutOptionMixin, inputPositionParams, layoutMode);
         // }
-        // PORT-NOTE: upstream passes the `ComponentLayoutMode` object as `opt`; only its `ignoreSize`
+        // upstream passes the `ComponentLayoutMode` object as `opt`; only its `ignoreSize`
         //   is read by `mergeLayoutParam`, so it is forwarded via the option bag (cf. Series).
         if let mode = layoutMode, var target = self.option as? [String: Any] {
             var opt: [String: Any] = [:]
@@ -256,7 +256,7 @@ open class ComponentModel: Model, ClassManageable {
         // if (layoutMode) {
         //     layout.mergeLayoutParam(this.option as BoxLayoutOptionMixin, option as BoxLayoutOptionMixin, layoutMode);
         // }
-        // PORT-NOTE: upstream merges the incoming `option` box params INTO this.option; the delta box
+        // upstream merges the incoming `option` box params INTO this.option; the delta box
         //   params live in the raw `option`. Only `ignoreSize` from the layout mode is read (cf. Series).
         if let mode = layoutMode,
            var target = self.option as? [String: Any],
@@ -348,7 +348,7 @@ open class ComponentModel: Model, ClassManageable {
         // FIXME: remove this approach?
         // Legacy: auto merge defaultOption from ancestor classes if using ParentClass.extend(subProto)
         //
-        // PORT-NOTE: the legacy `extend`-based ancestor-merge branch (`inner(this)` cache +
+        // the legacy `extend`-based ancestor-merge branch (`inner(this)` cache +
         //   `ExtendableConstructor.superClass` walk + `zrUtil.merge`) is unreachable in the Swift
         //   port — `clazz.isExtendedClass(ctor)` always returns false (native subclassing replaces
         //   the prototype `extend` machinery; see util/clazz.swift). Branch dropped.
@@ -506,7 +506,7 @@ open class ComponentModel: Model, ClassManageable {
 //     & ExtendableConstructor
 //     & componentUtil.TopologicalTravelable<object>;
 //
-// PORT-NOTE: no Swift equivalent for the `typeof ComponentModel & ...` metatype intersection. The
+// no Swift equivalent for the `typeof ComponentModel & ...` metatype intersection. The
 //   combined manager surface is provided by `ComponentModel._manager` (a `ComponentModelManager`,
 //   below) plus the static forwarders above. (A placeholder `protocol ComponentModelConstructor`
 //   for `determineSubType` lives in util/model.swift; ComponentModel does not conform to it because
@@ -568,7 +568,7 @@ func getDependencies(_ componentType: String) -> [String] {
     var deps: [String] = []
     util.each(ComponentModel.getClassesByMainType(componentType)) { clz, _ in
         // deps = deps.concat((clz as any).dependencies || (clz as any).prototype.dependencies || []);
-        // PORT-NOTE: upstream reads `dependencies` off either the class object or its prototype; the
+        // upstream reads `dependencies` off either the class object or its prototype; the
         //   Swift static `dependencies` (a class var on ComponentModel subclasses) is the single
         //   source of truth — read it by downcasting the `Constructor` metatype.
         if let cm = clz as? ComponentModel.Type {

@@ -412,7 +412,7 @@ func buildNameValue(
             else {
                 vt = valueTypeOption as? DimensionType
             }
-            // PORT-NOTE: `format.makeValueReadable` takes a non-optional `DimensionType`; an
+            // `format.makeValueReadable` takes a non-optional `DimensionType`; an
             //   `undefined`/nil valueType takes the same "by default" branch as `.number`, so nil
             //   maps to `.number` here (identical output).
             return format.makeValueReadable(val, vt ?? .number, useUTC)
@@ -504,7 +504,7 @@ public func buildTooltipMarkup(
 
 
 func getGap(_ gapLevel: Int) -> (html: Double, richText: String) {
-    // PORT-NOTE: JS `HTML_GAPS[gapLevel]` returns `undefined` for out-of-range levels; the guarded
+    // JS `HTML_GAPS[gapLevel]` returns `undefined` for out-of-range levels; the guarded
     //   Swift lookup returns 0 / "" instead (out-of-range gap levels are not reached in practice).
     //   Semantically equivalent — the guard clamps a JS `undefined` to the concrete Swift default.
     let html = (gapLevel >= 0 && gapLevel < HTML_GAPS.count) ? HTML_GAPS[gapLevel] : 0
@@ -706,7 +706,7 @@ public class TooltipMarkupStyleCreator {
     }
 }
 
-// PORT-NOTE: JS truthiness helper (`textStyle.color || default`, `fragment.markerColor || default`).
+// JS truthiness helper (`textStyle.color || default`, `fragment.markerColor || default`).
 //   Reproduces `Boolean(x)` for the value kinds reachable here (string / number / bool / null).
 private func jsTruthy(_ v: Any?) -> Bool {
     switch v {

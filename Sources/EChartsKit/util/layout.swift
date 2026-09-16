@@ -21,7 +21,7 @@
 import Foundation
 import ZRenderKit
 
-// PORT-NOTE: Near-complete port of util/layout.ts. positionElement / mergeLayoutParam / getCircleLayout /
+// Near-complete port of util/layout.ts. positionElement / mergeLayoutParam / getCircleLayout /
 //   copyLayoutParams / getLayoutParams / sizeCalculable / fetchLayoutMode / applyPreserveAspect and both
 //   the rect + point branches of `createBoxLayoutReference` have landed below.
 //   `LayoutRect` is currently the `typealias LayoutRect = BoundingRect` declared in
@@ -46,7 +46,7 @@ public struct BoxLayoutReferenceResult {
     // upstream: `refPoint: number[]`
     public var refPoint: [Double]
     // upstream: `boxCoordFrom: BoxCoordinateSystemCoordFrom | NullUndefined`
-    // PORT-NOTE: `BoxCoordinateSystemCoordFrom` modeled as `Any?` until the box coord-sys layer lands.
+    // `BoxCoordinateSystemCoordFrom` modeled as `Any?` until the box coord-sys layer lands.
     public var boxCoordFrom: Any?
 
     public init(type: Double, refContainer: LayoutRect, refPoint: [Double], boxCoordFrom: Any? = nil) {
@@ -282,7 +282,7 @@ public enum layout {
         let viewRect: LayoutRect
         let center: [Double]
         if layoutRef.type == BOX_LAYOUT_REFERENCE_TYPE_POINT {
-            // PORT-NOTE: the `point` reference kind is produced only when the box coord-sys branch of
+            // the `point` reference kind is produced only when the box coord-sys branch of
             //   `createBoxLayoutReference` (with `enableLayoutOnlyByCenter: true` + `boxCoordSys.dataToPoint`)
             //   lands (Phase 6b). `createBoxLayoutReference` ignores `opt` today and always returns the
             //   `rect` kind, so this branch is currently unreachable. Kept faithful for when it lands.
@@ -485,7 +485,7 @@ public enum layout {
             height = containerHeight - verticalMargin - top - ((bottom.isNaN || bottom == 0) ? 0 : bottom)
         }
 
-        // PORT-NOTE: upstream sets `rect.margin = margin` on the returned `LayoutRect`; `LayoutRect` is
+        // upstream sets `rect.margin = margin` on the returned `LayoutRect`; `LayoutRect` is
         //   currently `typealias BoundingRect`, which has no `margin` slot, so it is dropped until the
         //   real `LayoutRect` (util/layout.ts) lands. No current consumer reads `.margin`.
         let rect = BoundingRect(
@@ -803,7 +803,7 @@ private func isNewlineElement(_ el: Element) -> Bool {
     return _newlineInner(el).newline
 }
 
-// PORT-NOTE: JS truthiness shim (matches the per-file `jsTruthy` used across the port). Used only for
+// JS truthiness shim (matches the per-file `jsTruthy` used across the port). Used only for
 //   the `left || right` / `top || bottom` alignment branches above.
 private func layoutJsTruthy(_ v: Any?) -> Bool {
     switch v {

@@ -23,7 +23,7 @@ import ZRenderKit
 
 // upstream imports:
 //   import {ECPolygon} from '../line/poly';
-//       -> PORT-NOTE: the shared `ECPolygon` (chart/line/poly.ts) is not ported as a shared shape; a local
+//       -> note: the shared `ECPolygon` (chart/line/poly.ts) is not ported as a shared shape; a local
 //          minimal equivalent (`ThemeRiverBand` / `ThemeRiverBandShape`, below) reproduces the dual-edge
 //          `points0`/`points1` band WITH the `smooth: 0.4` / `stackedOnSmooth: 0.4` Bézier smoothing, so
 //          adjacent bands share an identical boundary curve (contiguous stream).
@@ -50,7 +50,7 @@ import ZRenderKit
 //   import { saveOldStyle } from '../../animation/basicTransition'; -> animation/basicTransition.swift (ported); NOW called on the band morph/update path (see the morph branch in render), mirroring upstream line 139, so cross-merge style transitions preserve the old style.
 
 // upstream: type LayerSeries = ReturnType<ThemeRiverSeriesModel['getLayerSeries']>;
-//   PORT-NOTE (sibling contract): `ThemeRiverSeriesModel.getLayerSeries()` is ASSUMED to return
+//   note (sibling contract): `ThemeRiverSeriesModel.getLayerSeries()` is ASSUMED to return
 //   `[[String: Any]]`, one dictionary per layer with keys:
 //     - "name":    String   (the layer / series name — the diff key)
 //     - "indices": [Int]    (data indices of that layer, sorted by the `single` (time) dimension)

@@ -557,7 +557,7 @@ myChart.setOption(option);
                     "seriesIndex": 0.0,
                     "calculable": true,
                     "textStyle": ["color": "#eee"] as [String: Any],
-                    // PORT-NOTE: visualMap.formatter kept — '{value} %' is a template STRING upstream,
+                    // visualMap.formatter kept — '{value} %' is a template STRING upstream,
                     // not a closure, so it ports as-is.
                     "formatter": "{value} %",
                     "inRange": [

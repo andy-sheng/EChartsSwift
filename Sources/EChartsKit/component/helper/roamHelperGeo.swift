@@ -34,7 +34,7 @@ import ZRenderKit
 //   `updateTransform` so dependent series re-layout without rebuilding the geo component or restarting
 //   long-running effect animators. The per-host inner state below mirrors the model sync-back needed by this
 //   port's rebuilt coordinate-system path and remains the source used by a later full update.
-//   PORT-NOTE (deferred): MAP_SERIES_GROUP sync-to-all (`otherModelsToSync`) — a single roam host is handled.
+//   TODO: MAP_SERIES_GROUP sync-to-all (`otherModelsToSync`) — a single roam host is handled.
 
 // ---------------------------------------------------------------------------------------------------
 // Roam state — the single source of truth for a geo/map host's (center, zoom), carried across update()

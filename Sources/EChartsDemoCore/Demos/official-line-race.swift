@@ -18,7 +18,7 @@
 //  - ANIMATION. `animationDuration: 10000` is carried through, but the gallery renders ONE static frame
 //    with animation forced off — the ten-second left-to-right "race" reveal is not visible; both panes
 //    show the finished lines.
-//  - Native pane: `series[].endLabel.formatter` is a JS closure and is omitted (see PORT-NOTE below);
+//  - Native pane: `series[].endLabel.formatter` is a JS closure and is omitted (see note below);
 //    everything else — the dataset filter transforms, `encode`, `labelLayout`, `emphasis` — is ported.
 import Foundation
 import EChartsKit

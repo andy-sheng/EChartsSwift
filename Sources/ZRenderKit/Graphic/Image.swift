@@ -11,7 +11,7 @@
 //   tagged `ImageSource` enum (`.url(String)` | `.image(ImageLike)`) and `ImageLike` as a small
 //   protocol exposing the natural `width` / `height` (the rest is the native image handle —
 //   `CGImage` on the painter side). The actual decode/cache lives in the renderer seam.
-//   PORT-NOTE (deferred): native image loading via platform.loadImage (CONVENTIONS §9). `core/types.ts`'s
+//   TODO: native image loading via platform.loadImage (CONVENTIONS §9). `core/types.ts`'s
 //   `ImageLike` placeholder is realised here.
 //
 // STYLE DECISION (TS `ImageStyleProps extends CommonStyleProps` → Swift):
@@ -25,7 +25,7 @@
 // INHERITED from Displayable/Element:
 //   - the animation surface (getAnimationStyleProps returns the props bag; Animator landed in Phase 3).
 //   - the states machinery (landed in Phase 2).
-//   - PORT-NOTE: the `onload` callback (fired by the painter after `platform.loadImage` resolves) is
+//   - note: the `onload` callback (fired by the painter after `platform.loadImage` resolves) is
 //     still the deferred renderer seam.
 
 import Foundation
@@ -38,7 +38,7 @@ import Foundation
 // import { defaults, createObject } from '../core/util';
 // import { ElementCommonState } from '../Element';
 
-// PORT-NOTE: `ImageLike` (HTMLImageElement | HTMLCanvasElement | HTMLVideoElement) is already the
+// `ImageLike` (HTMLImageElement | HTMLCanvasElement | HTMLVideoElement) is already the
 //   deferred opaque seam `typealias ImageLike = Any` in `core/platform.swift` (CONVENTIONS §9); the
 //   decoded native handle (a `CGImage` on the painter side) flows through it. The only structural
 //   shape Image.ts reads off an `ImageLike` is its natural pixel size (`source.width`/`.height` in
@@ -49,7 +49,7 @@ public protocol ImageNaturalSize {
     var height: Double { get }
 }
 
-// PORT-NOTE: models the upstream union `string | ImageLike`. A `.url` is resolved to an `.image`
+// models the upstream union `string | ImageLike`. A `.url` is resolved to an `.image`
 //   by the painter via `platform.loadImage` (native image loading — renderer seam).
 public enum ImageSource {
     case url(String)
@@ -67,7 +67,7 @@ public struct ImageStyleProps {
     public var opacity: Double?
     /// https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/globalCompositeOperation
     public var blend: String?
-    // PORT-NOTE: replaces upstream's dynamic STYLE_MAGIC_KEY stamp (see Displayable.swift). `true`
+    // replaces upstream's dynamic STYLE_MAGIC_KEY stamp (see Displayable.swift). `true`
     //   iff produced by `createStyle`.
     public var zrStyleMagic: Bool = false
 
@@ -104,7 +104,7 @@ public let DEFAULT_IMAGE_STYLE: ImageStyleProps = {
     return s
 }()
 
-// PORT-NOTE: upstream `MapToType<ImageProps, boolean>` — recursive mapped utility type. Collapsed to
+// upstream `MapToType<ImageProps, boolean>` — recursive mapped utility type. Collapsed to
 //   a loose `[String: Any]` bag (matches Displayable's DEFAULT_COMMON_ANIMATION_PROPS). Only read by
 //   `getAnimationStyleProps` (animation surface deferred, Phase 3).
 public let DEFAULT_IMAGE_ANIMATION_PROPS: [String: Any] = [
@@ -127,13 +127,13 @@ public let DEFAULT_IMAGE_ANIMATION_PROPS: [String: Any] = [
     ]
 ]
 
-// PORT-NOTE: interface ImageProps extends DisplayableProps { style?: ImageStyleProps,
+// interface ImageProps extends DisplayableProps { style?: ImageStyleProps,
 //   onload?: (image: ImageLike) => void }. The `attr`/`attrKV` setter machinery uses the dynamic
 //   `[String: Any]` prop bag (collapsed onto DisplayableProps == ElementProps). Typed-interface
 //   fidelity dropped; `onload` is exposed as a stored property below.
 public typealias ImageProps = DisplayableProps
 
-// PORT-NOTE: ImageState = Pick<ImageProps, DisplayableStatePropNames> & ElementCommonState — the
+// ImageState = Pick<ImageProps, DisplayableStatePropNames> & ElementCommonState — the
 //   states machinery is Phase 2; collapsed onto Displayable's ElementState-based stub.
 public typealias ImageState = DisplayableState
 
@@ -141,7 +141,7 @@ public typealias ImageState = DisplayableState
 //   `!!(source && typeof source !== 'string' && source.width && source.height)`.
 //   Adapted to the `ImageSource` enum: returns the image's natural size when the source is an
 //   `.image` exposing a non-zero `width`/`height` (matching the JS-falsy `width && height` guard),
-//   else nil. PORT-NOTE (deferred): relies on the native handle conforming to `ImageNaturalSize` (renderer seam).
+//   else nil. TODO: relies on the native handle conforming to `ImageNaturalSize` (renderer seam).
 private func isImageLike(_ source: ImageSource?) -> ImageNaturalSize? {
     if case .some(.image(let img)) = source,
        let sized = img as? ImageNaturalSize,
@@ -160,13 +160,13 @@ public final class ZRImage: Displayable {
     public var imageStyle: ImageStyleProps!
 
     // FOR CANVAS RENDERER
-    // PORT-NOTE (deferred): the decoded native image handle, populated by the painter after resolving a `.url`
+    // TODO: the decoded native image handle, populated by the painter after resolving a `.url`
     //   source via `platform.loadImage`. Renderer seam (CONVENTIONS §9).
     public var __image: ImageLike?
     // FOR SVG RENDERER
     public var __imageSrc: String?
 
-    // PORT-NOTE (deferred): fired by the painter once a `string` source finishes loading. Renderer seam.
+    // TODO: fired by the painter once a `string` source finishes loading. Renderer seam.
     public var onload: ((ImageLike) -> Void)?
 
     // upstream: `(symbolPath as ECSymbol).__isEmptyBrush` — set by util/symbol.createSymbol on an
@@ -192,7 +192,7 @@ public final class ZRImage: Displayable {
                     self.useStyle(s)
                 }
                 else {
-                    // PORT-NOTE: non-ImageStyleProps `style` value — fall back to empty style.
+                    // non-ImageStyleProps `style` value — fall back to empty style.
                     self.useStyle(ImageStyleProps())
                 }
             }
@@ -235,7 +235,7 @@ public final class ZRImage: Displayable {
 
     // Mirror the CommonStyleProps subset of `imageStyle` into the inherited `Displayable.style` so the
     // inherited machinery (shouldBePainted / getPaintRect) reads correct shadow / opacity / blend.
-    // PORT-NOTE: a Swift-only bridge — upstream has a single `this.style` object.
+    // a Swift-only bridge — upstream has a single `this.style` object.
     private func _syncCommonStyle() {
         var c = CommonStyleProps()
         c.shadowBlur = self.imageStyle.shadowBlur
@@ -257,7 +257,7 @@ public final class ZRImage: Displayable {
             return size
         }
 
-        // upstream: isImageLike(style.image) ? style.image : this.__image. PORT-NOTE: the cached
+        // upstream: isImageLike(style.image) ? style.image : this.__image. note: the cached
         //   `__image` (ImageLike == Any) is read for its natural size via the `ImageNaturalSize` seam.
         let imageSource = isImageLike(style.image) ?? (self.__image as? ImageNaturalSize)
 
@@ -302,7 +302,7 @@ public final class ZRImage: Displayable {
 }
 
 // extend(target, source) over ImageStyleProps' known fields (value-copy of non-nil fields).
-// PORT-NOTE: upstream `extend`/`createObject` copy all own enumerable keys (dynamic bag); here we
+// upstream `extend`/`createObject` copy all own enumerable keys (dynamic bag); here we
 //   copy the known ImageStyleProps fields only.
 private func extendImageStyle(_ target: inout ImageStyleProps, _ source: ImageStyleProps) {
     if source.shadowBlur != nil { target.shadowBlur = source.shadowBlur }

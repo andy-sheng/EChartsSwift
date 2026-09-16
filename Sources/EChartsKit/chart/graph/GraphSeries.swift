@@ -25,7 +25,7 @@ import ZRenderKit
 //   import SeriesData from '../../data/SeriesData';                  -> SeriesData (data/SeriesData.swift).
 //   import * as zrUtil from 'zrender/src/core/util';                 -> ZRenderKit `util`.
 //   import {defaultEmphasis} from '../../util/model';                -> modelUtil.defaultEmphasis (typed;
-//       see mergeDefaultAndTheme PORT-NOTE below).
+//       see mergeDefaultAndTheme note below).
 //   import Model from '../../model/Model';                           -> Model (model/Model.swift).
 //   import createGraphFromNodeEdge from '../helper/createGraphFromNodeEdge';
 //       -> the sibling free function `createGraphFromNodeEdge` (chart/helper/createGraphFromNodeEdge.swift).
@@ -57,7 +57,7 @@ import ZRenderKit
 //       -> visual/tokens.ts IS ported (visual/tokens.swift); the consumed values are still inlined verbatim in
 //          `defaultOption` (tokens.color.neutral50 = '#86878c', tokens.color.primary = neutral80 = '#3c3c41').
 //   import { isViewCoordSys } from '../../coord/View';
-//       -> PORT-NOTE (deferred): isViewCoordSys IS ported (coord/View.swift), but View's CoordinateSystem
+//       -> TODO: isViewCoordSys IS ported (coord/View.swift), but View's CoordinateSystem
 //          protocol conformance is dropped there, so it cannot be applied to filter the `Any?` slot; the
 //          graph's roam is deferred anyway, so `__ownRoamView` returns the slot unfiltered (harmless).
 
@@ -105,7 +105,7 @@ private final class GraphEdgeLabelChildModel: Model {
 //   child model). Swift cannot reassign an instance method by name, so the swap is a Model subclass:
 //   `resolveParentPath` is overridden, and `getModel` re-wraps each produced child into
 //   `GraphEdgeLabelChildModel` (== `oldGetModel.call(...)` then `model.resolveParentPath = ...`).
-// PORT-NOTE (two documented divergences of subclass-vs-own-property, both unreachable today):
+// note (two documented divergences of subclass-vs-own-property, both unreachable today):
 //   1. `Model.clone()` (Model.swift) reconstructs via `type(of: self).init(...)`, so a clone of one of
 //      these wrappers KEEPS the redirect; upstream's `clone()` is `new (this.constructor)(...)` with
 //      `constructor === Model`, and the per-instance `resolveParentPath`/`getModel` assignments are
@@ -129,7 +129,7 @@ private final class GraphEdgeLabelItemModel: Model {
     override func getModel(_ path: [String]? = nil, _ parentModel: Model? = nil) -> Model {
         let model = super.getModel(path, parentModel)
         // `super.getModel` freshly constructs a base `Model` (Model.swift, no clone), so re-wrapping it
-        //   loses nothing — see the divergence PORT-NOTE above.
+        //   loses nothing — see the divergence note above.
         return GraphEdgeLabelChildModel(model.option, model.parentModel, model.ecModel)
     }
 }
@@ -148,7 +148,7 @@ open class GraphSeriesModel: SeriesModel {
     }
 
     // private _categoriesData: SeriesData;
-    // PORT-NOTE: upstream typed non-optional; set by `_updateCategoriesData` during `init`. Modeled
+    // upstream typed non-optional; set by `_updateCategoriesData` during `init`. Modeled
     //   implicitly-unwrapped so `getCategoriesData()` can return non-optional (language difference).
     private var _categoriesData: SeriesData!
 
@@ -163,7 +163,7 @@ open class GraphSeriesModel: SeriesModel {
     open var preservedPoints: [String: [Double]]?
 
     // forceLayout?: ForceLayoutInstance;
-    // PORT-NOTE: forceLayout (iterative physics) IS ported (chart/graph/forceLayout.swift); this slot
+    // forceLayout (iterative physics) IS ported (chart/graph/forceLayout.swift); this slot
     //   stays typed `Any?` (the concrete `ForceLayoutInstance` type isn't bound here).
     open var forceLayout: Any?
 
@@ -209,7 +209,7 @@ open class GraphSeriesModel: SeriesModel {
         super.mergeDefaultAndTheme(option, ecModel)
 
         // defaultEmphasis(option, 'edgeLabel', ['show']);
-        // PORT-NOTE: modelUtil.defaultEmphasis takes an `inout DisplayStateHostOption?` value struct
+        // modelUtil.defaultEmphasis takes an `inout DisplayStateHostOption?` value struct
         //   (CONVENTIONS §4); the dynamic option tree here is the `[String: Any]` bag. Rather than bridge
         //   the bag to the typed struct (as super's own top-level `defaultEmphasis(option,'label',...)`
         //   still defers), the identical logic is inlined verbatim against the bag for this single
@@ -284,7 +284,7 @@ open class GraphSeriesModel: SeriesModel {
         //     }
         //     return model;
         // });
-        // PORT-NOTE: SeriesData.wrapMethod('getItemModel', …) IS live — the injection is stored in
+        // SeriesData.wrapMethod('getItemModel', …) IS live — the injection is stored in
         //   SeriesData._getItemModelInjections and threaded through every getItemModel() call (see
         //   data/SeriesData.swift), and it survives cloneShallow via transferProperties. So this
         //   per-category parentModel reparenting DOES take effect (category itemStyle/label inheritance).
@@ -327,7 +327,7 @@ open class GraphSeriesModel: SeriesModel {
         //     }
         //     return pathArr;
         // }
-        // PORT-NOTE: upstream reassigns `model.resolveParentPath` / `model.getModel` per instance (a JS
+        // upstream reassigns `model.resolveParentPath` / `model.getModel` per instance (a JS
         //   prototype-method swap). Swift cannot rebind an instance method by name, so the swap is expressed
         //   as the two Model subclasses at file scope (`GraphEdgeLabelItemModel` / `GraphEdgeLabelChildModel`):
         //   the injection re-wraps the produced edge item model into `GraphEdgeLabelItemModel`, which redirects
@@ -341,7 +341,7 @@ open class GraphSeriesModel: SeriesModel {
             // }
             guard let model = args.first as? Model else { return args.first as Any? }
             // Upstream MUTATES the model in place; Swift re-wraps it instead (see the divergence
-            //   PORT-NOTE on `GraphEdgeLabelItemModel` for why that is equivalent here).
+            //   note on `GraphEdgeLabelItemModel` for why that is equivalent here).
             return GraphEdgeLabelItemModel(model.option, model.parentModel, model.ecModel)
         }
     }
@@ -486,7 +486,7 @@ open class GraphSeriesModel: SeriesModel {
         // Be an exclusive coord sys of graph series iff it is a `View` coord sys.
         // Otherwise graph series is based on an external geo or Cartesian.
         let coordSys = self.coordinateSystem
-        // PORT-NOTE (deferred): isViewCoordSys IS ported, but View's CoordinateSystem conformance is
+        // TODO: isViewCoordSys IS ported, but View's CoordinateSystem conformance is
         //   dropped (coord/View.swift) so the `View`-ness filter cannot be applied here; the
         //   `coordinateSystem` slot is returned unfiltered (roam is deferred anyway).
         return coordSys

@@ -50,7 +50,7 @@ public struct ArcShape: PathShape {
     }
 }
 
-// PORT-NOTE: upstream `interface ArcProps extends PathProps { shape?: Partial<ArcShape> }`.
+// upstream `interface ArcProps extends PathProps { shape?: Partial<ArcShape> }`.
 //   `PathProps` is the collapsed `[String: Any]` prop bag (see Path.swift); the typed
 //   `shape?: Partial<ArcShape>` narrowing is dropped.
 public typealias ArcProps = PathProps

@@ -49,7 +49,7 @@ let INCLUDE_FINDER_MAIN_TYPES = [
 
 // type BrushableCoordinateSystem = Cartesian2D | Geo;
 //
-// PORT-NOTE: an untagged TS union of two unrelated classes whose ported `dataToPoint`/`pointToData`
+// an untagged TS union of two unrelated classes whose ported `dataToPoint`/`pointToData`
 //   signatures differ (Cartesian2D takes the erased `CoordinateSystemDataCoord` + `opt: Any?`; Geo takes
 //   `Any?` + `noRoam` and returns an Optional). Modeled as a tagged enum so the upstream call sites stay
 //   byte-identical (`coordSys.dataToPoint(range, clamp)`), with the per-case shim inside. NOTE the
@@ -102,7 +102,7 @@ public enum BrushableCoordinateSystem {
 // interface BrushTargetInfo { panelId; coordSysModel; coordSys; coordSyses; getPanelRect; }
 // export interface BrushTargetInfoCartesian2D extends BrushTargetInfo { gridModel; xAxisDeclared; yAxisDeclared; }
 // export interface BrushTargetInfoGeo extends BrushTargetInfo { geoModel; }
-//   PORT-NOTE: the two subtypes are folded into ONE class with the union of their fields (the builders
+//   the two subtypes are folded into ONE class with the union of their fields (the builders
 //   set the relevant ones; `targetInfoMatchers` reads `gridModel`/`geoModel` back and a nil field simply
 //   fails that matcher — the same behavior as upstream's `targetInfo as BrushTargetInfoGeo` cast on a
 //   grid target, which yields `undefined`).
@@ -139,7 +139,7 @@ public final class BrushTargetInfo {
 }
 
 /// `findTargetInfo` returns `BrushTargetInfo | true` — an object (a coord found) or `true` (global found).
-///   PORT-NOTE: the `| true` arm of the union becomes the `.global` case (CONVENTIONS §2).
+///   the `| true` arm of the union becomes the `.global` case (CONVENTIONS §2).
 public enum BrushTargetInfoOrGlobal {
     case targetInfo(BrushTargetInfo)
     case global      // upstream: `true`
@@ -180,7 +180,7 @@ public final class BrushTargetManager {
         _ areas: [BrushControllerBrushArea],
         _ ecModel: GlobalModel
     ) -> [[String: Any]] {
-        // PORT-NOTE: upstream MUTATES the incoming area objects (`area.coordRanges.push(...)`,
+        // upstream MUTATES the incoming area objects (`area.coordRanges.push(...)`,
         //   `area.coordRange = ...`, `area.__rangeOffset = ...`) and returns the same array. The
         //   controller hands us value-typed `BrushControllerBrushArea` structs, so the decorated areas
         //   are materialized as the `[String: Any]` param bags the `brush` action payload carries
@@ -251,7 +251,7 @@ public final class BrushTargetManager {
      * convert `area.coordRange` to global range and set panelId to `area.range`.
      */
     // setInputRanges(areas: BrushAreaParamInternal[], ecModel): void
-    //   PORT-NOTE: upstream mutates each area object in place; `BrushAreaParamInternal` is a Swift
+    //   upstream mutates each area object in place; `BrushAreaParamInternal` is a Swift
     //   dictionary (value type), so the array is taken `inout` and each entry written back.
     public func setInputRanges(_ areas: inout [BrushAreaParamInternal], _ ecModel: GlobalModel) {
         for i in areas.indices {
@@ -460,7 +460,7 @@ private let targetInfoBuilders: [String: (ParsedModelFinderKnown, inout [BrushTa
                     cartesians.append(cartesian)
                 }
             }
-            // PORT-NOTE: upstream pushes the targetInfo even when `cartesians` is empty (its
+            // upstream pushes the targetInfo even when `cartesians` is empty (its
             //   `coordSys: cartesians[0]` is then `undefined`). A Swift enum cannot hold that, and a
             //   panel with no cartesian can neither convert nor control any series — skip it. Observable
             //   only for a finder that names a grid whose axes were not matched (nothing to brush there).
@@ -618,7 +618,7 @@ private func axisConvert(
     _ rangeOrCoordRange: BrushAreaRange
 ) -> BrushConvertResult {
     // if (__DEV__) { assert(coordSys.type === 'cartesian2d', 'lineX/lineY brush is available only in cartesian2d.'); }
-    //   PORT-NOTE: the DEV assert becomes a hard guard — a lineX/lineY area on a non-cartesian coord
+    //   the DEV assert becomes a hard guard — a lineX/lineY area on a non-cartesian coord
     //   system yields an empty conversion (and so selects nothing) instead of crashing.
     guard let cartesian = coordSys.asCartesian2D,
           let rangeIn = brushDimensionMinMax(rangeOrCoordRange),

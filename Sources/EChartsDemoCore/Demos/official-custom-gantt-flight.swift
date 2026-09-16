@@ -49,7 +49,7 @@
 //    `EChartsDemoChart` exposes no `getZr()`, so the zr-level ghost Rect and its mousemove/mouseup/globalout
 //    handlers have nothing to attach to. There is no `drive` closure because the behaviour is pure pointer
 //    interaction, not a timeline.
-//  - `toolbox.feature.myDrag.onclick` omitted from the native option — see the PORT-NOTE (it is the JS handler that
+//  - `toolbox.feature.myDrag.onclick` omitted from the native option — see the note (it is the JS handler that
 //    toggles `_draggable` and disables the two `inside` dataZooms).
 import Foundation
 import EChartsKit
@@ -908,7 +908,7 @@ function initDrag() {
                         "show": true,
                         "title": "Make bars\ndraggable",
                         "icon": ganttDragToolboxIcon
-                        // PORT-NOTE: toolbox.feature.myDrag.onclick omitted — the JS handler flipped the
+                        // toolbox.feature.myDrag.onclick omitted — the JS handler flipped the
                         // module-level `_draggable` flag, re-setOption'd `dataZoom: [{ id: 'insideX', disabled },
                         // { id: 'insideY', disabled }]` (so panning does not fight the drag) and called
                         // `this.model.setIconStatus(type, _draggable ? 'emphasis' : 'normal')` to light the icon up.

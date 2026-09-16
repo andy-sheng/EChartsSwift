@@ -15,7 +15,7 @@
 //     Everything else in the data loop (the `Math.random() * 2 - 1` mapping onto [-1, 1], the
 //     'X'+i / 'Y'+j locators) is verbatim. Same substitution official-matrix-covariance makes.
 //   - series.label.formatter is a JS closure: kept verbatim in the web pane, omitted in the native
-//     option (see PORT-NOTE below).
+//     option (see note below).
 //   - The official source writes `series` as a bare object; the Swift option uses the one-element array
 //     echarts itself normalizes it to (webOptionJS keeps the object form verbatim). Not a semantic change.
 //   - NATIVE PANE IS PARTIAL — the same gap official-matrix-simple / official-matrix-covariance carry,
@@ -139,7 +139,7 @@ option = {
                 ] as [String: Any]
             ] as [String: Any],
             "series": [
-                // PORT-NOTE: rendered as the matrix BACKDROP only today — ScatterView.render has no matrix
+                // rendered as the matrix BACKDROP only today — ScatterView.render has no matrix
                 // branch (cartesian2d / polar / geo only), so these 60 bubbles draw nothing on the native
                 // pane. Option is complete and correct; it lights up when that branch lands. See header.
                 [
@@ -149,7 +149,7 @@ option = {
                     "itemStyle": ["opacity": 1.0] as [String: Any],
                     "label": [
                         "show": true
-                        // PORT-NOTE: label.formatter omitted — `(params) => params.value[2].toFixed(2)`,
+                        // label.formatter omitted — `(params) => params.value[2].toFixed(2)`,
                         // which prints each bubble's correlation on it, fixed to 2 decimals ("-0.42").
                         // Without it the native label would fall back to the datum's name.
                     ] as [String: Any]

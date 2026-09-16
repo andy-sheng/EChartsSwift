@@ -33,7 +33,7 @@ import ZRenderKit  // upstream: createHashMap, retrieve, each, HashMap from 'zre
 // upstream imports (translated against the conventional public API of sibling files):
 //   import {createHashMap, retrieve, each, HashMap} from 'zrender/src/core/util';
 //       -> ZRenderKit.util.{retrieve, each}; HashMap/createHashMap are the EChartsKit shims
-//          in util/model.swift (until ZRenderKit ports them — see that PORT-NOTE).
+//          in util/model.swift (until ZRenderKit ports them — see that note).
 //   import SeriesModel from './Series';                          -> SeriesModel (util/types.swift stub; real type lands this phase)
 //   import type PolarModel from '../coord/polar/PolarModel';     -> PolarModel  (real ported type — see note below)
 //   import type { SeriesOption, SeriesOnCartesianOptionMixin } from '../util/types';  -> generics dropped
@@ -48,7 +48,7 @@ import ZRenderKit  // upstream: createHashMap, retrieve, each, HashMap from 'zre
 //   import { AxisModelExtendedInCreator } from '../coord/axisModelCreator';     -> not yet ported (FetcherAxisModel)
 
 // ============================================================================
-// PORT-NOTE: coordinate-system models (formerly forward-reference placeholders).
+// coordinate-system models (formerly forward-reference placeholders).
 // These types live under `echarts/src/coord/**` and are now all real, fully-ported
 // reference types; the former minimal placeholders declared here have been removed
 // (see the per-model notes below). They are deliberately *not* refined from
@@ -57,24 +57,24 @@ import ZRenderKit  // upstream: createHashMap, retrieve, each, HashMap from 'zre
 // ============================================================================
 
 // '../coord/AxisBaseModel' — AxisBaseModel is now the real, fully-ported reference type in
-//   coord/AxisBaseModel.swift (an `open class` extending ComponentModel). The former PORT-NOTE
+//   coord/AxisBaseModel.swift (an `open class` extending ComponentModel). The former note
 //   placeholder protocol declared here has been removed per its own note; the `func get(...)` it
 //   exposed is provided by ComponentModel's Model.get. (FetcherAxisModel, which upstream Picks
 //   `getOrdinalMeta` from AxisModelExtendedInCreator, is still collapsed to AxisBaseModel below.)
 // '../coord/polar/PolarModel' — PolarModel is now the real, fully-ported reference type in
 //   coord/polar/PolarModel.swift (a `final class : ComponentModel, CoordinateSystemHostModel`).
-//   The former PORT-NOTE placeholder protocol declared here has been removed per its own note;
+//   The former note placeholder protocol declared here has been removed per its own note;
 //   `findAxisModel` on the real class returns the concrete `PolarAxisModel?` (a subclass of
 //   AxisBaseModel), so the `axisMap.set`/`isCategory` uses below stay valid.
 // '../coord/parallel/ParallelModel' — ParallelModel is now the real, fully-ported reference type in
 //   coord/parallel/ParallelModel.swift (a `final class : ComponentModel, CoordinateSystemHostModel`).
-//   The former PORT-NOTE placeholder protocol declared here has been removed per its own note.
+//   The former note placeholder protocol declared here has been removed per its own note.
 // '../coord/parallel/AxisModel' — ParallelAxisModel is now the real, fully-ported reference type in
-//   coord/parallel/ParallelAxisModel.swift (an `AxisBaseModel` subclass). The former PORT-NOTE
+//   coord/parallel/ParallelAxisModel.swift (an `AxisBaseModel` subclass). The former note
 //   placeholder subclass declared here has been removed per its own note.
 // '../coord/matrix/MatrixModel' — MatrixModel is now the real, fully-ported reference type in
 //   coord/matrix/MatrixModel.swift (a `final class : ComponentModel, CoordinateSystemHostModel`).
-//   The former PORT-NOTE placeholder protocol declared here has been removed per its own note.
+//   The former note placeholder protocol declared here has been removed per its own note.
 
 /**
  * @class
@@ -115,9 +115,9 @@ public final class SeriesModelCoordSysInfo {
 }
 
 // upstream: type SupportedCoordSys = 'cartesian2d' | 'polar' | 'singleAxis' | 'geo' | 'parallel' | 'matrix';
-public typealias SupportedCoordSys = String                                // PORT-NOTE: string union narrowed to String
+public typealias SupportedCoordSys = String                                // string union narrowed to String
 // upstream: type FetcherAxisModel = Model<Pick<AxisBaseOptionCommon,'type'>> & Pick<AxisModelExtendedInCreator,'getOrdinalMeta'>;
-// PORT-NOTE: the structural `Model & {getOrdinalMeta}` is collapsed to the common base `Model` — both the
+// the structural `Model & {getOrdinalMeta}` is collapsed to the common base `Model` — both the
 //   generated axis models (AxisBaseModel, via AxisModelExtendedInCreator) AND `MatrixDimensionModel` are
 //   `Model`s and expose `getOrdinalMeta`; the consumer (createSeriesData) reaches it via a cast to whichever
 //   provides it. Was `AxisBaseModel`, which excluded the matrix dim models — so a custom series on a matrix
@@ -131,9 +131,9 @@ public typealias Fetcher = (
     _ categoryAxisMap: HashMap<FetcherAxisModel>
 ) -> Void
 
-// PORT-NOTE: returns `undefined` when no fetcher matches the coordSysName, hence Optional.
+// returns `undefined` when no fetcher matches the coordSysName, hence Optional.
 public func getCoordSysInfoBySeries(_ seriesModel: SeriesModel) -> SeriesModelCoordSysInfo? {
-    let coordSysName = seriesModel.get("coordinateSystem") as? SupportedCoordSys ?? ""  // PORT-NOTE: as SupportedCoordSys
+    let coordSysName = seriesModel.get("coordinateSystem") as? SupportedCoordSys ?? ""  // as SupportedCoordSys
     let result = SeriesModelCoordSysInfo(coordSysName)
     let fetch = fetchers[coordSysName]
     if let fetch = fetch {
@@ -152,11 +152,11 @@ private let fetchers: [SupportedCoordSys: Fetcher] = [
 
         if __DEV__ {
             if xAxisModel == nil {
-                // PORT-NOTE: upstream `throw new Error(...)`; surfaced as fatalError (Fetcher has no throwing signature) — semantically equivalent.
+                // upstream `throw new Error(...)`; surfaced as fatalError (Fetcher has no throwing signature) — semantically equivalent.
                 fatalError("xAxis \"\(util.retrieve(seriesModel.get("xAxisIndex"), seriesModel.get("xAxisId"), 0 as Any) ?? 0)\" not found")
             }
             if yAxisModel == nil {
-                // PORT-NOTE: upstream `throw new Error(...)`; surfaced as fatalError (Fetcher has no throwing signature) — semantically equivalent.
+                // upstream `throw new Error(...)`; surfaced as fatalError (Fetcher has no throwing signature) — semantically equivalent.
                 // (Upstream uses `xAxisIndex` here too — preserved faithfully.)
                 fatalError("yAxis \"\(util.retrieve(seriesModel.get("xAxisIndex"), seriesModel.get("yAxisId"), 0 as Any) ?? 0)\" not found")
             }
@@ -186,7 +186,7 @@ private let fetchers: [SupportedCoordSys: Fetcher] = [
 
         if __DEV__ {
             if singleAxisModel == nil {
-                // PORT-NOTE: upstream `throw new Error(...)`; surfaced as fatalError (Fetcher has no throwing signature) — semantically equivalent.
+                // upstream `throw new Error(...)`; surfaced as fatalError (Fetcher has no throwing signature) — semantically equivalent.
                 fatalError("singleAxis should be specified.")
             }
         }
@@ -207,11 +207,11 @@ private let fetchers: [SupportedCoordSys: Fetcher] = [
 
         if __DEV__ {
             if angleAxisModel == nil {
-                // PORT-NOTE: upstream `throw new Error(...)`; surfaced as fatalError (Fetcher has no throwing signature) — semantically equivalent.
+                // upstream `throw new Error(...)`; surfaced as fatalError (Fetcher has no throwing signature) — semantically equivalent.
                 fatalError("angleAxis option not found")
             }
             if radiusAxisModel == nil {
-                // PORT-NOTE: upstream `throw new Error(...)`; surfaced as fatalError (Fetcher has no throwing signature) — semantically equivalent.
+                // upstream `throw new Error(...)`; surfaced as fatalError (Fetcher has no throwing signature) — semantically equivalent.
                 fatalError("radiusAxis option not found")
             }
         }
@@ -236,12 +236,12 @@ private let fetchers: [SupportedCoordSys: Fetcher] = [
 
     "parallel": { seriesModel, result, axisMap, categoryAxisMap in
         // upstream `ComponentModel.ecModel` is non-null; `Model.ecModel` is `GlobalModel?` in the port
-        // (see the reconciliation PORT-NOTE in util/types.swift, resolved now that model/Global landed).
+        // (see the reconciliation note in util/types.swift, resolved now that model/Global landed).
         let ecModel = seriesModel.ecModel!
         let parallelModel = ecModel.getComponent(
             "parallel", seriesModel.get("parallelIndex") as? Double
         ) as? ParallelModel
-        let coordSysDims = parallelModel?.dimensions ?? []   // PORT-NOTE: upstream `.slice()` (value copy); parallelModel assumed non-null
+        let coordSysDims = parallelModel?.dimensions ?? []   // upstream `.slice()` (value copy); parallelModel assumed non-null
         result.coordSysDims = coordSysDims
 
         util.each(parallelModel?.parallelAxisIndex) { axisIndex, index in
@@ -265,7 +265,7 @@ private let fetchers: [SupportedCoordSys: Fetcher] = [
 
         if __DEV__ {
             if matrixModel == nil {
-                // PORT-NOTE: upstream `throw new Error(...)`; surfaced as fatalError (Fetcher has no throwing signature) — semantically equivalent.
+                // upstream `throw new Error(...)`; surfaced as fatalError (Fetcher has no throwing signature) — semantically equivalent.
                 fatalError("matrix coordinate system should be specified.")
             }
         }

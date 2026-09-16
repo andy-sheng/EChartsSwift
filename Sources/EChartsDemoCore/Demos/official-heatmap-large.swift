@@ -31,7 +31,7 @@
 //      drops it. Both panes carry the same off-by-one.
 //   5. `tooltip: {}` is interactive; the gallery snapshots ONE static frame, so it never shows.
 //
-// No PORT-NOTE below: this option has NO function-valued key (no formatter/renderItem/label callback),
+// No note below: this option has NO function-valued key (no formatter/renderItem/label callback),
 // so NOTHING had to be dropped from the Swift `option` — it mirrors the JS one key-for-key. The only
 // shape difference is that `xData`/`yData`/`data` are pre-computed into file-scope `private let`s
 // rather than built by a `generateData` call, because the Swift option is data, not code.

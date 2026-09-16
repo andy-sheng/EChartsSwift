@@ -23,11 +23,11 @@ import ZRenderKit
 // import Model from '../model/Model';                                  -> Model (EChartsKit model/Model.swift)
 // import Axis from './Axis';                                           -> Axis  (coord/Axis.swift)
 // import { AxisBaseOption, ValueAxisBaseOption } from './axisCommonTypes'; -> AxisBaseOption / ValueAxisBaseOption
-//     (coord/axisCommonTypes.swift; PORT-NOTE: option interfaces not yet ported — dynamic bag used)
+//     (coord/axisCommonTypes.swift; note: option interfaces not yet ported — dynamic bag used)
 // import { CoordinateSystemHostModel } from './CoordinateSystem';      -> CoordinateSystemHostModel
-//     (coord/CoordinateSystem.swift, T2; PORT-NOTE: ported — still typed as `Any?` here)
+//     (coord/CoordinateSystem.swift, T2; note: ported — still typed as `Any?` here)
 
-// PORT-NOTE: upstream is a mixin (`interface` + `class` declaration-merged, grafted onto axis
+// upstream is a mixin (`interface` + `class` declaration-merged, grafted onto axis
 //   models via `applyMixin` / `util.inherits`). Per CONVENTIONS §2 mixins are ported as a
 //   protocol + protocol-extension that preserves the upstream method set. The
 //   `Pick<Model<Opt>, 'option'>` and `axis: Axis` members of the interface become protocol
@@ -43,7 +43,7 @@ public protocol AxisModelCommonMixin: AnyObject {
     // From Pick<Model<Opt>, 'option'>
     var option: ModelOption? { get }
 
-    // PORT-NOTE: coord/Axis.swift is ported; `axis` is still typed as `Any` here.
+    // coord/Axis.swift is ported; `axis` is still typed as `Any` here.
     var axis: Any { get }
 }
 
@@ -53,7 +53,7 @@ public extension AxisModelCommonMixin {
 
     func needIncludeZero() -> Bool {
         // return !(this.option as ValueAxisBaseOption).scale;
-        // PORT-NOTE: ValueAxisBaseOption not ported — read `scale` from the dynamic option bag.
+        // ValueAxisBaseOption not ported — read `scale` from the dynamic option bag.
         //   JS truthiness: a missing/false `scale` yields `true` here.
         let scale = (self.option as? [String: Any])?["scale"] as? Bool ?? false
         return !scale
@@ -64,7 +64,7 @@ public extension AxisModelCommonMixin {
      * @return coordinate system model
      */
     // upstream: getCoordSysModel(): CoordinateSystemHostModel
-    // PORT-NOTE: CoordinateSystemHostModel (coord/CoordinateSystem.swift, T2) is ported —
+    // CoordinateSystemHostModel (coord/CoordinateSystem.swift, T2) is ported —
     //   still typed as `Any?` here. Upstream returns `undefined` here; overridden by each axis model.
     func getCoordSysModel() -> Any? {
         return nil

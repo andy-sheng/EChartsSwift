@@ -132,7 +132,7 @@ open class Symbol: Group {
     }
 
     /// Get the symbol path element (the Group's only child).
-    /// PORT-TODO [EChartsKit/SymbolElement.getSymbolPath.ecSymbol]: upstream returns `ECSymbol`
+    /// TODO [EChartsKit/SymbolElement.getSymbolPath.ecSymbol]: upstream returns `ECSymbol`
     ///   (`Path | ZRImage`); this accessor keeps its `Path?` return type because every call site wants
     ///   the path style/shape, so it yields nil for an `image://` symbol. Consequence: the Element-level
     ///   consumers (LineView's symbol label fade in/out, circularLayoutHelper's label
@@ -212,7 +212,7 @@ open class Symbol: Group {
                     target["style"] = ["opacity": opacity] as [String: Any]
                     path.pathStyle.opacity = 0
                 }
-                // PORT-TODO (ZRImage enter fade): upstream also tweens `style.opacity` 0 -> opacity for
+                // TODO (ZRImage enter fade): upstream also tweens `style.opacity` 0 -> opacity for
                 //   an image symbol. ZRenderKit animates `style` through `StyleAnimationAccessor`, which
                 //   writes the inherited `Displayable.style` (CommonStyleProps) mirror — the painter reads
                 //   `ZRImage.imageStyle.opacity`, so an animated opacity would never reach the pixels and
@@ -303,7 +303,7 @@ open class Symbol: Group {
             // upstream: useStyle(extend({image, x, y, width, height}, symbolStyle)) — the image's own
             //   geometry overlaid with the item visual style bag.
             imagePath.useStyle(symbolImageStyleFromDict(imagePath.imageStyle, symbolStyle))
-            // PORT-TODO [ZRenderKit/Image.ZRImage.stateStyleSync]: the emphasis/select/blur state styles
+            // TODO [ZRenderKit/Image.ZRImage.stateStyleSync]: the emphasis/select/blur state styles
             //   set below (and `toggleHoverEmphasis`) write the inherited `Displayable.style`
             //   (CommonStyleProps), but ZRImage renders from its own `imageStyle` and `_syncCommonStyle`
             //   is one-way (imageStyle -> style), so every state style applied to an image symbol is
@@ -419,7 +419,7 @@ open class Symbol: Group {
             symbolPath.removeTextContent()
         }
 
-        // PORT-TODO [ZRenderKit/Image.ZRImage.stateStyleSync]: for a ZRImage symbol the `style.opacity`
+        // TODO [ZRenderKit/Image.ZRImage.stateStyleSync]: for a ZRImage symbol the `style.opacity`
         //   half of these leave props is inert (ZRImage renders from `imageStyle`, and only
         //   Path/Text style animation accessors exist), so an image symbol leaves by scaleX/scaleY -> 0
         //   only. Same tracked gap as the state styles in `_updateCommon` and the enter fade above.

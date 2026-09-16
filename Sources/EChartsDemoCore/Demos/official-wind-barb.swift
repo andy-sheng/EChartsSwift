@@ -16,7 +16,7 @@
 //     draw the arrows (renderArrow) and the icon+temperature groups (renderWeather). The Swift option
 //     cannot carry a renderItem, so the native pane can only show the two plain line series — not the
 //     wind barbs the example is named for. The `option` below is still a faithful port (renderItems and
-//     the tooltip/series formatters omitted with PORT-NOTEs) for when the framework can carry them.
+//     the tooltip/series formatters omitted with notes) for when the framework can carry them.
 import Foundation
 import EChartsKit
 
@@ -470,7 +470,7 @@ myChart.setOption(option);
                 "subtext": "示例数据源于 www.seabreeze.com.au",
                 "left": "center"
             ] as [String: Any],
-            // PORT-NOTE: tooltip.formatter omitted — JS closure joined formatTime(date)+formatTime(time),
+            // tooltip.formatter omitted — JS closure joined formatTime(date)+formatTime(time),
             //            wind speed, wind direction (R) and wave height per hovered row.
             "tooltip": [
                 "trigger": "axis"

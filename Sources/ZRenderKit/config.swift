@@ -7,7 +7,7 @@ public func getDevicePixelRatio() -> Double {
 
     // If in browser environment
     if env.hasGlobalWindow {
-        // PORT-NOTE: browser-only — no global `window`/`window.screen` on iOS.
+        // browser-only — no global `window`/`window.screen` on iOS.
         // Upstream:
         //   dpr = window.devicePixelRatio
         //       || (window.screen && window.screen.deviceXDPI / window.screen.logicalXDPI)

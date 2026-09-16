@@ -191,7 +191,7 @@ final class GeometryGoldenTests: XCTestCase {
                 "KNOWN GAP — \(c.name) (\(c.demo)): zrender inflates a stroke-only path's "
                 + "getBoundingRect by strokeContainThreshold(5)/2 → styled \(rectStr(c.styledRect)); "
                 + "Swift port uses lineWidth/2 → \(rectStr(swiftStyled)). Pure geometry IS faithful "
-                + "(pathRect \(rectStr(c.pathRect))). PORT-NOTE: apply strokeContainThreshold in "
+                + "(pathRect \(rectStr(c.pathRect))). note: apply strokeContainThreshold in "
                 + "Path.getBoundingRect/contain for no-fill paths.")
         }
     }

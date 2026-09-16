@@ -25,7 +25,7 @@ final class ZZTopologyFocusTests: XCTestCase {
         var p = Payload(type: "highlight")
         p.other["seriesIndex"] = Double(seriesIndex)
         // `dataIndexInside` is the finder key `queryDataIndex` resolves directly (the `dataIndex` →
-        //   `indexOfRawIndex` mapping is a pre-existing PORT-NOTE stub); with no data filtering the inside
+        //   `indexOfRawIndex` mapping is a pre-existing note stub); with no data filtering the inside
         //   index equals the raw index.
         p.other["dataIndexInside"] = dataIndex
         view.ec.dispatchAction(p)

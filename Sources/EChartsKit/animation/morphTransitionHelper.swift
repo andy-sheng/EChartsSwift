@@ -24,7 +24,7 @@
 //   import { Path } from '../util/graphic';               → ZRenderKit.Path
 //   import SeriesModel from '../model/Series';            → model/Series.swift
 //   import Element, { ElementAnimateConfig } from 'zrender/src/Element';   → ZRenderKit.Element
-//   import { defaults, extend, isArray } from 'zrender/src/core/util';     → see PORT-NOTEs inline
+//   import { defaults, extend, isArray } from 'zrender/src/core/util';     → see notes inline
 //   import { getAnimationConfig } from './basicTransition';                → sibling basicTransition.swift
 //   import { ECElement, UniversalTransitionOption } from '../util/types';  → util/types.swift
 //   import { clonePath } from 'zrender/src/tool/path';    → ZRenderKit.clonePath
@@ -37,7 +37,7 @@ import ZRenderKit
 typealias DescendentElements = [Element]
 typealias DescendentPaths = [Path]
 
-// PORT-NOTE: upstream types the morph endpoints as the union `DescendentPaths | DescendentPaths[]`
+// upstream types the morph endpoints as the union `DescendentPaths | DescendentPaths[]`
 //   and discriminates it at runtime with `isMultiple(elements)` (`isArray(elements[0])`). Swift has no
 //   untagged union, so the union is modeled as this two-case enum and `isMultiple` collapses into the
 //   `case .multiple` pattern match (the enum tag IS the runtime discriminator upstream computes).
@@ -66,7 +66,7 @@ enum MorphPathEndpoint {
 }
 
 // function isMultiple(elements): elements is DescendentElements[] { return isArray(elements[0]); }
-//   → collapsed into the `MorphPathEndpoint` tag above (see PORT-NOTE).
+//   → collapsed into the `MorphPathEndpoint` tag above (see note).
 
 // interface MorphingBatch { one: Path; many: Path[]; }
 struct MorphingBatch {
@@ -108,7 +108,7 @@ func prepareMorphBatches(_ one: DescendentPaths, _ many: [DescendentPaths]) -> [
                     return batches
                 }
             }
-            // PORT-NOTE (faithful quirk): upstream captures `moveFrom` BEFORE the `off = 0` reset
+            // note (faithful quirk): upstream captures `moveFrom` BEFORE the `off = 0` reset
             //   above, so when the reset fires it still splits the array it captured (`batches[<old
             //   off>].many`) but writes the first half back into `batches[0]`. `moveFrom` is bound
             //   before the reset here too, reproducing that exactly.
@@ -130,14 +130,14 @@ func prepareMorphBatches(_ one: DescendentPaths, _ many: [DescendentPaths]) -> [
 //     // Use the default divider
 //     split: null
 // };
-// PORT-NOTE: `divideShape` is `'clone' | 'split'`; the record is a `[String: DividePath?]` here.
+// `divideShape` is `'clone' | 'split'`; the record is a `[String: DividePath?]` here.
 //   `split: null` means "use zrender's default divider" (morphPath falls back to `defaultDividePath`
 //   when `dividePath` is nil), so the nil is meaningful and must be preserved.
 let pathDividers: [String: DividePath?] = [
     "clone": { (params: DividePathParams) -> [Path] in
         var ret: [Path] = []
         // Fitting the alpha
-        // PORT-NOTE: upstream reads `params.path.style.opacity` which is `undefined` when unset;
+        // upstream reads `params.path.style.opacity` which is `undefined` when unset;
         //   `1 - Math.pow(1 - undefined, ...)` is NaN there. Our `PathStyleProps.opacity` is
         //   `Double?`; defaulted to 1 (zrender's `DEFAULT_COMMON_STYLE.opacity`), which is what the
         //   painter would use anyway — no NaN opacity is ever written.
@@ -180,7 +180,7 @@ func applyMorphAnimation(
     }
     // const animationDelay = (seriesModel.getModel('universalTransition') as Model<UniversalTransitionOption>)
     //     .get('delay');
-    // PORT-NOTE: upstream `delay` is a user JS function `(index, count) => number`. The option bag here is
+    // upstream `delay` is a user JS function `(index, count) => number`. The option bag here is
     //   `[String: Any]`, so a Swift closure of the same shape can be (and, in the demos, is) stored in it —
     //   read back with an `as?` cast. A delay expressed in JSON (impossible upstream too) is not supported.
     let animationDelay = seriesModel.getModel("universalTransition").get("delay")
@@ -197,7 +197,7 @@ func applyMorphAnimation(
 
     var many: [DescendentPaths]?
     var one: DescendentPaths?
-    // PORT-NOTE: upstream additionally relies on the object IDENTITY `many === from` below to decide
+    // upstream additionally relies on the object IDENTITY `many === from` below to decide
     //   `fromIsMany`. The enum has no identity, so the same fact is recorded here as `manyIsFrom` —
     //   assigned in exactly the same two branches, in the same order (so a hypothetical
     //   multiple/multiple pair resolves to `false`, exactly as upstream's second assignment would).
@@ -254,7 +254,7 @@ func applyMorphAnimation(
             //     }
             // } as SeparateConfig, animationCfg);
             //
-            // PORT-NOTE: `pathDividers[divideShape]` is `undefined` for an absent/unknown divideShape
+            // `pathDividers[divideShape]` is `undefined` for an absent/unknown divideShape
             //   (and explicitly `null` for 'split'); both mean "let zrender use its default divider",
             //   which is what a nil `dividePath` does — so the double-optional collapses to one nil.
             let dividePath: DividePath? = divideShape.flatMap { pathDividers[$0] ?? nil }
@@ -269,7 +269,7 @@ func applyMorphAnimation(
             //     ? combineMorph(batchMany, batchOne, separateAnimationCfg)
             //     : separateMorph(batchOne, batchMany, separateAnimationCfg);
             //
-            // PORT-NOTE: zrender's `CombineConfig` / `SeparateConfig` are distinct Swift structs (they
+            // zrender's `CombineConfig` / `SeparateConfig` are distinct Swift structs (they
             //   compose, rather than extend, `ElementAnimateConfig` as `base`), so the single upstream
             //   `separateAnimationCfg` object is built twice — same fields, same values.
             let result: MorphResult = fromIsMany
@@ -290,7 +290,7 @@ func applyMorphAnimation(
                 if let animationDelay = animationDelay {
                     individualAnimationCfg.delay = animationDelay(Double(k), Double(count))
                 }
-                // PORT-NOTE (JS-OOB → Swift crash): `batchMany[k]` / `toIndividuals[k]` are read past
+                // note (JS-OOB → Swift crash): `batchMany[k]` / `toIndividuals[k]` are read past
                 //   the end upstream when the divider produced more individuals than the batch had
                 //   members (JS yields `undefined`, and `updateMorphingPathProps` guards with
                 //   `if (rawFrom || from)`). Indexed defensively here — out of range becomes `nil`,
@@ -340,7 +340,7 @@ func getPathList(_ elements: Element?) -> DescendentPaths {
     var pathList: DescendentPaths = []
 
     // elements.traverse(el => { ... })
-    // PORT-NOTE: `Element.traverse` (void cb) is a no-op on the base class; only `Displayable`
+    // `Element.traverse` (void cb) is a no-op on the base class; only `Displayable`
     //   overrides it (cb(self)), and `Group` declares an OVERLOAD taking a Bool-returning cb (which
     //   visits children only, exactly like upstream's `Group.traverse`). Dispatching on the static
     //   type would silently skip a Group's subtree, so the two are branched explicitly here.
@@ -373,7 +373,7 @@ func getPathList(_ elements: [Element]) -> [DescendentPaths] {
 }
 
 // ============================================================================
-// PORT-NOTE (`(el as ECElement).disableMorphing`): `ECElement` (util/types.swift) is an augmentation
+// note (`(el as ECElement).disableMorphing`): `ECElement` (util/types.swift) is an augmentation
 // interface upstream — TS widens the plain zrender `Element` with echarts-internal props. Swift cannot
 // add stored properties to a class from another module, so — exactly like `states.swift`'s
 // `HighDownInner` — the flag lives in a `makeInner` side store keyed by element identity. A view sets

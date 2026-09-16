@@ -38,7 +38,7 @@ import ZRenderKit  // upstream: BoundingRect, matrix.invert, vector.applyTransfo
 
 
 // upstream: export const cartesian2DDimensions = ['x', 'y'];
-// PORT-NOTE (CONVENTIONS §2): module-level exported const kept as a top-level `public let`, matching the
+// note (CONVENTIONS §2): module-level exported const kept as a top-level `public let`, matching the
 //   sibling `COORD_SYS_TYPE_CARTESIAN_2D` in GridModel.swift (not wrapped in a caseless-enum namespace).
 public let cartesian2DDimensions: [DimensionName] = ["x", "y"]
 
@@ -66,17 +66,17 @@ open class Cartesian2D: Cartesian<Axis2D>, CoordinateSystem {
     public override var type: String { COORD_SYS_TYPE_CARTESIAN_2D }
 
     // upstream: readonly dimensions = cartesian2DDimensions;
-    // PORT-NOTE: `CoordinateSystem.dimensions` is `{ get set }`, so this is a `var` (not the upstream
+    // `CoordinateSystem.dimensions` is `{ get set }`, so this is a `var` (not the upstream
     //   `readonly`); initialized to the shared `cartesian2DDimensions`.
     public var dimensions: [DimensionName] = cartesian2DDimensions
 
     // upstream: master: Grid;  (injected outside; a `CoordinateSystemMaster`)
-    // PORT-NOTE: concrete upstream type is `Grid`; stored as the protocol type `CoordinateSystemMaster?`
+    // concrete upstream type is `Grid`; stored as the protocol type `CoordinateSystemMaster?`
     //   to satisfy `CoordinateSystem.master` cleanly. Narrow via `as? Grid` at call sites.
     public var master: CoordinateSystemMaster?
 
     // upstream: model: GridModel;  (injected outside; a `ComponentModel`)
-    // PORT-NOTE: concrete upstream type is `GridModel`; stored as the protocol type `ComponentModel?`
+    // concrete upstream type is `GridModel`; stored as the protocol type `ComponentModel?`
     //   to satisfy `CoordinateSystem.model` cleanly. Narrow via `as? GridModel` at call sites.
     public var model: ComponentModel?
 
@@ -176,7 +176,7 @@ open class Cartesian2D: Cartesian<Axis2D>, CoordinateSystem {
     }
 
     // upstream: dataToPoint(data: ScaleDataValue[], clamp?: boolean, out?: number[]): number[]
-    // PORT-NOTE: this is the `CoordinateSystem.dataToPoint` witness — its signature follows the ported
+    // this is the `CoordinateSystem.dataToPoint` witness — its signature follows the ported
     //   protocol (`data: CoordinateSystemDataCoord`, `opt: Any?` = the upstream `clamp`, `out` dropped
     //   per CONVENTIONS §3). `data` is force-cast to `[ScaleDataValue]` (upstream always passes an array).
     public func dataToPoint(_ data: CoordinateSystemDataCoord, _ opt: Any? = nil) -> [Double] {
@@ -243,7 +243,7 @@ open class Cartesian2D: Cartesian<Axis2D>, CoordinateSystem {
     }
 
     // upstream: pointToData(point: number[], clamp?: boolean, out?: number[]): number[]
-    // PORT-NOTE: `CoordinateSystem.pointToData` witness — `opt: Any?` = upstream `clamp`, `out` dropped;
+    // `CoordinateSystem.pointToData` witness — `opt: Any?` = upstream `clamp`, `out` dropped;
     //   return typed `Any?` per the protocol (the value is always a `[Double]`).
     public func pointToData(_ point: [Double], _ opt: Any? = nil) -> Any? {
         let clamp = opt as? Bool
@@ -260,7 +260,7 @@ open class Cartesian2D: Cartesian<Axis2D>, CoordinateSystem {
     }
 
     // upstream: getOtherAxis(axis: Axis2D): Axis2D
-    // PORT-NOTE: upstream param/return are `Axis2D`; kept faithful. Because the param is more specific
+    // upstream param/return are `Axis2D`; kept faithful. Because the param is more specific
     //   than the protocol's `getOtherAxis(baseAxis: Axis)`, this does not satisfy that (optional)
     //   requirement — the protocol default is used at protocol dispatch; concrete callers get the real one.
     public func getOtherAxis(_ axis: Axis2D) -> Axis2D {
@@ -303,7 +303,7 @@ open class Cartesian2D: Cartesian<Axis2D>, CoordinateSystem {
         return BoundingRect(x, y, width, height)
     }
 
-    // PORT-NOTE: explicit `CoordinateSystem.getArea` protocol witness. Swift does not accept the
+    // explicit `CoordinateSystem.getArea` protocol witness. Swift does not accept the
     //   covariant `Cartesian2DArea` return of the overload above as a witness for the protocol
     //   requirement `getArea(_:) -> CoordinateSystemClipArea?` (existential erasure is not covariance),
     //   so without this the protocol default (returning nil) would be dispatched for cartesian2d —

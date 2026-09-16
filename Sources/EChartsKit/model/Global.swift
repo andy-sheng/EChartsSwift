@@ -40,7 +40,7 @@ import ZRenderKit
 //     each, filter, isArray, isObject, isString,
 //     createHashMap, assert, clone, merge, extend, mixin, HashMap, isFunction
 // } from 'zrender/src/core/util';                       -> ZRenderKit `util` (createHashMap/HashMap are the
-//                                                          EChartsKit shim in util/model.swift; see PORT-NOTE)
+//                                                          EChartsKit shim in util/model.swift; see note)
 // import * as modelUtil from '../util/model';           -> EChartsKit `model` namespace (util/model.swift)
 // import Model from './Model';                           -> Model (sibling model/Model.swift)
 // import ComponentModel, {ComponentModelConstructor} from './Component'; -> ComponentModel (sibling model/Component.swift)
@@ -143,7 +143,7 @@ private var componetsMissingLogPrinted: [String: Bool] = [:]
 
 private func checkMissingComponents(_ option: ECUnitOption) {
     // each(option, function (componentOption, mainType) { ... })
-    // PORT-NOTE: JS object key order is not guaranteed by Swift dictionaries; the log order may differ.
+    // JS object key order is not guaranteed by Swift dictionaries; the log order may differ.
     for (mainType, _) in option {
         if !ComponentModel.hasClass(mainType) {
             let componentImportName = BUITIN_COMPONENTS_MAP[mainType]
@@ -211,7 +211,7 @@ open class GlobalModel: Model, PaletteMixin {
 
     // upstream: init(option, parentModel, ecModel, theme, locale, optionManager): void
     //
-    // PORT-NOTE: the base overridable lifecycle method is `` `init` `` (see Model.swift), whose
+    // the base overridable lifecycle method is `` `init` `` (see Model.swift), whose
     //   signature is `(option, parentModel, ecModel, rest...)`. GlobalModel's upstream `init` adds
     //   three fixed params (theme, locale, optionManager), which are folded into `rest` here to keep
     //   the override signature compatible with the base method.
@@ -234,7 +234,7 @@ open class GlobalModel: Model, PaletteMixin {
     }
 
     // upstream: setOption(option: ECBasicOption, opts, optionPreprocessorFuncs)
-    // PORT-NOTE: the ported `OptionManager.setOption` takes the dynamic `ECUnitOption?` bag (not the
+    // the ported `OptionManager.setOption` takes the dynamic `ECUnitOption?` bag (not the
     //   typed `ECBasicOption` struct), so `option` is typed to match — consistent with the dynamic
     //   option-tree convention.
     open func setOption(
@@ -349,7 +349,7 @@ open class GlobalModel: Model, PaletteMixin {
 
         // If no component class, merge directly.
         // For example: color, animaiton options, etc.
-        // PORT-NOTE: JS object key order is not preserved by Swift dictionaries; `newCmptTypes` order
+        // JS object key order is not preserved by Swift dictionaries; `newCmptTypes` order
         //   may differ (topologicalTravel re-sorts by dependency, so the final order is unaffected).
         for (mainType, componentOption) in newOption {
             if isNullish(componentOption) {
@@ -367,7 +367,7 @@ open class GlobalModel: Model, PaletteMixin {
                     option[mainType] = tgt
                 }
                 else {
-                    // PORT-NOTE: upstream `merge(option[mainType], componentOption, true)` also merges
+                    // upstream `merge(option[mainType], componentOption, true)` also merges
                     //   arrays/primitives; the ported `util.merge` handles only dicts. For the non-dict
                     //   case with overwrite == true the merge result IS the (cloned) source, so this is
                     //   semantically equivalent.
@@ -433,7 +433,7 @@ open class GlobalModel: Model, PaletteMixin {
             // from being used in the `init`/`mergeOption`/`optionUpdated` of some
             // components, which is probably incorrect logic.
             option[mainType] = NSNull() // option[mainType] = null
-            // PORT-NOTE: upstream sets componentsMap[mainType] = null; the shim value type is
+            // upstream sets componentsMap[mainType] = null; the shim value type is
             //   non-optional so we clear to [] (transient — overwritten below in this func).
             componentsMap.set(mainType, [])
             componentsCount.set(mainType, 0)
@@ -529,7 +529,7 @@ open class GlobalModel: Model, PaletteMixin {
                         //   below is the single lifecycle-init call. keyInfo is assigned BEFORE it so
                         //   `mergeDefaultAndTheme`/series init can read `subType`/`componentIndex`.
                         guard let componentModelClass = ComponentModelClass as? ComponentModel.Type else {
-                            // PORT-NOTE: a registered class that is not a ComponentModel subclass can
+                            // a registered class that is not a ComponentModel subclass can
                             //   not be instantiated through this path; skip (upstream has no analogue —
                             //   every registered class is a ComponentModel).
                             _ = index
@@ -584,7 +584,7 @@ open class GlobalModel: Model, PaletteMixin {
         }
 
         // upstream: (ComponentModel as ComponentModelConstructor).topologicalTravel(newCmptTypes, ..., visitComponent, this)
-        // PORT-NOTE: the ported `topologicalTravel` is `throws`; upstream lets its internal assert
+        // the ported `topologicalTravel` is `throws`; upstream lets its internal assert
         //   propagate. Swallowed with `try?` to keep the non-throwing public API (semantically
         //   equivalent — a failed assert aborts the travel either way).
         try? ComponentModel.topologicalTravel(
@@ -813,7 +813,7 @@ open class GlobalModel: Model, PaletteMixin {
     // upstream overload (1): eachComponent(cb: EachComponentAllCallback, context?)
     open func eachComponent(_ cb: EachComponentAllCallback, _ context: Any? = nil) {
         let componentsMap = self._componentsMap!
-        // PORT-NOTE: `context` (upstream `cb.call(ctxForAll, ...)`) is dropped — Swift closures capture.
+        // `context` (upstream `cb.call(ctxForAll, ...)`) is dropped — Swift closures capture.
         componentsMap.each { cmpts, componentType in
             var i = 0
             while i < cmpts.count {
@@ -984,7 +984,7 @@ open class GlobalModel: Model, PaletteMixin {
 
     // upstream: restoreData(payload?: Payload): void
     //
-    // PORT-NOTE: upstream is a single method with an optional `payload`, and it overrides
+    // upstream is a single method with an optional `payload`, and it overrides
     //   `Model.restoreData()`. Swift can not both override the no-param base and add an optional
     //   param (that would be an ambiguous overload against the inherited no-arg method), so it is
     //   split into an `override` no-arg entry and a payload entry, both forwarding to `_restoreData`.
@@ -1149,7 +1149,7 @@ private func mergeTheme(_ option: inout ECUnitOption, _ theme: ThemeOption) {
                     option[name] = tgt
                 }
                 else {
-                    // PORT-NOTE: array / non-dict object merge (util.merge handles only dicts) —
+                    // array / non-dict object merge (util.merge handles only dicts) —
                     //   keep existing value. With overwrite == false and an existing value present,
                     //   upstream merge leaves it unchanged too, so this is semantically equivalent.
                 }
@@ -1164,7 +1164,7 @@ private func mergeTheme(_ option: inout ECUnitOption, _ theme: ThemeOption) {
 }
 
 // upstream: queryByIdOrName<T extends { id?, name? }>(attr, idOrName, cmpts)
-// PORT-NOTE: the generic `T` is specialized to `ComponentModel` (the only caller passes the components
+// the generic `T` is specialized to `ComponentModel` (the only caller passes the components
 //   map). `attr` is the caseless local enum below rather than the `'id' | 'name'` string-literal type.
 private enum IdOrNameAttr { case id, name }
 private func queryByIdOrName(_ attr: IdOrNameAttr, _ idOrName: Any?, _ cmpts: [ComponentModel?]) -> [ComponentModel] {
@@ -1195,7 +1195,7 @@ private func queryByIdOrName(_ attr: IdOrNameAttr, _ idOrName: Any?, _ cmpts: [C
 //   The union is modeled by the `ComponentQueryCondition` protocol (both condition kinds conform).
 private protocol ComponentQueryCondition {
     var subType: ComponentSubType? { get }
-    // `hasOwnProperty('subType')` — PORT-NOTE: value structs collapse absent ≡ explicit-nil, so
+    // `hasOwnProperty('subType')` — note: value structs collapse absent ≡ explicit-nil, so
     //   presence is modeled as `subType != nil` (semantically equivalent here — a condition never
     //   sets subType to an explicit null).
     var hasSubType: Bool { get }
@@ -1354,7 +1354,7 @@ private func assertSeriesInitialized(_ ecModel: GlobalModel) {
     if __DEV__ {
         if ecModel._seriesIndices == nil {
             // upstream: throw new Error('Option should contains series.');
-            // PORT-NOTE: ported as an error log rather than a thrown error, to keep the callers'
+            // ported as an error log rather than a thrown error, to keep the callers'
             //   non-throwing signatures (eachSeries/filterSeries/isSeriesFiltered).
             log.error("Option should contains series.")
         }

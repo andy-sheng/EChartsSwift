@@ -6,7 +6,7 @@
 // each cell coloured by a continuous `visualMap` over the datum's 3rd dimension (dimension: 2).
 //
 // DEVIATIONS from the official source:
-//   - NATIVE PANE IS PARTIAL (this is the one real gap; see PORT-NOTE on `series` below). EChartsKit
+//   - NATIVE PANE IS PARTIAL (this is the one real gap; see note on `series` below). EChartsKit
 //     registers the matrix coord + MatrixView, so the native pane draws the TABLE BACKDROP (the nested
 //     x/y header cells and their labels, the dividers, the border) and the visualMap bar — but NOT the
 //     heatmap cells themselves: `HeatmapView.render` only wires the cartesian2d / calendar / geo
@@ -120,7 +120,7 @@ option = {
                 "calculable": true
             ] as [String: Any],
             "series": [
-                // PORT-NOTE: rendered as the matrix BACKDROP only today — HeatmapView.render has no
+                // rendered as the matrix BACKDROP only today — HeatmapView.render has no
                 // matrix branch (cartesian2d / calendar / geo only), so these six cells draw nothing on
                 // the native pane. Option is complete and correct; it lights up when that branch lands.
                 [

@@ -30,7 +30,7 @@ import simd
 
 // const XY = ['x', 'y'] as const;
 // const WH = ['width', 'height'] as const;
-// PORT-NOTE: JS indexes Point/RectLike by these string keys (e.g. `_minTv[updateDim]`,
+// JS indexes Point/RectLike by these string keys (e.g. `_minTv[updateDim]`,
 // `outIntersectRect[wh]`). Swift has no string-keyed stored-property access; we index by
 // dimension number (0 => x/width, 1 => y/height) via the helpers below.
 private func pointSet(_ p: Point, _ dim: Int, _ v: Double) { if dim == 0 { p.x = v } else { p.y = v } }
@@ -56,7 +56,7 @@ public final class BoundingRect: RectLike {
     public var height: Double
 
     public init(_ x: Double, _ y: Double, _ width: Double, _ height: Double) {
-        // PORT-NOTE: stored props must be initialized before passing `self` to
+        // stored props must be initialized before passing `self` to
         // boundingRectSet; pre-set to 0, then boundingRectSet normalizes/overwrites.
         self.x = 0
         self.y = 0
@@ -246,7 +246,7 @@ public final class BoundingRect: RectLike {
     }
 
     public func plain() -> RectLike {
-        // PORT-NOTE: upstream returns an object literal { x, y, width, height } typed RectLike.
+        // upstream returns an object literal { x, y, width, height } typed RectLike.
         // Swift RectLike is AnyObject-constrained, so we return a concrete reference holder.
         return _PlainRect(
             x: self.x,
@@ -344,7 +344,7 @@ public final class BoundingRect: RectLike {
         let sx = b.width / a.width
         let sy = b.height / a.height
 
-        // PORT-NOTE: upstream reuses `out || []` as scratch (`out = matrix.identity(out || [])`).
+        // upstream reuses `out || []` as scratch (`out = matrix.identity(out || [])`).
         // Our matrix.* funcs are value-returning (CONVENTIONS §3), so the incoming `out` scratch
         // is unused and a fresh matrix is allocated.
         var m = matrix.identity()
@@ -388,7 +388,7 @@ public func boundingRectContain(_ rect: RectLike, _ x: Double, _ y: Double) -> B
 private let _tmpIntersectA = BoundingRect(0, 0, 0, 0)
 private let _tmpIntersectB = BoundingRect(0, 0, 0, 0)
 // const _tmpCalcTrans: vector.VectorArray = [];
-// PORT-NOTE: dropped — `vector.set` is value-returning (CONVENTIONS §3), no scratch buffer needed.
+// dropped — `vector.set` is value-returning (CONVENTIONS §3), no scratch buffer needed.
 
 
 private func intersectOneDim(
@@ -412,7 +412,7 @@ private func intersectOneDim(
                 pointSet(_maxTv, updateDimIdx, -d0) // b is on the right/bottom(larger x/y)
             }
             if clamp == true {
-                // PORT-NOTE: faithful — upstream's BoundingRectIntersectOpt contract documents that
+                // faithful — upstream's BoundingRectIntersectOpt contract documents that
                 // `clamp: true` requires `outIntersectRect`; upstream dereferences it unguarded here too
                 // (would throw on null). The `!` mirrors that same non-null assumption.
                 rectXYSet(outIntersectRect!, updateDimIdx, a1)
@@ -461,7 +461,7 @@ private func intersectOneDim(
 
 
 // export type RectLike = { x, y, width, height }
-// PORT-NOTE: upstream RectLike is a structural type that plain objects also satisfy. We
+// upstream RectLike is a structural type that plain objects also satisfy. We
 // constrain it to AnyObject so (a) mutation through a `RectLike` existential propagates to
 // the caller (the out-param `outIntersectRect`/`target` pattern relies on this) and (b)
 // identity comparison `target !== source` in `applyTransform` is expressible.
@@ -547,7 +547,7 @@ public struct BoundingRectIntersectOpt {
 /**
  * [CAVEAT] Do not use it other than in `BoundingRect` and `OrientedBoundingRect`.
  */
-// PORT-NOTE: upstream returns a closure-based object literal `_ctx` capturing `_direction`,
+// upstream returns a closure-based object literal `_ctx` capturing `_direction`,
 // `_dirCheckVec`, `_dirTmp`, and `nearZero`. Modeled as a `final class` with those as private
 // members so call sites (`_intersectCtx.reset(...)`, `.calcDirMTV()`) stay identical.
 public func createIntersectContext() -> IntersectContext {

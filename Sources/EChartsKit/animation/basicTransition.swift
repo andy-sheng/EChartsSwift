@@ -2,14 +2,14 @@
 // Real animation replacing the per-view no-op shims (BarView/CandlestickView). `initProps`/`updateProps`
 // animate via el.animateTo when the series has animation enabled, else set the props instantly.
 //
-// PORT-NOTE: `getAnimationConfig` now consumes the global animation override from
+// `getAnimationConfig` now consumes the global animation override from
 //   `ecModel.getUpdatePayload().animation` (dataZoom/resize actions), evaluates function-valued
 //   `animationDuration`/`animationDelay(dataIndex)` (staggered enter), and honors a `removeOpt`
 //   override on the leave path. The `getAnimationDelayParams` hook (pictorial bar per-element delay)
 //   is wired: `animateOrSetProps` reads `model.getAnimationDelayParams?(el, dataIndex)` (the optional
 //   stored closure on `Model`, assigned by PictorialBarView) and threads it as `extraDelayParams`.
 //
-// PORT-NOTE: upstream's public `removeElement` (ts:272) is now a real top-level function (it used to be
+// upstream's public `removeElement` (ts:272) is now a real top-level function (it used to be
 //   inlined into `fadeOutDisplayable`), so callers can drive an arbitrary leave-props animation —
 //   e.g. `scaleX/scaleY -> 0` — instead of only the opacity fade of `removeElementWithFadeOut`.
 import Foundation
@@ -108,7 +108,7 @@ private func animateOrSetProps(
     //   ? animatableModel.getAnimationDelayParams(el, dataIndex as number) : null
     let extraDelayParams = model?.getAnimationDelayParams?(el, dataIndex ?? 0)
     let cfg = getAnimationConfig(type, model, dataIndex ?? 0, extra, extraDelayParams)
-    // PORT-NOTE (zr-less driver, leave path only): an animator is driven by `zr.animation`; with no zr
+    // note (zr-less driver, leave path only): an animator is driven by `zr.animation`; with no zr
     //   attached nothing ever ticks it, so a leave animation would never finish and its `done` callback
     //   — the one that actually detaches the element from its group — would never run, leaking removed
     //   elements into the scene. Headless (oracle/tests) therefore settles the leave synchronously via
@@ -197,7 +197,7 @@ func updateProps(_ el: Element, _ props: [String: Any], _ model: Model? = nil,
 ///
 /// Module-internal (upstream exports it via util/graphic.ts; every Swift consumer is in EChartsKit).
 func isElementRemoved(_ el: Element) -> Bool {
-    // PORT-NOTE (zr-less driver): upstream's first check is `if (el.__zr) { return true }` — i.e. an
+    // note (zr-less driver): upstream's first check is `if (el.__zr) { return true }` — i.e. an
     //   element NOT attached to a zr is already gone, so skip its leave animation. Upstream elements
     //   are always attached, so that branch only ever fires for genuinely-detached elements. This port
     //   also runs WITHOUT a zr (bare `ECharts` — the headless render/PNG oracle and the unit tests),
@@ -282,7 +282,7 @@ func removeElementWithFadeOut(_ el: Element, _ model: Model? = nil, _ dataIndex:
 //   export function getOldStyle(el: Displayable) { return getOldStyle(el).oldStyle; }
 //   (upstream names the inner store and the getter the same; renamed `oldStyleInner` here.)
 //
-// PORT-NOTE: `model.makeInner` keys by object identity and requires a CLASS record, so the saved style
+// `model.makeInner` keys by object identity and requires a CLASS record, so the saved style
 //   (a `PathStyleProps` VALUE struct) is boxed in `OldStyleRecord`. Upstream stores `el.style` — whatever
 //   the concrete Displayable's style subtype is. Here only `Path`'s `pathStyle` is captured (a `ZRText`/
 //   `ZRImage` style is a different Swift type and is not a morph endpoint), so `saveOldStyle` on a

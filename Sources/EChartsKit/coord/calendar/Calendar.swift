@@ -39,7 +39,7 @@ import ZRenderKit
 //   import { injectCoordSysByOption, simpleCoordSysInjectionProvider } from '../../core/CoordinateSystem';
 //       -> injectCoordSysByOption / simpleCoordSysInjectionProvider (core/CoordinateSystemManager.swift).
 //
-// PORT-NOTE: the sibling `coord/calendar/CalendarModel.ts` is ported as `CalendarModel.swift`
+// the sibling `coord/calendar/CalendarModel.ts` is ported as `CalendarModel.swift`
 //   (`public final class CalendarModel: ComponentModel, CoordinateSystemHostModel`) exposing:
 //     - `getModel(_:)` / `get(_:)` (Model API, already on ComponentModel),
 //     - `getCellSize() -> [Any]` (the `cellSize` option normalized to a 2-length `(number | 'auto')[]`),
@@ -456,7 +456,7 @@ public final class Calendar: CoordinateSystemMaster, CoordinateSystem {
      * Convert a (x, y) point to time data
      */
     // upstream: pointToData(point: number[]): number { ... }
-    //   PORT-NOTE: upstream `return date && date.time` yields `null` when `date` is null (falsy). The
+    //   upstream `return date && date.time` yields `null` when `date` is null (falsy). The
     //   declared return type is `number`; the Swift port returns `Double.nan` in the null case as the
     //   nearest non-Optional sentinel (JS/Swift language difference, semantically equivalent).
     public func pointToData(_ point: [Double]) -> Double {

@@ -30,7 +30,7 @@ import ZRenderKit
 
 // export default function parallelPreprocessor(option: ECUnitOption): void
 //
-// PORT-NOTE: upstream mutates the shared `option` object (and its nested `parallel` / `parallelAxis`
+// upstream mutates the shared `option` object (and its nested `parallel` / `parallelAxis`
 //   items) IN PLACE. Swift `[String: Any]`/`ECUnitOption` are value types, so the port takes `inout`
 //   and writes the mutated structures back (mirrors candlestick/preprocessor.swift's precedent). The
 //   `OptionPreprocessor` registration is owned by the Integrate stage.
@@ -105,7 +105,7 @@ private func mergeAxisOptionFromParallel(_ option: inout ECUnitOption) {
         // if (parallelOption && parallelOption.parallelAxisDefault) {
         //     zrUtil.merge(axisOption, parallelOption.parallelAxisDefault, false);
         // }
-        //   PORT-NOTE: upstream mutates the `axisOption` object in place; Swift value types require the
+        //   upstream mutates the `axisOption` object in place; Swift value types require the
         //   write-back into `axes[idx]` below.
         if let parallelOption = parallelOption,
            let parallelAxisDefault = parallelOption["parallelAxisDefault"] as? [String: Any] {
@@ -115,7 +115,7 @@ private func mergeAxisOptionFromParallel(_ option: inout ECUnitOption) {
     }
 
     // Write the mutated axes back into `option.parallelAxis`, preserving upstream's array/single shape
-    // (upstream relies on object identity; the value-type port must re-assign — see PORT-NOTE above).
+    // (upstream relies on object identity; the value-type port must re-assign — see note above).
     if util.isArray(rawParallelAxis) {
         option["parallelAxis"] = axes
     }

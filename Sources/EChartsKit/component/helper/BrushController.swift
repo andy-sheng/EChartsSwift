@@ -43,7 +43,7 @@ import ZRenderKit
 
 
 // export type BrushType = 'polygon' | 'rect' | 'lineX' | 'lineY';
-//   PORT-NOTE: TS string-literal unions become `String` (CONVENTIONS §2); the four legal values are
+//   TS string-literal unions become `String` (CONVENTIONS §2); the four legal values are
 //   the keys of `selector` / `coverRenderers`, and an unknown value simply matches no renderer.
 public typealias BrushType = String
 
@@ -54,7 +54,7 @@ public typealias BrushType = String
  * If passing 'auto', determined by panel.defaultBrushType
  */
 // export type BrushTypeUncertain = BrushType | false | 'auto';
-//   PORT-NOTE: `false` collapses onto `nil` (CONVENTIONS §6) — a nil `brushType` disables the brush,
+//   `false` collapses onto `nil` (CONVENTIONS §6) — a nil `brushType` disables the brush,
 //   exactly as upstream's falsy check (`brushOption.brushType && this._doEnableBrush(...)`).
 public typealias BrushTypeUncertain = String?
 
@@ -69,14 +69,14 @@ public typealias BrushMode = String
 // export type BrushDimensionMinMax = number[];
 public typealias BrushDimensionMinMax = [Double]
 // export type BrushAreaRange = BrushDimensionMinMax | BrushDimensionMinMax[];
-//   PORT-NOTE: untagged TS union -> `Any`; read back through `brushDimensionMinMax(_:)` /
+//   untagged TS union -> `Any`; read back through `brushDimensionMinMax(_:)` /
 //   `brushDimensionMinMaxList(_:)` (selector.swift), which is exactly what upstream's `as` casts do.
 public typealias BrushAreaRange = Any
 
 // export interface BrushCoverConfig { brushType; id?; range?; panelId?; brushMode?; brushStyle?;
 //                                     transformable?; removeOnClick?; z?; }
 //
-// PORT-NOTE: upstream this is a plain object literal, MUTATED IN PLACE through the cover
+// upstream this is a plain object literal, MUTATED IN PLACE through the cover
 //   (`cover.__brushOption.range = ...` in driftRect/driftPolygon/updateCoverByMouse). A Swift struct
 //   would be copied on every access and the mutation lost — so this is a `final class`
 //   (CONVENTIONS §4). Field-for-field with upstream; `brushStyle` stays the `[String: Any]` bag
@@ -190,7 +190,7 @@ public final class BrushCoverCreatorConfig {
 
 
 // const BRUSH_PANEL_GLOBAL = true as const;
-//   PORT-NOTE: upstream overloads `true` as "the global panel" inside a `BrushPanelConfig | true`
+//   upstream overloads `true` as "the global panel" inside a `BrushPanelConfig | true`
 //   union. Swift models the union as an enum, so `.global` IS `BRUSH_PANEL_GLOBAL`.
 enum BrushPanelConfigOrGlobal {
     case panel(BrushPanelConfig)
@@ -234,7 +234,7 @@ private final class BrushCover: Group {
 }
 
 // type Point = number[];
-//   PORT-NOTE: file-private — ZRenderKit already exports a `Point` CLASS at module scope.
+//   file-private — ZRenderKit already exports a `Point` CLASS at module scope.
 private typealias Point = [Double]
 
 // const mathMin = Math.min; const mathMax = Math.max; const mathPow = Math.pow;
@@ -305,7 +305,7 @@ public struct BrushControllerBrushEvent {
  */
 // class BrushController extends Eventful<{brush: (params) => void}>
 //
-// PORT-NOTE: ZRenderKit's `Eventful` is a `final class`, so it cannot be sub-classed. It is COMPOSED
+// ZRenderKit's `Eventful` is a `final class`, so it cannot be sub-classed. It is COMPOSED
 //   instead and `on`/`off`/`trigger` forward to it — the same adaptation `ZRenderKit.Handler` already
 //   makes for its own Eventful base.
 public final class BrushController {
@@ -355,7 +355,7 @@ public final class BrushController {
     private var _uid: String = ""
 
     // private _handlers: {[eventName: string]: (this: BrushController, e: ElementEvent) => void} = {};
-    //   PORT-NOTE (Eventful.off closure-identity gap): ZRenderKit's `Eventful.off(event, handler)` cannot
+    //   note (Eventful.off closure-identity gap): ZRenderKit's `Eventful.off(event, handler)` cannot
     //   remove ONE handler (Swift closures are not comparable — see the POTENTIAL-BUG note in
     //   Core/Eventful.swift), and `zr.off(event)` would nuke every other listener of that event
     //   (Draggable's, the host's). So the three pointer handlers are registered on the zr ONCE (on the
@@ -380,7 +380,7 @@ public final class BrushController {
         baseUID += 1
 
         // each(pointerHandlers, (handler, eventName) => { this._handlers[eventName] = bind(handler, this); });
-        //   -> `_mountHandlers()` below (bound lazily, see the `_handlers` PORT-NOTE).
+        //   -> `_mountHandlers()` below (bound lazily, see the `_handlers` note).
     }
 
     // ---- the composed Eventful surface (upstream: inherited from Eventful) ----
@@ -443,7 +443,7 @@ public final class BrushController {
         interactionMutex.release(zr, MUTEX_RESOURCE_KEY, self._uid)
 
         // each(this._handlers, (handler, eventName) => { zr.off(eventName, handler); });
-        //   -> see the `_handlers` PORT-NOTE: the listeners stay registered but go inert once
+        //   -> see the `_handlers` note: the listeners stay registered but go inert once
         //      `_brushType` is nil (each one checks it first).
 
         // this._brushType = this._brushOption = null;
@@ -508,7 +508,7 @@ public final class BrushController {
      *        If coverConfigList is null/undefined, all covers removed.
      */
     // updateCovers(coverConfigList: BrushCoverConfig[])
-    //   PORT-NOTE: the input is `brushModel.areas.slice()` — the `[String: Any]` area bags. Upstream
+    //   the input is `brushModel.areas.slice()` — the `[String: Any]` area bags. Upstream
     //   merges each with the base brush option in-place; done in `BrushCoverConfig.merged`.
     @discardableResult
     public func updateCovers(_ coverConfigListIn: [[String: Any]]) -> BrushController {
@@ -631,7 +631,7 @@ public final class BrushController {
         // mousedown
         _ = zr.on("mousedown", { [weak self] _, args in
             guard let self = self, let e = args.first as? ElementEvent else { return nil }
-            guard self._brushType != nil else { return nil }   // see the `_handlers` PORT-NOTE
+            guard self._brushType != nil else { return nil }   // see the `_handlers` note
             pointerHandlerMousedown(self, e)
             return nil
         })
@@ -825,7 +825,7 @@ private func createBaseRectCover(
         driftRect(rectRangeConverter, controller, cover, ["n", "s", "w", "e"], dx, dy)
     }
     // ondragend: curry(trigger, controller, {isEnd: true})
-    //   PORT-NOTE: `ElementEventHandlerProps` (`onXxx` props) are not modeled on ZRenderKit's Element
+    //   `ElementEventHandlerProps` (`onXxx` props) are not modeled on ZRenderKit's Element
     //   (native event seam, CONVENTIONS §9). `Handler.dispatchToElement` triggers the event by name on
     //   the element, so the equivalent registration is `el.on("dragend", ...)`.
     _ = mainRect.on("dragend", { [weak controller] _, _ in
@@ -946,7 +946,7 @@ private func updateRectShape(
 }
 
 // function makeStyle(brushOption) { return defaults({strokeNoScale: true}, brushOption.brushStyle); }
-//   PORT-NOTE: `Path.style` is `pathStyle: PathStyleProps` in ZRenderKit (see Path's STYLE DECISION),
+//   `Path.style` is `pathStyle: PathStyleProps` in ZRenderKit (see Path's STYLE DECISION),
 //   so the `[String: Any]` brushStyle bag (the output of `Model#getItemStyle()`) is decoded into it here.
 private func makeStyle(_ brushOption: BrushCoverConfig) -> PathStyleProps {
     var style = PathStyleProps()
@@ -966,7 +966,7 @@ private func makeStyle(_ brushOption: BrushCoverConfig) -> PathStyleProps {
     return style
 }
 
-// PORT-NOTE: `ZRColor` is declared in BOTH modules (EChartsKit re-declares its own); the Path style
+// `ZRColor` is declared in BOTH modules (EChartsKit re-declares its own); the Path style
 //   field is ZRenderKit's, so qualify.
 private func brushZRColor(_ v: Any?) -> ZRenderKit.ZRColor? {
     if let c = v as? ZRenderKit.ZRColor { return c }
@@ -1136,7 +1136,7 @@ private func resetCursor(_ controller: BrushController, _ e: ElementEvent, _ loc
 }
 
 // function preventDefault(e: ElementEvent): void
-//   PORT-NOTE: `e.event.preventDefault()` is the DOM raw-event seam (CONVENTIONS §9); there is no
+//   `e.event.preventDefault()` is the DOM raw-event seam (CONVENTIONS §9); there is no
 //   browser default action to suppress on the native host, so this is a no-op.
 private func preventDefault(_ e: ElementEvent) {
     _ = e

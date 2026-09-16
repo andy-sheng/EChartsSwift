@@ -284,7 +284,7 @@ option = {
 
 // y-axis rich styles: one block per weather category, each painting its icon as a background image on a
 // 40px-tall empty line, plus the `value` block for the name line underneath. Only reachable through the
-// axisLabel formatter (omitted natively — see PORT-NOTE above); carried anyway so the option stays faithful.
+// axisLabel formatter (omitted natively — see note above); carried anyway so the option stays faithful.
 private let barRichTextAxisLabelRich: [String: Any] = [
     "value": [
         "lineHeight": 30.0,

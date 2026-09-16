@@ -32,11 +32,11 @@ import ZRenderKit
 //       -> sibling number.swift caseless enum `number` (`number.mathCeil`, `number.nice`, etc.).
 //   import type { AxisBaseModel } from './AxisBaseModel';         -> sibling AxisBaseModel.swift (`AxisBaseModel`).
 //   import type { AxisScaleType, NumericAxisBaseOptionCommon } from './axisCommonTypes';
-//       -> sibling axisCommonTypes.swift (`AxisScaleType` = String alias). PORT-NOTE: `NumericAxisBaseOptionCommon`
+//       -> sibling axisCommonTypes.swift (`AxisScaleType` = String alias). note: `NumericAxisBaseOptionCommon`
 //          (the generic option bag) is dropped per CONVENTIONS §2 — the option tree is the dynamic
 //          `Any` bag on Model, read via `model.get(...)`.
 //   import { updateIntervalOrLogScaleForNiceOrAligned } from './axisHelper';
-//       -> sibling axisHelper.swift (same tier, other agent this phase). PORT-NOTE: referenced as a
+//       -> sibling axisHelper.swift (same tier, other agent this phase). note: referenced as a
 //          caseless enum namespace `axisHelper` per CONVENTIONS §2 (pure free-function module); if the
 //          sibling exposes it as a bare free function instead, drop the `axisHelper.` qualifier.
 //   import { calcNiceForTimeScale } from '../scale/Time';         -> sibling TimeScale.swift, exposed as a
@@ -45,7 +45,7 @@ import ZRenderKit
 //   import Scale from '../scale/Scale';                           -> sibling Scale.swift (`Scale`).
 //   import { adoptScaleExtentKindMapping, adoptScaleRawExtentInfoAndPrepare, ScaleExtentFixMinMax,
 //            ScaleRawExtentResultFinal } from './scaleRawExtentInfo';
-//       -> sibling scaleRawExtentInfo.swift (same tier, other agent this phase). PORT-NOTE: the `adopt*`
+//       -> sibling scaleRawExtentInfo.swift (same tier, other agent this phase). note: the `adopt*`
 //          functions are referenced as bare free functions (scaleRawExtentInfo is not a pure
 //          free-function module — it carries the ScaleRawExtentInfo class — so it mirrors the
 //          scaleMapper/break free-function deviation). `ScaleExtentFixMinMax` / `ScaleRawExtentResultFinal`
@@ -116,7 +116,7 @@ func calcNiceForIntervalOrLogScale(
         config.niceExtent = newIntervalExtent   // newIntervalExtent.slice() (Swift arrays are value types)
     }
 
-    // PORT-NOTE: `axisHelper.updateIntervalOrLogScaleForNiceOrAligned` — enum-namespace assumption; see import note.
+    // `axisHelper.updateIntervalOrLogScaleForNiceOrAligned` — enum-namespace assumption; see import note.
     axisHelper.updateIntervalOrLogScaleForNiceOrAligned(
         scale,
         fixMinMax,
@@ -250,7 +250,7 @@ public struct ScaleCalcNiceMethodOpt {
 
 // upstream: the inline object type `{ scale: Scale, model: AxisBaseModel }` of `scaleCalcNice`'s
 //   `axisLike` param. Modeled as a small struct so call sites keep `axisLike.scale` / `axisLike.model`.
-//   PORT-NOTE: upstream passes an `Axis` here (Axis has `scale`/`model`); modeled as this narrow struct
+//   upstream passes an `Axis` here (Axis has `scale`/`model`); modeled as this narrow struct
 //   to keep call sites `axisLike.scale` / `axisLike.model`.
 public struct ScaleCalcNiceAxisLike {
     public var scale: Scale
@@ -279,7 +279,7 @@ public func scaleCalcNice(
     let axis = model.axis
     let ecModel = model.ecModel
     if __DEV__ {
-        // upstream: assert(axis && ecModel). PORT-NOTE: `model.axis` is a non-optional `Any` in this
+        // upstream: assert(axis && ecModel). note: `model.axis` is a non-optional `Any` in this
         //   port (see AxisBaseModel.swift), so only `ecModel` truthiness is asserted here.
         util.assert(ecModel != nil)
     }
@@ -302,7 +302,7 @@ public func scaleCalcNice2(
     _ externalDataExtent: [Double]?
 ) {
 
-    // PORT-NOTE: `adoptScaleRawExtentInfoAndPrepare` — bare free function in sibling scaleRawExtentInfo.swift.
+    // `adoptScaleRawExtentInfoAndPrepare` — bare free function in sibling scaleRawExtentInfo.swift.
     let rawExtentResult = adoptScaleRawExtentInfoAndPrepare(scale, model, ecModel, axis, externalDataExtent)
 
     let isIntervalOrTime = helper.isIntervalScale(scale) || helper.isTimeScale(scale)

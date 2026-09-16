@@ -48,7 +48,7 @@ import ZRenderKit
 //       -> `COORD_SYS_USAGE_KIND_BOX` + `decideCoordSysUsageKind` (core/CoordinateSystemManager.swift).
 //   import { GeoJSONRegion } from '../../coord/geo/Region';        -> GeoJSONRegion (coord/geo/Region.swift).
 //   import tokens from '../../visual/tokens';
-//       -> PORT-NOTE: tokens (visual/tokens.swift) is ported; consumed color values are inlined verbatim below.
+//       -> note: tokens (visual/tokens.swift) is ported; consumed color values are inlined verbatim below.
 //   import GlobalModel from '../../model/Global';                  -> GlobalModel (model/Global.swift).
 
 // ============================================================================
@@ -184,7 +184,7 @@ open class MapSeriesModel: SeriesModel {
             else {
                 // dataItem = data.getRawDataItem(dataNameIdx) as MapDataItemOption;
                 // specifiedGeoJSONRegionStyle && zrUtil.merge(dataItem, specifiedGeoJSONRegionStyle);
-                // PORT-NOTE: upstream mutates the raw data item OBJECT in place (JS reference), so the
+                // upstream mutates the raw data item OBJECT in place (JS reference), so the
                 //   `echartsStyle` merge persists into the store's raw item. `getRawDataItem` returns a
                 //   value copy here, so we merge the style into the copy and write each merged field back
                 //   through `setRawDataItemField` (the port's shared-reference-mutation bridge). Only
@@ -372,7 +372,7 @@ open class MapSeriesModel: SeriesModel {
         return mapSeriesNeedsDrawMap(self) ? (self.coordinateSystem as? Geo)?.view : nil
     }
 
-    // PORT-NOTE (deferred): requires roam — the shared-geo `center`/`zoom` state (`setCenter`/`getCenter`/`getZoom`)
+    // TODO: requires roam — the shared-geo `center`/`zoom` state (`setCenter`/`getCenter`/`getZoom`)
     //   is NOT declared on `MapSeries` in this ECharts version — it lives on the roam View / `RoamHostView`
     //   surface (component/helper/RoamController + coord/View), which is deferred with roam. The map series
     //   reads its initial `center`/`zoom`/`scaleLimit` options only (see `defaultOption`); the geo it shares
@@ -407,7 +407,7 @@ open class MapSeriesModel: SeriesModel {
 
             // Aspect is width / height. Inited to be geoJson bbox aspect. This parameter is used for
             // scale this aspect. Default value: geoSVG source: 1, geoJSON source: 0.75.
-            // PORT-NOTE: upstream value is `null`; NSNull() retains the key in the [String: Any] bag
+            // upstream value is `null`; NSNull() retains the key in the [String: Any] bag
             //   (the port's canonical null sentinel — same idiom as BarSeries borderColor/shadowColor).
             "aspectScale": NSNull(),
 

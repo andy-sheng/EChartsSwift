@@ -143,7 +143,7 @@ final class GoldenTests: XCTestCase {
 
     /// Interprets `[[CommandValue]]` and drives `rb` exactly as PathProxy.rebuildPath
     /// would. This is the stand-in until the real ported `PathProxy.rebuildPath(rb,1)`
-    /// exists — at which point shape tests call that instead (see PORT-NOTE below).
+    /// exists — at which point shape tests call that instead (see note below).
     private func replay(_ commands: [[CommandValue]], into rb: PathRebuilder) throws {
         func nums(_ cmd: [CommandValue]) -> [Double] {
             cmd.compactMap { if case let .num(d) = $0 { return d } else { return nil } }

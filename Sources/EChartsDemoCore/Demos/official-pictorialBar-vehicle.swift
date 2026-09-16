@@ -8,7 +8,7 @@
 //     The reference pane runs a CLASSIC script, so the `: echarts.…['label']` type annotation is
 //     dropped (TS-only; no runtime meaning). Trailing `export {};` dropped for the same reason.
 //   - Otherwise verbatim: no data fetch, no timers, no closures — every option value is plain data,
-//     so the native pane carries the whole option (nothing omitted, no PORT-NOTE needed).
+//     so the native pane carries the whole option (nothing omitted, no note needed).
 //
 // NATIVE PANE: nativeSupported: true — unlike the sibling official-pictorialBar-hill, which is off.
 // Both lean on the same SYMBOL layer, but on opposite branches of `symbol.createSymbol`

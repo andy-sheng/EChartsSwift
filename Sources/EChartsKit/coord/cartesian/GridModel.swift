@@ -33,7 +33,7 @@ import ZRenderKit
 //   -> util/layout.swift (enum layout). `mergeLayoutParam` / `copyLayoutParams` are ported;
 //      `getLayoutParams(src)` === `copyLayoutParams({}, src)` and is inlined at the call sites below.
 // import tokens from '../../visual/tokens';
-//   -> PORT-NOTE: visual/tokens.swift is ported. The `tokens.color.*` values consumed in
+//   -> note: visual/tokens.swift is ported. The `tokens.color.*` values consumed in
 //      `defaultOption` are still inlined verbatim as their resolved constants; may be re-wired to the
 //      real `tokens` namespace, though the constants are identical.
 //        tokens.color.transparent = 'rgba(0,0,0,0)'
@@ -41,7 +41,7 @@ import ZRenderKit
 
 // For backward compatibility, do not use a margin. Although the labels might touch the edge of
 // the canvas, the chart canvas probably does not have an border or a different background color within a page.
-// PORT-NOTE: upstream `{left, right, top, bottom}` object-literal modeled as the dynamic option bag
+// upstream `{left, right, top, bottom}` object-literal modeled as the dynamic option bag
 //   ([String: Any]); numbers -> Double per CONVENTIONS §1.
 public let OUTER_BOUNDS_DEFAULT: [String: Any] = ["left": 0.0, "right": 0.0, "top": 0.0, "bottom": 0.0]
 public let OUTER_BOUNDS_CLAMP_DEFAULT: [String] = ["25%", "25%"]
@@ -107,7 +107,7 @@ public let COORD_SYS_TYPE_CARTESIAN_2D = "cartesian2d"
 //     tooltip?: any; // FIXME:TS add this tooltip type
 // }
 //
-// PORT-NOTE: TS `interface GridOption` describes the dynamic option shape; per CONVENTIONS §2 the
+// TS `interface GridOption` describes the dynamic option shape; per CONVENTIONS §2 the
 //   option tree is modeled as the dynamic bag ([String: Any], keyed access via util.* / Model.get),
 //   so no standalone Swift struct is emitted. Preserved above for the diffable surface.
 
@@ -124,7 +124,7 @@ public final class GridModel: ComponentModel, CoordinateSystemHostModel {
     public override class var layoutMode: Any? { return "box" }
 
     // coordinateSystem: Grid;
-    // PORT-NOTE: upstream types this as the concrete `Grid` (a `CoordinateSystemMaster`), injected and
+    // upstream types this as the concrete `Grid` (a `CoordinateSystemMaster`), injected and
     //   non-null once the coordinate system is built. `Grid` is a sibling this phase; typed here as the
     //   `CoordinateSystemMaster?` required by `CoordinateSystemHostModel` (narrow via `as? Grid` at use).
     public var coordinateSystem: CoordinateSystemMaster?

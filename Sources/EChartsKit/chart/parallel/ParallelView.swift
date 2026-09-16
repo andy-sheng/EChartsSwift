@@ -27,7 +27,7 @@ import ZRenderKit
 //   import { setStatesStylesFromModel, toggleHoverEmphasis } from '../../util/states';
 //       -> `states` (util/states.swift). Hover emphasis IS wired: each parallel line carries its
 //       emphasis/blur/select lineStyle state styles and is a highDown dispatcher (see updateElCommon).
-//       PORT-NOTE (deferred): the parallelAxis brush-based highlight/fade interaction requires
+//       TODO: the parallelAxis brush-based highlight/fade interaction requires
 //       component/brush selector interaction (not ported).
 //   import ChartView from '../../view/Chart';                      -> ChartView (view/Chart.swift).
 //   import SeriesData from '../../data/SeriesData';                -> SeriesData.

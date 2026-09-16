@@ -311,7 +311,7 @@ public final class PiecewiseVisualMapView: VisualMapView {
     ) -> Path {
         // const itemSymbol = createSymbol(getControllerVisual(representValue, 'symbol'), x, y, w, h,
         //   getControllerVisual(representValue, 'color'));
-        // PORT-NOTE: upstream passes `getControllerVisual(...,'symbol') as string` directly; when the
+        // upstream passes `getControllerVisual(...,'symbol') as string` directly; when the
         //   symbol mapping yields no value we default to 'roundRect' (createSymbol requires a non-nil type).
         let symbolType = (self.getControllerVisual(representValue, "symbol") as? String) ?? "roundRect"
         let color = ZRenderKit.ZRColor.string(colorToString(self.getControllerVisual(representValue, "color")))
@@ -321,7 +321,7 @@ public final class PiecewiseVisualMapView: VisualMapView {
             color
         )
         // itemSymbol.silent = silent;
-        // PORT-NOTE: `ECSymbol` surfaces as a concrete `Path` (SymbolPath); set silent through it (same
+        // `ECSymbol` surfaces as a concrete `Path` (SymbolPath); set silent through it (same
         //   seam as LegendView.getDefaultLegendIcon).
         let itemSymbolPath = itemSymbol as! Path
         itemSymbolPath.silent = silent

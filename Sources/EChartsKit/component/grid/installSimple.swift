@@ -21,7 +21,7 @@
 import Foundation
 import ZRenderKit
 
-// import { EChartsExtensionInstallRegisters } from '../../extension';   -> PORT-NOTE: registers/install
+// import { EChartsExtensionInstallRegisters } from '../../extension';   -> note: registers/install
 //   boilerplate deferred to the Orchestrate driver (see `install` note at the bottom).
 // import ComponentView from '../../view/Component';                     -> `ComponentView` (view/ComponentView.swift).
 // import GridModel from '../../coord/cartesian/GridModel';              -> `GridModel` (coord/cartesian/GridModel.swift).
@@ -44,7 +44,7 @@ public final class GridView: ComponentView {
     public let type = "grid"
 
     // upstream: render(gridModel: GridModel, ecModel: GlobalModel)
-    // PORT-NOTE: the base `ComponentView.render` signature is (model, ecModel, api, payload); upstream
+    // the base `ComponentView.render` signature is (model, ecModel, api, payload); upstream
     //   GridView.render declares only (gridModel, ecModel) (the trailing args are optional in JS). The
     //   override matches the full base signature and narrows `model` to `GridModel` (cf. BarView.render).
     public override func render(
@@ -56,7 +56,7 @@ public final class GridView: ComponentView {
         // if (gridModel.get('show')) {
         if truthy(gridModel.get("show")) {
             // style: defaults({ fill: gridModel.get('backgroundColor') }, gridModel.getItemStyle())
-            // PORT-NOTE: upstream `defaults({fill}, ...)` merges into a dynamic style object which the
+            // upstream `defaults({fill}, ...)` merges into a dynamic style object which the
             //   Rect consumes directly. Here the merge is done on the `[String: Any]` bag, then bridged
             //   to the typed `PathStyleProps` via `barStyleFromDict` (the shared getItemStyle→style seam,
             //   BarView.swift). If `backgroundColor` is nil the `fill` key is omitted so `defaults` fills
@@ -68,7 +68,7 @@ public final class GridView: ComponentView {
             _ = util.defaults(&style, gridModel.getItemStyle())
 
             // shape: gridModel.coordinateSystem.getRect()
-            // PORT-NOTE: `coordinateSystem` is typed `CoordinateSystemMaster?` (see GridModel); narrow to
+            // `coordinateSystem` is typed `CoordinateSystemMaster?` (see GridModel); narrow to
             //   the concrete `Grid` whose `getRect(): LayoutRect` is available. Upstream passes the
             //   `RectLike` straight through; here it seeds a `RectShape` (x/y/width/height).
             var shape = RectShape()
@@ -107,13 +107,13 @@ private func truthy(_ value: Any?) -> Bool {
 }
 
 // const extraOption: CartesianAxisOption = { /* gridIndex: 0, gridId: '', */ offset: 0 };
-// PORT-NOTE: `extraOption` feeds `axisModelCreator` inside `install` below; both are registration
+// `extraOption` feeds `axisModelCreator` inside `install` below; both are registration
 //   wiring, deferred to the Orchestrate driver. Preserved as commented source for the diffable
 //   surface:
 //     let extraOption: [String: Any] = ["offset": 0.0]
 
 // export function install(registers: EChartsExtensionInstallRegisters) { ... }
-// PORT-NOTE: registration boilerplate (registerComponentView/registerComponentModel/
+// registration boilerplate (registerComponentView/registerComponentModel/
 //   registerCoordinateSystem('cartesian2d', Grid), axisModelCreator for 'x'/'y', the
 //   CartesianXAxisView/CartesianYAxisView view registration, and the grid preprocessor that injects
 //   `option.grid = {}` when xAxis+yAxis are present) lives in the driver (`core/ECharts.swift`), not

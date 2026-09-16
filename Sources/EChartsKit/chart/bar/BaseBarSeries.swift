@@ -59,14 +59,14 @@ import ZRenderKit
 //     largeThreshold?: number
 // }
 //
-// PORT-NOTE: TS `interface BaseBarSeriesOption` describes the dynamic option shape; per CONVENTIONS §2
+// TS `interface BaseBarSeriesOption` describes the dynamic option shape; per CONVENTIONS §2
 //   the option tree is modeled as the dynamic bag ([String: Any], keyed access via Model.get), so no
 //   standalone Swift struct is emitted. Preserved above for the diffable surface.
 
 // class BaseBarSeriesModel<Opts extends BaseBarSeriesOption<unknown> = BaseBarSeriesOption<unknown>>
 //     extends SeriesModel<Opts>
 //
-// PORT-NOTE: the generic `Opts` is dropped per CONVENTIONS §2 (the dynamic option tree is the `Any`
+// the generic `Opts` is dropped per CONVENTIONS §2 (the dynamic option tree is the `Any`
 //   bag). `open class` because concrete bar series (BarSeriesModel / PictorialBarSeriesModel) subclass it.
 open class BaseBarSeriesModel: SeriesModel {
 
@@ -90,7 +90,7 @@ open class BaseBarSeriesModel: SeriesModel {
     ) -> [Double] {
         // const coordSys = this.coordinateSystem;
         // if (coordSys && coordSys.clampData) { ... }
-        // PORT-NOTE: upstream duck-types `coordSys.clampData`; SCOPE is cartesian only, so we narrow
+        // upstream duck-types `coordSys.clampData`; SCOPE is cartesian only, so we narrow
         //   `coordinateSystem` (typed `Any?` on SeriesModel) to `Cartesian2D` (which provides
         //   clampData/dataToPoint/getAxes/getBaseAxis). Polar (which also has clampData) is out of scope.
         if let coordSys = self.coordinateSystem as? Cartesian2D {
@@ -156,7 +156,7 @@ open class BaseBarSeriesModel: SeriesModel {
                             }
                         }
                         if coord == nil {
-                            // PORT-NOTE: upstream `!leftCoord` / `else if (leftCoord)` use JS truthiness;
+                            // upstream `!leftCoord` / `else if (leftCoord)` use JS truthiness;
                             //   leftCoord is falsy when nil OR 0. Replicated explicitly here.
                             if !(leftCoord != nil && leftCoord! != 0) {
                                 // targetTickId is smaller than all tick ids in the
@@ -193,7 +193,7 @@ open class BaseBarSeriesModel: SeriesModel {
     // __requireStartValue(axis: Axis): boolean
     open func __requireStartValue(_ axis: Axis) -> Bool {
         // return this.getBaseAxis() !== axis;
-        // PORT-NOTE: SeriesModel.getBaseAxis() returns `Any?` (coord layer stub); compare by identity.
+        // SeriesModel.getBaseAxis() returns `Any?` (coord layer stub); compare by identity.
         return (self.getBaseAxis() as AnyObject?) !== (axis as AnyObject)
     }
 
@@ -225,7 +225,7 @@ open class BaseBarSeriesModel: SeriesModel {
 }
 
 // SeriesModel.registerClass(BaseBarSeriesModel);
-// PORT-NOTE: upstream runs this side-effecting registration at module import time. Swift libraries have
+// upstream runs this side-effecting registration at module import time. Swift libraries have
 //   no import-time hook, so it is exposed as an idempotent static bootstrap the EChartsKit registration
 //   entry point must invoke once (mirrors the scale/*.swift `registerScaleClass` precedent).
 extension BaseBarSeriesModel {
@@ -240,4 +240,4 @@ extension BaseBarSeriesModel {
 
 // chart/helper/createSeriesData.ts is now the REAL ported free function `createSeriesData(...)`
 // (+ `CreateSeriesDataOpt`) in chart/helper/createSeriesData.swift. The former local stub declared
-// here was removed per its own PORT-NOTE note.
+// here was removed per its own note note.

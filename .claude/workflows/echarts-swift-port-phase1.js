@@ -20,7 +20,7 @@ const PROJ = '/Volumes/EXT-Storage/Developer/iOS-Chart'
 const PREAMBLE = `This is a FAITHFUL, line-by-line port of Apache ECharts/ZRender (TypeScript) to Swift. The overriding goal: preserve upstream structure so future upstream changes can be re-synced by diffing.
 
 BEFORE writing anything, READ these two files for the binding rules and current state:
-- ${PROJ}/CONVENTIONS.md   (translation rulebook: number->Double; free-fn modules->caseless enum namespace; classes->final class; VectorArray=SIMD2<Double>, value-returning no out-params; header comment '// Ported from <upstream> — keep in sync with upstream'; mark every gap '// PORT-TODO')
+- ${PROJ}/CONVENTIONS.md   (translation rulebook: number->Double; free-fn modules->caseless enum namespace; classes->final class; VectorArray=SIMD2<Double>, value-returning no out-params; header comment '// Ported from <upstream> — keep in sync with upstream'; mark every gap '// TODO')
 - ${PROJ}/PORT_STATUS.md   (what Phase 0 landed; the open-issue backlog; the Phase 1 plan in section 4)
 
 Phase 0 already translated zrender/core (matrix, vector=SIMD2<Double>, Point, curve, bbox, BoundingRect, Transformable, PathProxy, platform, util[partial], LRU, WeakMap, types, env) into ${PROJ}/Sources/ZRenderKit/Core/. Reuse those public APIs; do not re-translate them. Source of truth (READ-ONLY) is the cloned zrender at ${Z}/ — never modify the scratchpad.`
@@ -59,7 +59,7 @@ TASK: Correctness sweep of the EXISTING Phase-0 core files (edit in place under 
 - NaN propagation: JS Math.min/max propagate NaN; Swift.min/max do not. Introduce a small faithful 'mathMin/mathMax' helper (NaN-propagating) and use it in the bbox/bounds accumulators in vector.min/max, BoundingRect.mathMin/Max (+4-arg), and any bbox reduction — OR, if you judge a documented 'finite-coords-only' guarantee cleaner, apply and DOCUMENT it uniformly. Pick ONE and justify in deviations.
 - '|| 0' vs '?? 0': Point ctor, Transformable.getLocalTransform (originX/Y, rotation), and peers must replicate JS 'x || 0' (NaN/0 -> 0), not just nil->0. Add a faithful helper (e.g. 'jsOr0') and apply.
 - platform.measureText: iterate text.utf16 code units, not grapheme clusters (match text.length).
-- env: either make detect()/configureNativeEnv faithful to upstream's windowless(node) branch, or mark the divergences '// PORT-TODO: not faithful, dead on iOS' explicitly.
+- env: either make detect()/configureNativeEnv faithful to upstream's windowless(node) branch, or mark the divergences '// TODO: not faithful, dead on iOS' explicitly.
 Keep changes minimal and faithful. Re-run 'cd ${PROJ} && swift build' and ensure it still compiles. Return a summary as the 'file' = "sweep", listing each fix.`, { label: 'sweep:core', phase: 'Foundations', schema: T_SCHEMA }),
 
   () => agent(`${PREAMBLE}
@@ -68,7 +68,7 @@ TASK: Translate ${Z}/core/Eventful.ts -> ${PROJ}/Sources/ZRenderKit/Core/Eventfu
 
   () => agent(`${PREAMBLE}
 
-TASK: Create a STUB of the animation layer sufficient for Element/Displayable/Path to compile and run render-only. Translate ${Z}/animation/Animator.ts -> ${PROJ}/Sources/ZRenderKit/Animation/Animator.swift but ONLY the public TYPE SURFACE that Element/Displayable/Path reference (class Animator, cloneValue, AnimationEasing type alias from animation/easing.ts, the animateTo/stopAnimation/animators-array hooks). Bodies that actually tween may be '// PORT-TODO: real animation deferred to Phase 3' no-ops, but signatures must be faithful so callers compile. Also create a minimal ${PROJ}/Sources/ZRenderKit/Animation/easing.swift with the AnimationEasing type (string name or function) as needed. Mark clearly these are Phase-3 stubs.`, { label: 'stub:Animator', phase: 'Foundations', schema: T_SCHEMA }),
+TASK: Create a STUB of the animation layer sufficient for Element/Displayable/Path to compile and run render-only. Translate ${Z}/animation/Animator.ts -> ${PROJ}/Sources/ZRenderKit/Animation/Animator.swift but ONLY the public TYPE SURFACE that Element/Displayable/Path reference (class Animator, cloneValue, AnimationEasing type alias from animation/easing.ts, the animateTo/stopAnimation/animators-array hooks). Bodies that actually tween may be '// TODO: real animation deferred to Phase 3' no-ops, but signatures must be faithful so callers compile. Also create a minimal ${PROJ}/Sources/ZRenderKit/Animation/easing.swift with the AnimationEasing type (string name or function) as needed. Mark clearly these are Phase-3 stubs.`, { label: 'stub:Animator', phase: 'Foundations', schema: T_SCHEMA }),
 
   () => agent(`${PREAMBLE}
 
@@ -79,7 +79,7 @@ Both are tiny; keep names/values exact.`, { label: 'translate:constants+config',
 
   () => agent(`${PREAMBLE}
 
-TASK: Translate ${Z}/tool/color.ts -> ${PROJ}/Sources/ZRenderKit/Tool/color.swift . Focus on the functions Path and the painter need: parse (css color string -> [r,g,b,a]), stringify, lum (luminance, used for auto label color), modifyAlpha, and their helper tables/clamping. Numeric color math must be exact. Functions that are clearly browser/canvas-only or unused this phase may be '// PORT-TODO'. caseless enum 'color' namespace.`, { label: 'translate:color', phase: 'Foundations', schema: T_SCHEMA }),
+TASK: Translate ${Z}/tool/color.ts -> ${PROJ}/Sources/ZRenderKit/Tool/color.swift . Focus on the functions Path and the painter need: parse (css color string -> [r,g,b,a]), stringify, lum (luminance, used for auto label color), modifyAlpha, and their helper tables/clamping. Numeric color math must be exact. Functions that are clearly browser/canvas-only or unused this phase may be '// TODO'. caseless enum 'color' namespace.`, { label: 'translate:color', phase: 'Foundations', schema: T_SCHEMA }),
 
   () => agent(`${PREAMBLE}
 
@@ -88,7 +88,7 @@ TASK: Translate the gradient/pattern DATA TYPES that Path's style references (so
 - ${Z}/graphic/LinearGradient.ts -> .../LinearGradient.swift
 - ${Z}/graphic/RadialGradient.ts -> .../RadialGradient.swift
 - ${Z}/graphic/Pattern.ts -> .../Pattern.swift
-These are small data classes (color stops, coords, global flag). Translate the type/shape faithfully (final class). Rendering of gradients/patterns is Phase 2 — fine to leave behavior PORT-TODO, but the object model must be correct so PathStyleProps.fill can be 'String | Gradient | Pattern'.`, { label: 'translate:gradient-types', phase: 'Foundations', schema: T_SCHEMA }),
+These are small data classes (color stops, coords, global flag). Translate the type/shape faithfully (final class). Rendering of gradients/patterns is Phase 2 — fine to leave behavior TODO, but the object model must be correct so PathStyleProps.fill can be 'String | Gradient | Pattern'.`, { label: 'translate:gradient-types', phase: 'Foundations', schema: T_SCHEMA }),
 
   () => agent(`${PREAMBLE}
 
@@ -102,9 +102,9 @@ log('Foundations done: ' + foundations.length + ' tasks')
 phase('Element')
 const element = await agent(`${PREAMBLE}
 
-TASK: Translate ${Z}/Element.ts -> ${PROJ}/Sources/ZRenderKit/Element.swift . This is the 2172-line keystone of the scene graph and is heavily entangled. SCOPE for Phase 1 (render-only): translate FAITHFULLY the parts needed to build and render a static scene graph, and STUB the rest with '// PORT-TODO' so it compiles:
+TASK: Translate ${Z}/Element.ts -> ${PROJ}/Sources/ZRenderKit/Element.swift . This is the 2172-line keystone of the scene graph and is heavily entangled. SCOPE for Phase 1 (render-only): translate FAITHFULLY the parts needed to build and render a static scene graph, and STUB the rest with '// TODO' so it compiles:
 - TRANSLATE: class Element extends Transformable + Eventful; id/name; the dirty-bit / __dirty flags (using Graphic/constants); parent/__zr hierarchy; clipPath (setClipPath/removeClipPath, _clipPath); getBoundingRect/getPaintRect; transform update plumbing it adds over Transformable; the attr/attrKV setter machinery; z/z2/zlevel; invisible/ignore; silent/cursor.
-- STUB (PORT-TODO, faithful signatures, no/placeholder bodies, deferred to later phases): the animation surface (animateTo/animateFrom/stopAnimation/animators, uses Animator stub), textContent/textConfig/ZRText integration (Text is Phase 2 — type it as an Optional forward-declared protocol or a minimal placeholder), the states/emphasis/blur/select machinery (saveCurrentToNormalState/useState/etc — Phase 2), textGuide.
+- STUB (TODO, faithful signatures, no/placeholder bodies, deferred to later phases): the animation surface (animateTo/animateFrom/stopAnimation/animators, uses Animator stub), textContent/textConfig/ZRText integration (Text is Phase 2 — type it as an Optional forward-declared protocol or a minimal placeholder), the states/emphasis/blur/select machinery (saveCurrentToNormalState/useState/etc — Phase 2), textGuide.
 Keep upstream method order and names. Reference the Phase-0 APIs (Transformable, BoundingRect, matrix.invert, Point) and the foundation files (Eventful, Animator stub, constants). Document in 'deviations' exactly which blocks you stubbed.`, { label: 'translate:Element', phase: 'Element', schema: T_SCHEMA })
 
 // ---------------- Phase: Scene (Displayable + Group, parallel) ----------------
@@ -126,7 +126,7 @@ TASK: Translate ${Z}/graphic/Path.ts -> ${PROJ}/Sources/ZRenderKit/Graphic/Path.
 - class Path<Shape> extends Displayable; the 'shape' struct bag; PathStyleProps (fill: String|Gradient|Pattern, stroke, lineWidth, lineCap/join, miterLimit, lineDash/offset, fillOpacity/strokeOpacity, strokePercent, strokeFirst, etc.).
 - the path-building lifecycle: createPathProxy, the buildPath(ctx, shape) virtual (subclasses override — use a Swift overridable method or protocol), the dirty/shapeChanged bits, getUpdatedPathProxy / pathUpdated, and getBoundingRect routing through the PathProxy + bbox (this exercises the Phase-0 bbox.fromCubic fix).
 - auto label color via tool/color.lum + config thresholds.
-- STUB (PORT-TODO): contain()/pathContain hit-testing (contain/* is Phase 2), gradient/pattern paint resolution (types exist, rendering deferred), animation hooks.
+- STUB (TODO): contain()/pathContain hit-testing (contain/* is Phase 2), gradient/pattern paint resolution (types exist, rendering deferred), animation hooks.
 Generics: TS 'Path<Props, Shape>' -> choose a Swift-idiomatic shape representation per CONVENTIONS (e.g. an associated 'ShapeType' or a base class with a typed 'shape'); document the choice. The KEY requirement: a subclass can define a shape struct + override buildPath to emit PathProxy commands, exactly like upstream.`, { label: 'translate:Path', phase: 'Path', schema: T_SCHEMA })
 
 // ---------------- Phase: Shapes (parallel) + Painter (concurrent) ----------------
@@ -134,13 +134,13 @@ phase('Shapes')
 const SHAPES = ['Rect', 'Circle', 'Sector', 'Arc', 'BezierCurve', 'Polygon']
 const shapeThunks = SHAPES.map(s => () => agent(`${PREAMBLE}
 
-TASK: Translate ${Z}/graphic/shape/${s}.ts -> ${PROJ}/Sources/ZRenderKit/Graphic/Shape/${s}.swift . A Path subclass: a '${s}Shape' struct of parameters + a buildPath that emits PathProxy commands. Translate the buildPath MATH EXACTLY (corner-radius arcs, sector inner/outer + rounding, bezier 'percent' partial draw, etc.) — these are validated byte-for-byte against the real-ECharts golden fixture for '${s.toLowerCase()}'. Match the Path<Shape> pattern chosen in ${PROJ}/Sources/ZRenderKit/Graphic/Path.swift (READ it). Sector/Arc/BezierCurve may use Phase-0 curve/bbox helpers and graphic/helper roundRect/roundSector — if a helper file is missing, translate the small helper inline or under Graphic/Helper with a PORT-TODO note.`, { label: 'translate:shape:' + s, phase: 'Shapes', schema: T_SCHEMA }))
+TASK: Translate ${Z}/graphic/shape/${s}.ts -> ${PROJ}/Sources/ZRenderKit/Graphic/Shape/${s}.swift . A Path subclass: a '${s}Shape' struct of parameters + a buildPath that emits PathProxy commands. Translate the buildPath MATH EXACTLY (corner-radius arcs, sector inner/outer + rounding, bezier 'percent' partial draw, etc.) — these are validated byte-for-byte against the real-ECharts golden fixture for '${s.toLowerCase()}'. Match the Path<Shape> pattern chosen in ${PROJ}/Sources/ZRenderKit/Graphic/Path.swift (READ it). Sector/Arc/BezierCurve may use Phase-0 curve/bbox helpers and graphic/helper roundRect/roundSector — if a helper file is missing, translate the small helper inline or under Graphic/Helper with a TODO note.`, { label: 'translate:shape:' + s, phase: 'Shapes', schema: T_SCHEMA }))
 
 const painterThunk = () => agent(`${PREAMBLE}
 
 TASK: Write the FIRST REAL NativePainter (this is NEW Swift, NOT a translation of zrender's CanvasPainter/SVGPainter — it targets the seam protocols in ${PROJ}/Sources/NativePainter/Renderer.swift). Implement under ${PROJ}/Sources/NativePainter/ :
 - 'CGPathRebuilder: PathRebuilder' — converts PathProxy.rebuildPath commands into a CGMutablePath: moveTo->move(to:), lineTo->addLine(to:), bezierCurveTo->addCurve, quadraticCurveTo->addQuadCurve, arc->addArc(center:radius:startAngle:endAngle:clockwise:) (MIND the angle/anticlockwise convention vs CoreGraphics' flipped y / clockwise sense — get this right, it's the classic bug), ellipse->apply an affine scale around center to a unit arc, rect->addRect, closePath->closeSubpath. READ ${PROJ}/Sources/ZRenderKit/Core/PathProxy.swift and PathRebuilder.swift for exact signatures.
-- 'CGRenderer: Renderer' — implement the paint ops over a CGContext / CAShapeLayer: fillPath/strokePath from a PathStyleProps-derived paint (solid color via Tool/color.parse -> CGColor; lineWidth/cap/join/miterLimit/dash; fillRule), transform (MatrixArray [a,b,c,d,e,f] -> CGAffineTransform), opacity, setClip (clip path), shadow (CALayer/CG shadow). Gradients/patterns/text/image -> '// PORT-TODO' this phase.
+- 'CGRenderer: Renderer' — implement the paint ops over a CGContext / CAShapeLayer: fillPath/strokePath from a PathStyleProps-derived paint (solid color via Tool/color.parse -> CGColor; lineWidth/cap/join/miterLimit/dash; fillRule), transform (MatrixArray [a,b,c,d,e,f] -> CGAffineTransform), opacity, setClip (clip path), shadow (CALayer/CG shadow). Gradients/patterns/text/image -> '// TODO' this phase.
 - 'CALayerPainter: Painter' — owns a root CALayer, dpr = screen scale; walks a Group/Displayable tree (Storage display-list ordering by zlevel/z/z2) and renders each Path via a CAShapeLayer (CGPath from CGPathRebuilder + paint). beginFrame/endFrame.
 - Provide a tiny 'renderToImage(group:size:)' convenience (render the root layer into a CGImage) for snapshot tests.
 Platforms: guard CoreGraphics/QuartzCore imports for iOS+macOS. Keep it small and correct; this is the milestone that proves native rendering.`, { label: 'translate:CALayerPainter', phase: 'Painter', schema: T_SCHEMA })
@@ -156,7 +156,7 @@ const integrate = await agent(`${PREAMBLE}
 TASK: Make the whole package COMPILE GREEN. This phase generated many interdependent files in parallel, so there WILL be integration errors (missing members, signature mismatches, forward-reference gaps, Package.swift target/source layout — note new dirs Sources/ZRenderKit/{Graphic,Graphic/Shape,Animation,Tool,Graphic/Helper} and Sources/NativePainter additions; update Package.swift if needed, though SwiftPM globs Sources/<target>/** by default).
 Loop: run 'cd ${PROJ} && swift build' (timeout ~300s), read the errors, fix them with MINIMAL, FAITHFUL edits across the generated files. Repeat until it builds or you've done ~10 iterations. Rules:
 - Prefer fixing real mismatches (wrong member name, missing arg) over deleting logic.
-- For genuinely-deferred dependencies (Text, animation, gradients, contain), a '// PORT-TODO' stub with a faithful signature is acceptable to unblock the build — never silently drop translated math.
+- For genuinely-deferred dependencies (Text, animation, gradients, contain), a '// TODO' stub with a faithful signature is acceptable to unblock the build — never silently drop translated math.
 - Do NOT weaken the shape buildPath math or PathProxy logic to dodge an error; fix the call site instead.
 Then run 'swift test' and report whether existing GoldenTests still pass. Return: final build status (green/partial), the list of fixes made, and any errors you could not resolve with the reason. Set status='complete' only if 'swift build' is green.`, { label: 'build-fix-loop', phase: 'Integrate', schema: { type: 'object', additionalProperties: false, required: ['file', 'status', 'buildGreen', 'fixes', 'unresolved'], properties: { file: { type: 'string' }, status: { type: 'string', enum: ['complete', 'partial', 'stub'] }, buildGreen: { type: 'boolean' }, fixes: { type: 'array', items: { type: 'string' } }, unresolved: { type: 'array', items: { type: 'string' } } } } })
 
@@ -203,7 +203,7 @@ Foundations: ${JSON.stringify(foundations.map(f => f && f.file))}
 Rewrite/extend PORT_STATUS.md to include:
 1. A 'Phase 1' section: what landed (scene graph Element/Displayable/Group/Path, 6 shapes, CALayerPainter, geometry-parity golden), with a per-file status + review-verdict table.
 2. Build status (green or not) and whether swift test / golden geometry parity passes per fixture.
-3. A deduped, severity-sorted backlog of NEW open issues + PORT-TODOs from Phase 1 (especially anything stubbed: Text, animation, states, contain/hit-test, gradient/pattern rendering, full shape set).
+3. A deduped, severity-sorted backlog of NEW open issues + TODOs from Phase 1 (especially anything stubbed: Text, animation, states, contain/hit-test, gradient/pattern rendering, full shape set).
 4. The Phase 2 plan: Text/TSpan/Image + contain/* (hit testing) + remaining shapes + gradient/pattern paint in CALayerPainter + Storage/display-list + a real zrender 'ZRender' host facade — list the specific upstream files and their already-ported deps.
 5. Keep the standing upstream-sync rule.
 Preserve the Phase 0 content (append/restructure, don't delete the history). Return a one-paragraph summary as text + the list of any blockers.`, { label: 'synthesize-status', phase: 'Synthesize', schema: { type: 'object', additionalProperties: false, required: ['summary', 'blockers'], properties: { summary: { type: 'string' }, blockers: { type: 'array', items: { type: 'string' } } } } })

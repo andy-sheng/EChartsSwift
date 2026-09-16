@@ -22,7 +22,7 @@ import Foundation
 // import { FontStyle, FontWeight } from '../core/types';
 // import { DEFAULT_FONT } from '../core/platform';
 // import { tSpanCreateBoundingRect, tSpanHasStroke } from './helper/parseText';
-//   → PORT-NOTE: parseText is ported in Text.swift (fenced seam stub: tSpanCreateBoundingRect2 etc.),
+//   → note: parseText is ported in Text.swift (fenced seam stub: tSpanCreateBoundingRect2 etc.),
 //     not yet split into graphic/helper/parseText.swift. `tSpanHasStroke` is inlined here (trivial,
 //     same predicate as Path.hasStroke). TSpan's own lazy bounding-rect fallback stays stubbed — the
 //     rect is normally injected via setBoundingRect by the text layout layer (see getBoundingRect).
@@ -39,7 +39,7 @@ public struct TSpanStyleProps {
     public var opacity: Double?
     /// https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/globalCompositeOperation
     public var blend: String?
-    // PORT-NOTE: replaces upstream's dynamic STYLE_MAGIC_KEY stamp (see Displayable.swift). `true`
+    // replaces upstream's dynamic STYLE_MAGIC_KEY stamp (see Displayable.swift). `true`
     //   iff produced by `createStyle`.
     public var zrStyleMagic: Bool = false
 
@@ -117,12 +117,12 @@ public let DEFAULT_TSPAN_STYLE: TSpanStyleProps = {
     return s
 }()
 
-// PORT-NOTE: interface TSpanProps extends DisplayableProps { style?: TSpanStyleProps }. The
+// interface TSpanProps extends DisplayableProps { style?: TSpanStyleProps }. The
 //   `attr`/`attrKV` setter machinery uses the dynamic prop bag (collapsed onto DisplayableProps ==
 //   ElementProps). Typed-interface fidelity dropped.
 public typealias TSpanProps = DisplayableProps
 
-// PORT-NOTE: TSpanState = Pick<TSpanProps, DisplayableStatePropNames>. Collapsed onto DisplayableState
+// TSpanState = Pick<TSpanProps, DisplayableStatePropNames>. Collapsed onto DisplayableState
 //   (typealias to ElementState); the states machinery lives on Element.
 public typealias TSpanState = DisplayableState
 
@@ -143,7 +143,7 @@ public final class TSpan: Displayable {
     }
 
     internal override func _init(_ props: ElementProps? = nil) {  // upstream: protected
-        // PORT-NOTE: TSpan has no own `_init` upstream; it inherits Displayable._init, which routes
+        // TSpan has no own `_init` upstream; it inherits Displayable._init, which routes
         //   `style` through `useStyle(CommonStyleProps)`. Overridden here so the `style` opt is typed
         //   as TSpanStyleProps (consistent with the Path style-bag bridge).
         let keysArr = util.keys(props ?? [:])
@@ -169,7 +169,7 @@ public final class TSpan: Displayable {
 
     public func hasStroke() -> Bool {
         // upstream: return tSpanHasStroke(this.style);
-        // PORT-NOTE: parseText.ts not ported; `tSpanHasStroke` inlined (stroke != null &&
+        // parseText.ts not ported; `tSpanHasStroke` inlined (stroke != null &&
         //   stroke !== 'none' && style.lineWidth > 0).
         let style = self.tspanStyle!
         let stroke = style.stroke
@@ -211,7 +211,7 @@ public final class TSpan: Displayable {
 
     // Mirror the CommonStyleProps subset of `tspanStyle` into the inherited `Displayable.style` so
     // the inherited machinery (shouldBePainted / getPaintRect) reads correct shadow / opacity /
-    // blend. PORT-NOTE: a Swift-only bridge — upstream has a single `this.style` object.
+    // blend. note: a Swift-only bridge — upstream has a single `this.style` object.
     private func _syncCommonStyle() {
         var c = CommonStyleProps()
         c.shadowBlur = self.tspanStyle.shadowBlur
@@ -249,7 +249,7 @@ public final class TSpan: Displayable {
 // upstream: TSpan.prototype.type = 'tspan'  → set in init (per-instance).
 
 // extend(target, source) over TSpanStyleProps' known fields (value-copy of non-nil fields).
-// PORT-NOTE: upstream `extend` copies all own enumerable keys (dynamic bag); here we copy the known
+// upstream `extend` copies all own enumerable keys (dynamic bag); here we copy the known
 //   TSpanStyleProps fields only. `zrStyleMagic` is intentionally NOT copied (created-style marker).
 func extendTSpanStyle(_ target: inout TSpanStyleProps, _ source: TSpanStyleProps) {
     // common fields

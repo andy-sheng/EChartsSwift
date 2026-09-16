@@ -28,7 +28,7 @@ import ZRenderKit
 //   import SeriesData from '../../data/SeriesData';                  -> SeriesData (data/SeriesData.swift).
 //   import { concatArray, mergeAll, map, isNumber } from 'zrender/src/core/util';
 //       -> ZRenderKit `util` (`util.mergeAll`, `util.map`, `util.isNumber`). `concatArray` is a
-//          PORT-NOTE in ZRenderKit.util (typed-array concat) — Swift `a + b` is used inline for the
+//          note in ZRenderKit.util (typed-array concat) — Swift `a + b` is used inline for the
 //          `ContiguousArray` flat-coord buffers in `appendData`.
 //   import CoordinateSystem from '../../core/CoordinateSystem';
 //       -> core/CoordinateSystemManager (CoordinateSystemManager.get); the __DEV__ "Unknown coordinate
@@ -131,7 +131,7 @@ open class LinesSeriesModel: SeriesModel {
     public override class var type: ComponentFullType { return "series.lines" }
 
     // static readonly dependencies = ['grid', 'polar', 'geo', 'calendar'];
-    //   PORT-NOTE (deferred): only grid/cartesian2d is renderable now (polar/geo/calendar coord systems
+    //   TODO: only grid/cartesian2d is renderable now (polar/geo/calendar coord systems
     //   for lines not ported); the dependency list is kept verbatim so registration/topo order matches.
     open override class var dependencies: [String] {
         return ["grid", "polar", "geo", "calendar"]
@@ -175,7 +175,7 @@ open class LinesSeriesModel: SeriesModel {
         self._flatCoordsOffset = result.flatCoordsOffset
         // if (result.flatCoords) { option.data = new Float32Array(result.count); }
         if result.flatCoords != nil {
-            // PORT-NOTE: upstream `new Float32Array(count)` (a zero-filled placeholder, one slot per line —
+            // upstream `new Float32Array(count)` (a zero-filled placeholder, one slot per line —
             //   the real coords live in `_flatCoords`). Modeled as a `[Double]` of zeros so the ported
             //   Source/DataStore pipeline (which expects an array-like) can build `count` line data items.
             opt["data"] = [Double](repeating: 0, count: Int(result.count))
@@ -225,7 +225,7 @@ open class LinesSeriesModel: SeriesModel {
             }
             else {
                 // this._flatCoords = concatArray(this._flatCoords, result.flatCoords);
-                //   concatArray -> ContiguousArray `+` (CONVENTIONS §8; util.concatArray is a PORT-NOTE).
+                //   concatArray -> ContiguousArray `+` (CONVENTIONS §8; util.concatArray is a note).
                 self._flatCoords = self._flatCoords! + resultFlatCoords
                 self._flatCoordsOffset = (self._flatCoordsOffset ?? []) + (result.flatCoordsOffset ?? [])
             }
@@ -445,7 +445,7 @@ open class LinesSeriesModel: SeriesModel {
                     return value
                 }
                 // (implicit `return undefined` fallthrough)
-                // PORT-NOTE: upstream returns `undefined` here; modeled as NaN (ParsedValue is non-optional
+                // upstream returns `undefined` here; modeled as NaN (ParsedValue is non-optional
                 //   in this port), matching the "no numeric value" intent for a coords-only data item.
                 return Double.nan
             }
@@ -495,7 +495,7 @@ open class LinesSeriesModel: SeriesModel {
 
     // preventIncremental() { return !!this.get(['effect', 'show']); }
     open override func preventIncremental() -> Bool {
-        // PORT-NOTE: this pipeline hook is LIVE, not dormant. `preventIncremental` is a real `open func` slot on the base
+        // this pipeline hook is LIVE, not dormant. `preventIncremental` is a real `open func` slot on the base
         //   `SeriesModel` CLASS BODY (Series.swift:837) — declared there, not in an extension, so this
         //   `override` is dynamically dispatched — and `Scheduler.restorePipelines` (Scheduler.swift:343)
         //   gates `progressiveEnabled: jsTruthy(progressive) && !seriesModel.preventIncremental()` on it,
@@ -567,7 +567,7 @@ open class LinesSeriesModel: SeriesModel {
             // Geo coordinate system
             "geoIndex": 0.0,
 
-            // PORT-NOTE (deferred): `effect` (moving-dot / trail) render is ANIMATED and DEFERRED
+            // TODO: `effect` (moving-dot / trail) render is ANIMATED and DEFERRED
             //   (CONVENTIONS §5). The option sub-tree is preserved verbatim for the diffable surface +
             //   the (deferred) effect pipeline.
             "effect": [

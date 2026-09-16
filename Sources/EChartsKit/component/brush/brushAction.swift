@@ -33,7 +33,7 @@ import ZRenderKit
 
 // upstream: export function install(registers) { ... }
 //
-// PORT-NOTE (registrar shape): the `EChartsExtensionInstallRegisters` stub in this port does not model
+// note (registrar shape): the `EChartsExtensionInstallRegisters` stub in this port does not model
 //   `registerComponentModel` / `registerComponentView` / `registerVisual` / `registerPreprocessor` — the
 //   driver holds those in explicit maps/call sites (see the header of core/ECharts.swift). So:
 //     - registerComponentModel(BrushModel)     -> `ComponentModel.registerClass(BrushModel.self)` (ECharts.swift)

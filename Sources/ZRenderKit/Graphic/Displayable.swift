@@ -9,9 +9,9 @@
 //   - getBoundingRect (inherited hook) / contain / rectContain / shouldBePainted / getPaintRect
 //   - beforeBrush / afterBrush / innerBeforeBrush / innerAfterBrush hooks (no-ops)
 //
-// STUBBED — inherited from Element's animation/states surface. PORT-NOTE: the states-machinery
+// STUBBED — inherited from Element's animation/states surface. note: the states-machinery
 //   overrides below are not the live path (state application routes through Element's
-//   `useState(s)`→`_stateApply`/`animateTo`, see Element.useState PORT-NOTE); the painter caches
+//   `useState(s)`→`_stateApply`/`animateTo`, see Element.useState note); the painter caches
 //   remain a renderer seam (§9):
 //   - the states machinery (_innerSaveToNormal / _applyStateObj / _mergeStates / DisplayableState)
 //   - the animation surface (animate('style') / animateStyle / getAnimationStyleProps)
@@ -29,7 +29,7 @@ import Foundation
 // import Animator from '../animation/Animator';    → Phase-3 stub
 // import { REDRAW_BIT, STYLE_CHANGED_BIT } from './constants';
 
-// PORT-NOTE: upstream `STYLE_MAGIC_KEY = '__zr_style_' + Math.round(Math.random() * 10)` is a
+// upstream `STYLE_MAGIC_KEY = '__zr_style_' + Math.round(Math.random() * 10)` is a
 //   dynamic property key stamped onto created style objects to detect "is this a valid style
 //   object". Swift structs have no dynamic keys, so we model the flag as the `zrStyleMagic`
 //   field of `CommonStyleProps` (see below). The const is kept for provenance.
@@ -45,11 +45,11 @@ public struct CommonStyleProps {
     /// https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/globalCompositeOperation
     public var blend: String?
 
-    // PORT-NOTE: replaces upstream's dynamic STYLE_MAGIC_KEY stamp. `true` iff this style object
+    // replaces upstream's dynamic STYLE_MAGIC_KEY stamp. `true` iff this style object
     //   was produced by `createStyle` (i.e. has the default values baked in). See `useStyle`.
     public var zrStyleMagic: Bool = false
 
-    // PORT-NOTE: subclass styles (PathStyleProps / TextStyleProps / ImageStyleProps) `extend`
+    // subclass styles (PathStyleProps / TextStyleProps / ImageStyleProps) `extend`
     //   CommonStyleProps in upstream and `Displayable<Props>` is generic over `Props['style']`.
     //   Swift structs can't be subclassed and the stored `style` property can't be re-typed by
     //   a subclass, so the generic is collapsed to CommonStyleProps here; Path/Text model their
@@ -61,7 +61,7 @@ public struct CommonStyleProps {
     //   shape side; see StyleAnimationAccessor below). The numeric fields tween directly; the
     //   color field `shadowColor` flows as a color string through the Animator's color-tween path
     //   (color.parse → interpolate → rgba2String), consistent with DEFAULT_COMMON_ANIMATION_PROPS.
-    // PORT-NOTE: `blend` (composite-op String) is not tweened.
+    // `blend` (composite-op String) is not tweened.
     public func animationGet(_ key: String) -> Any? {
         switch key {
         case "opacity": return opacity
@@ -117,7 +117,7 @@ public let DEFAULT_COMMON_STYLE: CommonStyleProps = {
     return s
 }()
 
-// PORT-NOTE: upstream `MapToType<DisplayableProps, boolean>`; collapsed to a loose bag. Only read
+// upstream `MapToType<DisplayableProps, boolean>`; collapsed to a loose bag. Only read
 //   by `getAnimationStyleProps` (animation surface deferred, Phase 3).
 public let DEFAULT_COMMON_ANIMATION_PROPS: [String: Any] = [
     "style": [
@@ -129,14 +129,14 @@ public let DEFAULT_COMMON_ANIMATION_PROPS: [String: Any] = [
     ]
 ]
 
-// PORT-NOTE: interface DisplayableProps extends ElementProps. The `attr`/`attrKV` setter machinery
+// interface DisplayableProps extends ElementProps. The `attr`/`attrKV` setter machinery
 //   uses the dynamic `[String: Any]` prop bag (ElementProps); the typed-interface fidelity is
 //   dropped. Added optional keys (for provenance):
 //     style?, zlevel?, z?, z2?, culling?, cursor?, rectHover?, progressive?, incremental?,
 //     ignoreCoarsePointer?, batch?, invisible?
 public typealias DisplayableProps = ElementProps
 
-// PORT-NOTE: DisplayableStatePropNames / DisplayableState — `Pick<DisplayableProps, ...>` utility
+// DisplayableStatePropNames / DisplayableState — `Pick<DisplayableProps, ...>` utility
 //   types for the states machinery (Phase 2). Collapsed onto Element's ElementState.
 public typealias DisplayableState = ElementState
 
@@ -152,7 +152,7 @@ public struct BeforeBrushParam {
 
 // upstream: interface Displayable<Props> { animate / getState / ensureState / states / stateProxy }
 //   — declaration-merging of the animation + states surface. Element already provides getState /
-//   ensureState / states / stateProxy (with ElementState); not redeclared (PORT-NOTE Phase 2/3).
+//   ensureState / states / stateProxy (with ElementState); not redeclared (note Phase 2/3).
 
 open class Displayable: Element {
 
@@ -188,12 +188,12 @@ open class Displayable: Element {
     public var ignoreCoarsePointer: Bool?
 
     // FIXME: do not use TS any.
-    // PORT-NOTE: upstream `style: Dictionary<any>` (dynamic bag). Modeled as the CommonStyleProps
+    // upstream `style: Dictionary<any>` (dynamic bag). Modeled as the CommonStyleProps
     //   struct (CONVENTIONS §4). Implicitly-unwrapped to faithfully mirror upstream, where `style`
     //   is `undefined` until `useStyle` runs (see `_init` / `attrKV`'s `if (!this.style)` guards).
     public var style: CommonStyleProps!
 
-    // PORT-NOTE: upstream re-declares `protected _normalState: DisplayableState` to narrow the type.
+    // upstream re-declares `protected _normalState: DisplayableState` to narrow the type.
     //   Swift can't redeclare an inherited stored property; we reuse Element's `_normalState`
     //   (typed ElementState; DisplayableState is a typealias to it). States are stubbed (Phase 2).
 
@@ -211,9 +211,9 @@ open class Displayable: Element {
     public var __hoverStyle: CommonStyleProps?
 
     // Shapes for cascade clipping.
-    // PORT-NOTE: upstream `__clipPaths?: Path[]` — inherited from Element (`__clipPaths`).
+    // upstream `__clipPaths?: Path[]` — inherited from Element (`__clipPaths`).
 
-    // PORT-NOTE (unportable): the HTMLCanvas/SVG painter caches — __canvasFillGradient /
+    // note (unportable): the HTMLCanvas/SVG painter caches — __canvasFillGradient /
     //   __canvasStrokeGradient / __canvasFillPattern / __canvasStrokePattern (Canvas) and __svgEl
     //   (SVG) — are browser-renderer seams (CONVENTIONS §9). The native CALayer painter has no
     //   equivalent; intentionally not modeled.
@@ -236,7 +236,7 @@ open class Displayable: Element {
                     self.useStyle(s)
                 }
                 else {
-                    // PORT-NOTE: non-CommonStyleProps `style` value — fall back to empty style.
+                    // non-CommonStyleProps `style` value — fall back to empty style.
                     self.useStyle(CommonStyleProps())
                 }
             }
@@ -320,7 +320,7 @@ open class Displayable: Element {
     /// If bounding rect of element contain coord x, y
     public func rectContain(_ x: Double, _ y: Double) -> Bool {
         let coord = self.transformCoordToLocal(x, y)
-        // PORT-NOTE: upstream assumes getBoundingRect() is non-null (provided by Path/Group).
+        // upstream assumes getBoundingRect() is non-null (provided by Path/Group).
         guard let rect = self.getBoundingRect() else { return false }
         return rect.contain(coord[0], coord[1])
     }
@@ -344,7 +344,7 @@ open class Displayable: Element {
             rect = self._paintRect
             let r = rect!
             if let transform = transform {
-                // PORT-NOTE: upstream assumes elRect non-null.
+                // upstream assumes elRect non-null.
                 if let elRect = elRect {
                     BoundingRect.applyTransform(r, elRect, transform)
                 }
@@ -393,7 +393,7 @@ open class Displayable: Element {
     /// Alias for animate('style')
     @discardableResult
     public func animateStyle(_ loop: Bool) -> Animator<Any> {
-        // PORT-NOTE: upstream returns Animator<this['style']>; collapsed to Animator<Any>.
+        // upstream returns Animator<this['style']>; collapsed to Animator<Any>.
         return self.animate("style", loop)
     }
 
@@ -454,7 +454,7 @@ open class Displayable: Element {
 
     internal override func attrKV(_ key: String, _ value: Any?) {  // upstream: protected
         if key != "style" {
-            // PORT-NOTE: upstream delegates to `super.attrKV(key, value)`, which sets the property
+            // upstream delegates to `super.attrKV(key, value)`, which sets the property
             //   dynamically via `(this as any)[key] = value`. Swift has no dynamic assignment, so
             //   Displayable's own props are switched here before falling back to Element's setter.
             switch key {
@@ -501,7 +501,7 @@ open class Displayable: Element {
         case "shadowColor": s.shadowColor = value as? String
         case "opacity": s.opacity = value as? Double
         case "blend": s.blend = value as? String
-        default: break  // PORT-NOTE: unknown style key (subclass style field). Ignored.
+        default: break  // unknown style key (subclass style field). Ignored.
         }
         self.style = s
         self.dirtyStyle()
@@ -568,8 +568,8 @@ open class Displayable: Element {
 
     internal override func _innerSaveToNormal(_ toState: ElementState) {  // upstream: protected
         super._innerSaveToNormal(toState)
-        // PORT-NOTE: not the live path — state save/apply routes through Element's
-        //   `useState(s)`→`_stateApply`/`animateTo` (see Element.useState PORT-NOTE). Upstream's
+        // not the live path — state save/apply routes through Element's
+        //   `useState(s)`→`_stateApply`/`animateTo` (see Element.useState note). Upstream's
         //   faithful body clones the style into `_normalState.style` (via
         //   `_mergeStyle(createStyle(), this.style)`) and saves the PRIMARY_STATES_KEYS (z / z2 / invisible).
     }
@@ -583,7 +583,7 @@ open class Displayable: Element {
         _ animationCfg: ElementAnimateConfig?
     ) {
         super._applyStateObj(stateName, state, normalState, keepCurrentStates, transition, animationCfg)
-        // PORT-NOTE: not the live path (see the `useState` routing note above). Upstream's faithful
+        // not the live path (see the `useState` routing note above). Upstream's faithful
         //   body merges/animates the target style (with the IN_HOVER_LAYER_KIND_ONLY_STYLE_CHANGE /
         //   hover-layer branches) and applies PRIMARY_STATES_KEYS / PRIMARY_STATES_KEYS_IN_HOVER_LAYER.
         _ = PRIMARY_STATES_KEYS
@@ -593,8 +593,8 @@ open class Displayable: Element {
 
     internal override func _mergeStates(_ states: [ElementState]) -> ElementState {  // upstream: protected
         let mergedState = super._mergeStates(states)
-        // PORT-NOTE: the style-merge here is not wired — state application routes through Element's
-        //   `useState(s)`→`_stateApply`/`animateTo` (see Element.useState PORT-NOTE). Upstream's
+        // the style-merge here is not wired — state application routes through Element's
+        //   `useState(s)`→`_stateApply`/`animateTo` (see Element.useState note). Upstream's
         //   faithful body merges each state's `style` into a single `mergedStyle` via `_mergeStyle`
         //   and assigns it onto `mergedState`.
         return mergedState
@@ -616,10 +616,10 @@ open class Displayable: Element {
     /// The string value of `textPosition` needs to be calculated to a real position.
     /// See `contain/text.js#calculateTextPosition`. Custom shapes (e.g. "pin", "flag") override
     /// `calculateTextPosition` (set externally) to customize the calculation.
-    // PORT-NOTE: calculateTextPosition hook is inherited from Element (depends on contain/text.ts).
+    // calculateTextPosition hook is inherited from Element (depends on contain/text.ts).
 }
 
-// PORT-NOTE: upstream `protected static initDefaultProps` (prototype seeding) is replaced by the
+// upstream `protected static initDefaultProps` (prototype seeding) is replaced by the
 //   stored-property initializers above + the `init` override (type='displayable',
 //   __dirty = REDRAW_BIT | STYLE_CHANGED_BIT).
 
@@ -633,7 +633,7 @@ private func jsFalsyOr0(_ v: Double?) -> Double {
 private let tmpRect = BoundingRect(0, 0, 0, 0)
 private let viewRect = BoundingRect(0, 0, 0, 0)
 private func isDisplayableCulled(_ el: Displayable, _ width: Double, _ height: Double) -> Bool {
-    // PORT-NOTE: upstream assumes getBoundingRect() non-null.
+    // upstream assumes getBoundingRect() non-null.
     guard let r = el.getBoundingRect() else { return true }
     tmpRect.copy(r)
     if let m = el.transform {
@@ -645,7 +645,7 @@ private func isDisplayableCulled(_ el: Displayable, _ width: Double, _ height: D
 }
 
 // extend(target, source) over CommonStyleProps' known fields (value-copy of non-nil fields).
-// PORT-NOTE: upstream `extend` copies all own enumerable keys (dynamic bag); here we copy the
+// upstream `extend` copies all own enumerable keys (dynamic bag); here we copy the
 //   known CommonStyleProps fields only (subclass style fields handled in Path/Text).
 private func extendCommonStyle(_ target: inout CommonStyleProps, _ source: CommonStyleProps) {
     if source.shadowBlur != nil { target.shadowBlur = source.shadowBlur }

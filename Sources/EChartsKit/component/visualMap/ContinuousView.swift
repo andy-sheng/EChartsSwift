@@ -157,7 +157,7 @@ public final class ContinuousView: VisualMapView {
         self._updateView(false)
 
         self._enableHoverLinkToSeries()
-        // PORT-NOTE: `_enableHoverLinkFromSeries()` binds `api.getZr().on('mouseover'/'mouseout')`.
+        // `_enableHoverLinkFromSeries()` binds `api.getZr().on('mouseover'/'mouseout')`.
         //   The ExtensionAPI has no live `getZr()`, so the series→bar hover indicator (the "and vice
         //   versa" direction) is driven by the host `EChartsView` instead: it calls this view's public
         //   `_hoverLinkFromSeriesMouseOver(_:)` / `_hideIndicator()` on a series-element mouseover/mouseout.
@@ -337,7 +337,7 @@ public final class ContinuousView: VisualMapView {
         indicator.x = itemSize[0] / 2
         // const indicatorStyle = visualMapModel.getModel('indicatorStyle').getItemStyle();
         indicator.useStyle(barStyleFromDict(visualMapModel.getModel("indicatorStyle").getItemStyle()))
-        // PORT-NOTE: ZRImage-icon branch (image indicator) — the ported createSymbol image path falls
+        // ZRImage-icon branch (image indicator) — the ported createSymbol image path falls
         //   back to a SymbolClz here, so the upstream ZRImage special-case is not needed.
 
         _ = mainGroup.add(indicator)
@@ -1019,7 +1019,7 @@ private func numberOrString(_ v: Any?) -> NumberOrString {
 }
 
 // ============================================================================
-// PORT-NOTE helpers — NOT part of visualMap/ContinuousView.ts upstream. These reproduce out-of-phase
+// note helpers — NOT part of visualMap/ContinuousView.ts upstream. These reproduce out-of-phase
 // sibling APIs (`util/graphic` transform helpers, `visualMap/helper.getItemAlign`) so the view compiles.
 // ============================================================================
 
@@ -1058,7 +1058,7 @@ private func transformDirection(_ direction: String, _ transform: MatrixArray, _
 /// The `getControllerVisual('color', ...)` result is a color option value (a `String` in the static path).
 internal func colorToString(_ v: Any?) -> String {
     if let s = v as? String { return s }
-    // PORT-NOTE (deferred): gradient/pattern color objects are not stringified here (only the String
+    // TODO: gradient/pattern color objects are not stringified here (only the String
     //   form of a visual-result color is handled).
     return ""
 }
@@ -1073,7 +1073,7 @@ internal func stringifyAny(_ v: Any?) -> String {
     return "\(v)"
 }
 
-/// PORT-NOTE: faithful reproduction of `visualMap/helper.getItemAlign` (NOT ported).
+/// faithful reproduction of `visualMap/helper.getItemAlign` (NOT ported).
 internal func getItemAlign(_ visualMapModel: VisualMapModel, _ api: ExtensionAPI, _ itemSize: [Double]) -> String {
     let paramsSet = [["left", "right", "width"], ["top", "bottom", "height"]]
 

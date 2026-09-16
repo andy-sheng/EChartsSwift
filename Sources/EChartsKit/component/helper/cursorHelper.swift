@@ -63,7 +63,7 @@ public func onIrrelevantElement(
 
     // upstream: const eventElCoordSys = (eventElComponent as CoordinateSystemHostModel).coordinateSystem;
     //   if (!eventElCoordSys || eventElCoordSys.model === targetComponent) { return false; }
-    //   PORT-NOTE: `coordinateSystem` is split across two slots in this port — a coord-sys HOST
+    //   `coordinateSystem` is split across two slots in this port — a coord-sys HOST
     //   model (GridModel/PolarModel/…) declares it via `CoordinateSystemHostModel` (a
     //   `CoordinateSystemMaster`), while a SeriesModel stores its own (a `CoordinateSystem`).
     //   Read whichever slot the covering component carries (mirrors ECharts.containPixel) so an

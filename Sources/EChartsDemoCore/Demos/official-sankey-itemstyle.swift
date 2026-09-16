@@ -7,7 +7,7 @@
 //   - webOptionJS is the official example VERBATIM; only its leading title-comment block and the
 //     trailing `export {};` (a TS module marker, not part of the option) are dropped.
 //   - The Swift `option` mirrors it key-for-key. The official option has no JS-function-valued keys,
-//     so nothing is omitted from the native side and there are no PORT-NOTEs to carry.
+//     so nothing is omitted from the native side and there are no notes to carry.
 //   - The 99 nodes and 109 links are hoisted out of the Swift option literal into file-scope tables
 //     (the type-checker chokes on nested heterogeneous literals this big). The hoist is lossless:
 //     the node table is (name, color) pairs because every official node sets borderColor == color.

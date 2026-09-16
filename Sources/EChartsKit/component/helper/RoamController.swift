@@ -39,7 +39,7 @@ import ZRenderKit
 
 // upstream: `import { retrieveZInfo } from '../../util/graphic'`. Not yet landed in util/graphic.swift;
 //   reproduced here (reads z/zlevel/z2 off the component model with a 0 floor — enough for the roam
-//   listener precedence ordering). PORT-NOTE: dedupe once util/graphic.retrieveZInfo lands.
+//   listener precedence ordering). note: dedupe once util/graphic.retrieveZInfo lands.
 public struct RoamZInfo {
     public var component: ComponentModel?
     public var z: Double
@@ -185,7 +185,7 @@ public final class RoamEventParams {
     // scrollMove
     public var scrollDelta: Double = 0
     // upstream: `isAvailableBehavior: Bind3<...>` — a behavior checker for shared listeners. Rarely used
-    //   (graph does not); modeled as a closure taking the settings bag. PORT-NOTE: settings typing.
+    //   (graph does not); modeled as a closure taking the settings bag. note: settings typing.
     public var isAvailableBehavior: ((RoamSettingLike) -> Bool)?
     public init() {}
 }
@@ -547,7 +547,7 @@ fileprivate final class RoamZrStore {
     var roam: [String: [RoamListenerItem]] = [:]
     // Which event types already have the ONE uniform zr listener bound. (Upstream stores the listener
     //   itself so it can be `zr.off`-ed; the port's Eventful cannot remove a specific closure — see
-    //   PORT-NOTE in removeUniformListener — so the uniform is bound at most once ever per (zr, type).)
+    //   note in removeUniformListener — so the uniform is bound at most once ever per (zr, type).)
     var uniformBound: Set<String> = []
 }
 private let roamZrInner: (ZRender) -> RoamZrStore = model.makeInner { RoamZrStore() }
@@ -610,12 +610,12 @@ private func ensureUniformListener(_ zr: ZRender, _ eventType: String) {
 }
 
 // upstream: removeUniformListener(zr, eventType) — `zr.off(eventType, uniform)`.
-//   PORT-NOTE: the port's Eventful cannot remove a SPECIFIC closure (no closure identity), and calling
+//   the port's Eventful cannot remove a SPECIFIC closure (no closure identity), and calling
 //   `zr.off(eventType)` with no handler would nuke unrelated listeners (EChartsView's own bindings). So
 //   the uniform listener stays bound; it reads the live (now empty) `store.roam[eventType]` list and
 //   fans out to nothing. `uniformBound` stays set so a re-enable does NOT double-bind. Faithful in effect.
 private func removeUniformListener(_ zr: ZRender, _ eventType: String) {
-    // Intentional no-op beyond leaving the empty list in place (see PORT-NOTE above).
+    // Intentional no-op beyond leaving the empty list in place (see note above).
 }
 
 // upstream: function eventConsumed(e) { return (e as ...).__ecRoamConsumed; }
@@ -674,7 +674,7 @@ private func isBehaviorSettingAvailable(_ setting: Any?, _ e: ElementEvent) -> B
         //   `e.event` is the underlying ZRRawEvent (see `ElementEvent.event`,
         //   Sources/ZRenderKit/Element.swift). An unknown/empty string maps to `undefined`
         //   upstream, i.e. falsy.
-        // PORT-TODO: the UIKit gesture -> ZRRawEvent bridge does not yet populate
+        // TODO: the UIKit gesture -> ZRRawEvent bridge does not yet populate
         //   shiftKey/ctrlKey/altKey — nothing in Sources/ writes them, every construction site
         //   (ZRenderView / EChartsView / EChartsHostView) leaves the `false` default. Until the
         //   bridge sets them from `UIEvent.modifierFlags`, a string-configured behavior

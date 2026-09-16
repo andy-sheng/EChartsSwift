@@ -38,7 +38,7 @@ import ZRenderKit
 // type TreeTraverseOrder = 'preorder' | 'postorder';
 public typealias TreeTraverseOrder = String
 // type TreeTraverseCallback<Ctx> = (this: Ctx, node: TreeNode) => boolean | void;
-// PORT-NOTE: upstream returns `boolean | void`; modeled as `Any?` (a `Bool` -> suppress subtree,
+// upstream returns `boolean | void`; modeled as `Any?` (a `Bool` -> suppress subtree,
 //   `nil`/void -> continue). The `this: Ctx` binding is dropped: Swift closures capture context
 //   directly, so the trailing `context` parameter (kept for fidelity) is unused by the closure.
 public typealias TreeTraverseCallback = (TreeNode) -> Any?
@@ -48,7 +48,7 @@ public typealias TreeTraverseCallback = (TreeNode) -> Any?
 // interface TreeNodeOption extends Pick<OptionDataItemObject<OptionDataValue>, 'name' | 'value'> {
 //     children?: TreeNodeOption[];
 // }
-// PORT-NOTE: the `{name, value, children}` node option is modeled as a dynamic bag `[String: Any]`.
+// the `{name, value, children}` node option is modeled as a dynamic bag `[String: Any]`.
 public typealias TreeNodeOption = [String: Any]
 
 public final class TreeNode {
@@ -58,7 +58,7 @@ public final class TreeNode {
 
     public var height: Double = 0
 
-    // PORT-NOTE: upstream declares `parentNode: TreeNode` (non-optional) but leaves it undefined
+    // upstream declares `parentNode: TreeNode` (non-optional) but leaves it undefined
     //   for the root and relies on `while (node)`; modeled as Optional.
     public var parentNode: TreeNode?
     /**
@@ -68,7 +68,7 @@ public final class TreeNode {
      * If dataIndex -1,
      * this node is logical deleted (filtered) in list.
      */
-    // PORT-NOTE: upstream types `dataIndex: number`; kept `Int` here because every consumer
+    // upstream types `dataIndex: number`; kept `Int` here because every consumer
     //   (SeriesData.getRawIndex/getId/getItemModel/getItemLayout/setItemLayout/…) is Int-indexed.
     public var dataIndex: Int = -1
 
@@ -389,17 +389,17 @@ public final class TreeNode {
     }
 }
 
-// PORT-NOTE: upstream `Tree<HostModel extends Model = Model, LevelOption = any>` is generic; the
+// upstream `Tree<HostModel extends Model = Model, LevelOption = any>` is generic; the
 //   Swift port fixes `HostModel = Model` / `LevelOption = Any` since the generic parameters are
 //   only surfaced through `hostModel`/`levelModels` typing.
 public final class Tree: LinkableStruct {
 
     public let type: String = "tree"
 
-    // PORT-NOTE: upstream `root: TreeNode` is set during createTree; modeled as implicitly-unwrapped.
+    // upstream `root: TreeNode` is set during createTree; modeled as implicitly-unwrapped.
     public var root: TreeNode!
 
-    // PORT-NOTE: upstream `data: SeriesData` is assigned by linkSeriesData; implicitly-unwrapped.
+    // upstream `data: SeriesData` is assigned by linkSeriesData; implicitly-unwrapped.
     // SeriesData owns the linked Tree; this is the inverse link.
     public weak var data: SeriesData!
 
@@ -407,7 +407,7 @@ public final class Tree: LinkableStruct {
 
     public var levelModels: [Model]?
 
-    // PORT-NOTE: the fallback parent for nodes deeper than the configured `levelModels` (upstream
+    // the fallback parent for nodes deeper than the configured `levelModels` (upstream
     //   `levelModels[depth] || designatedVisualModel`). Only TreemapSeriesModel sets it; nil otherwise.
     public var designatedVisualModel: Model?
 
@@ -522,7 +522,7 @@ public final class Tree: LinkableStruct {
             let children = dataNode["children"]
             if let children = children as? [Any] {
                 for i in 0..<children.count {
-                    // PORT-NOTE: upstream `dataNode.children` is typed `TreeNodeOption[]`; in Swift the
+                    // upstream `dataNode.children` is typed `TreeNodeOption[]`; in Swift the
                     //   children arrive in the dynamic option bag as `[Any]`, so cast each element back
                     //   to `TreeNodeOption` (semantically equivalent to upstream's static typing).
                     buildHierarchy(children[i] as! TreeNodeOption, node)

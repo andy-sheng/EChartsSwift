@@ -50,7 +50,7 @@ public enum component {
     public static func getUID(_ type: String) -> String {
         // Considering the case of crossing js context,
         // use Math.random to make id as unique as possible.
-        // PORT-NOTE: `base` is a `Double` per CONVENTIONS §1; `String(Int(base))` reproduces the
+        // `base` is a `Double` per CONVENTIONS §1; `String(Int(base))` reproduces the
         //   JS integer string coercion (`base++` is always whole), avoiding a trailing ".0".
         let result = [(type /* || '' */), String(Int(base))].joined(separator: "_")
         base += 1
@@ -64,7 +64,7 @@ public enum component {
     //     (option: ComponentOption): ComponentSubType;
     // }
 
-    // PORT-NOTE: upstream `SubTypeDefaulterManager` declares the two members as always-present
+    // upstream `SubTypeDefaulterManager` declares the two members as always-present
     //   function properties; they are assigned at runtime by `enableSubTypeDefaulter`, so here they
     //   are settable Optional closure properties on a class-bound protocol (CONVENTIONS §2 mixin).
     //   `determineSubType` is annotated `=> string` upstream but its body can return `undefined`
@@ -81,7 +81,7 @@ public enum component {
         var subTypeDefaulters: Dictionary<SubTypeDefaulter> = [:]
 
         // upstream params: (componentType: ComponentFullType, defaulter: SubTypeDefaulter).
-        // PORT-NOTE: param types are left to inference so `defaulter` inherits the property's
+        // param types are left to inference so `defaulter` inherits the property's
         //   `@escaping`-ness (an explicit annotation would make it non-escaping and reject storing).
         target.registerSubTypeDefaulter = { componentType, defaulter in
             let componentTypeInfo = clazz.parseClassType(componentType)
@@ -92,7 +92,7 @@ public enum component {
             var type = option.type
             if type == nil {
                 let componentTypeMain = clazz.parseClassType(componentType).main
-                // PORT-NOTE: `target.hasSubTypes` assumes `ClassManager` exposes a
+                // `target.hasSubTypes` assumes `ClassManager` exposes a
                 //   `hasSubTypes(_:) -> Bool` method. If clazz models `ClassManager` with a settable
                 //   closure property (mirroring `enableClassManagement`'s assignment style), this
                 //   becomes `target.hasSubTypes!(componentType)`.
@@ -104,7 +104,7 @@ public enum component {
         }
     }
 
-    // PORT-NOTE: upstream `TopologicalTravelable<T>` parameterizes only the callback's `this`/
+    // upstream `TopologicalTravelable<T>` parameterizes only the callback's `this`/
     //   `context` binding (`callback.call(context, ...)`). Swift closures capture their own context,
     //   so the generic `T` is dropped and `context` is typed `Any?` (unused in the binding).
     //   `throws` mirrors upstream's `throw new Error(...)` on circular dependency. The closure
@@ -119,7 +119,7 @@ public enum component {
     }
 
     // ComponentMainType can be 'bb' or 'aa.xx'.
-    // PORT-NOTE: upstream `DepGraphItem` is a mutable plain object shared through the `DepGraph`
+    // upstream `DepGraphItem` is a mutable plain object shared through the `DepGraph`
     //   dictionary (`createDependencyGraphItem` returns the stored reference and callers mutate
     //   it in place); modeled as a `final class` for shared mutable identity (CONVENTIONS §4).
     final class DepGraphItem {
@@ -130,7 +130,7 @@ public enum component {
         init() {
             predecessor = []
             successor = []
-            // PORT-NOTE: upstream leaves `originalDeps`/`entryCount` undefined until assigned
+            // upstream leaves `originalDeps`/`entryCount` undefined until assigned
             //   (createDependencyGraphItem creates `{predecessor: [], successor: []}`).
             originalDeps = []
             entryCount = 0
@@ -185,7 +185,7 @@ public enum component {
                 }
             }
 
-            // PORT-NOTE: ZRenderKit `util.each` provides only the array overload; iterate the
+            // ZRenderKit `util.each` provides only the array overload; iterate the
             //   `targetNameSet` dictionary directly (upstream iterates the remaining keys).
             for _ in targetNameSet {
                 var errMsg = ""
@@ -263,7 +263,7 @@ public enum component {
 
     }
 
-    // PORT-NOTE: upstream `inheritDefaultOption<T, K>(superOption: T, subOption: K): K` is generic
+    // upstream `inheritDefaultOption<T, K>(superOption: T, subOption: K): K` is generic
     //   over arbitrary default-option objects; modeled as the dynamic option bag `[String: Any]`
     //   (the project's established dynamic-value approach; cf. ZRenderKit `util.merge`).
     public static func inheritDefaultOption(_ superOption: [String: Any], _ subOption: [String: Any]) -> [String: Any] {

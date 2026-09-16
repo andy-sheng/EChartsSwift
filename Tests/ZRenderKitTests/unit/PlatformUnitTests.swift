@@ -10,7 +10,7 @@ private struct FakeCanvas {
 }
 
 // upstream calls `setPlatformAPI({ createCanvas, measureText })` — a partial override. The Swift
-// `setPlatformAPI` replaces the whole `PlatformAPI` (see platform.swift PORT-NOTE), so we supply a
+// `setPlatformAPI` replaces the whole `PlatformAPI` (see platform.swift note), so we supply a
 // full implementation that overrides createCanvas/measureText and stubs loadImage/getTime.
 private final class OverridePlatformAPI: PlatformAPI {
     func createCanvas() -> CanvasLike? {

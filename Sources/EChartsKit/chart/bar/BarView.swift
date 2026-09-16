@@ -26,7 +26,7 @@ import ZRenderKit
 //   import Group from 'zrender/src/graphic/Group';                   -> ZRenderKit `Group`.
 //   import {extend, each, map} from 'zrender/src/core/util';         -> `util.extend` / `util.each` / `util.map`.
 //   import {BuiltinTextPosition} from 'zrender/src/core/types';      -> type-only (label block deferred).
-//   import {SectorProps} from 'zrender/src/graphic/shape/Sector';    -> PORT-NOTE: ZRenderKit `Sector` is ported; the polar Sector branch lives in the polar block at the bottom of this file.
+//   import {SectorProps} from 'zrender/src/graphic/shape/Sector';    -> note: ZRenderKit `Sector` is ported; the polar Sector branch lives in the polar block at the bottom of this file.
 //   import {RectProps} from 'zrender/src/graphic/shape/Rect';        -> ZRenderKit `RectProps`.
 //   import { Rect, Sector, updateProps, initProps, removeElementWithFadeOut, traverseElements }
 //       from '../../util/graphic';
@@ -41,7 +41,7 @@ import ZRenderKit
 //        itemStyle so hover highlights it end-to-end.
 //   import { setLabelStyle, getLabelStatesModels, setLabelValueAnimation, labelInner }
 //       from '../../label/labelStyle';
-//     -> PORT-NOTE: `label/labelStyle` is ported; the label block in `updateStyle` is still deferred in this view.
+//     -> note: `label/labelStyle` is ported; the label block in `updateStyle` is still deferred in this view.
 //   import {throttle} from '../../util/throttle';                    -> `throttleUtil.throttle` (util/throttle.swift),
 //     used by `largePathUpdateDataIndex` in LargeBarPath.swift (large mode only).
 //   import {createClipPath} from '../helper/createClipPathFromCoordSys';  -> sibling `createClipPath`.
@@ -55,20 +55,20 @@ import ZRenderKit
 //   import BarSeriesModel, {BarDataItemOption, PolarBarLabelPosition} from './BarSeries';  -> `BarSeriesModel`.
 //   import type Axis2D from '../../coord/cartesian/Axis2D';          -> `Axis2D`.
 //   import type Cartesian2D from '../../coord/cartesian/Cartesian2D'; -> `Cartesian2D`.
-//   import type Polar from '../../coord/polar/Polar';                -> PORT-NOTE: coord/polar is ported; polar bars are rendered by `_renderPolarBars`.
+//   import type Polar from '../../coord/polar/Polar';                -> note: coord/polar is ported; polar bars are rendered by `_renderPolarBars`.
 //   import type Model from '../../model/Model';                      -> `Model`.
 //   import { isCoordinateSystemType } from '../../coord/CoordinateSystem';  -> coord/CoordinateSystem.swift.
 //   import { getDefaultLabel, getDefaultInterpolatedLabel } from '../helper/labelHelper';
-//     -> PORT-NOTE: `chart/helper/labelHelper` is ported (label block still deferred in this view).
+//     -> note: `chart/helper/labelHelper` is ported (label block still deferred in this view).
 //   import OrdinalScale from '../../scale/Ordinal';                  -> scale/Ordinal.swift (realtimeSort only).
 //   import SeriesModel from '../../model/Series';                    -> `SeriesModel`.
-//   import {AngleAxisModel, RadiusAxisModel} from '../../coord/polar/AxisModel';  -> PORT-NOTE: ported (coord/polar/PolarAxisModel.swift); used via the polar coordinate system in `_renderPolarBars`.
+//   import {AngleAxisModel, RadiusAxisModel} from '../../coord/polar/AxisModel';  -> note: ported (coord/polar/PolarAxisModel.swift); used via the polar coordinate system in `_renderPolarBars`.
 //   import CartesianAxisModel from '../../coord/cartesian/AxisModel'; -> coord/cartesian/AxisModel.swift.
 //   import {LayoutRect} from '../../util/layout';                    -> util/layout.swift.
 //   import {EventCallback} from 'zrender/src/core/Eventful';         -> `EventCallback` (ZRenderKit).
 //   import { warn } from '../../util/log';                           -> `log.warn`.
 //   import {createSectorCalculateTextPosition, SectorTextPosition, setSectorTextRotation}
-//       from '../../label/sectorLabel';                              -> PORT-NOTE (deferred): requires label/sectorLabel (not ported; polar/label).
+//       from '../../label/sectorLabel';                              -> TODO: requires label/sectorLabel (not ported; polar/label).
 //   import { saveOldStyle } from '../../animation/basicTransition';  -> animation/basicTransition.saveOldStyle (real since universalTransition landed).
 //   import Element from 'zrender/src/Element';                       -> `Element` (ZRenderKit).
 //   import { getSectorCornerRadius } from '../helper/sectorHelper';  -> `getSectorCornerRadius`
@@ -95,10 +95,10 @@ private func rectShapeAnimShape(_ s: RectShape) -> [String: Any] {
 // upstream:
 //   type CoordSysOfBar = BarSeriesModel['coordinateSystem'];   // Cartesian2D | Polar
 //   type RectShape = Rect['shape'];                            // == ZRenderKit RectShape
-//   type SectorShape = Sector['shape'];                        // PORT-NOTE: ported; see the polar block at the bottom of this file
-//   type SectorLayout = SectorShape;                           // PORT-NOTE: ported; see the polar block at the bottom of this file
+//   type SectorShape = Sector['shape'];                        // note: ported; see the polar block at the bottom of this file
+//   type SectorLayout = SectorShape;                           // note: ported; see the polar block at the bottom of this file
 //   type RectLayout = RectShape;
-// PORT-NOTE: the generic `CoordSysOfBar`/`RectLayout` aliases collapse to the cartesian pair; the polar
+// the generic `CoordSysOfBar`/`RectLayout` aliases collapse to the cartesian pair; the polar
 //   path is typed concretely (`Polar` + `SectorShape`) in the polar block at the bottom of this file.
 typealias CoordSysOfBar = Cartesian2D
 typealias RectLayout = RectShape
@@ -110,7 +110,7 @@ typealias BarPossiblePath = Path
 
 // upstream:
 //   type CartesianCoordArea = ReturnType<Cartesian2D['getArea']>;   // == Cartesian2DArea (BoundingRect)
-//   type PolarCoordArea = ReturnType<Polar['getArea']>;             // PORT-NOTE: Polar ported; the polar bar path does not use getArea() (no polar clip — deferred)
+//   type PolarCoordArea = ReturnType<Polar['getArea']>;             // note: Polar ported; the polar bar path does not use getArea() (no polar clip — deferred)
 typealias CartesianCoordArea = Cartesian2DArea
 
 // upstream:
@@ -148,7 +148,7 @@ open class BarView: ChartView {
     private var _backgroundGroup: Group?
 
     // upstream: private _backgroundEls: (Rect | Sector)[];
-    // PORT-NOTE: upstream is a sparse array indexed by dataIndex; modeled as `[Int: Rect]` (cartesian,
+    // upstream is a sparse array indexed by dataIndex; modeled as `[Int: Rect]` (cartesian,
     //   `Rect` only). `.length === 0` → `.isEmpty`; `oldBgEls[oldIndex]` → dict lookup.
     private var _backgroundEls: [Int: Rect] = [:]
 
@@ -218,7 +218,7 @@ open class BarView: ChartView {
 
     open override func eachRendered(_ cb: (_ el: Element) -> Bool) {
         // upstream: traverseElements(this._progressiveEls || this.group, cb);
-        // PORT-NOTE: `util/graphic.traverseElements` is not ported, so the collected elements are visited
+        // `util/graphic.traverseElements` is not ported, so the collected elements are visited
         //   WITHOUT descending into their children — harmless today because `_progressiveEls` only ever
         //   holds `LargeBarPath`s, which have no children. `_progressiveEls` is populated by the
         //   progressive `barCreateLarge` overload via `_incrementalRenderLarge` (dormant until the
@@ -256,7 +256,7 @@ open class BarView: ChartView {
         // Polar bar → `Sector` / `SausagePath` per datum, radial (angle base) and tangential (radius
         //   base) alike; the geometry (band width / bar offset / stacking) comes from the registered
         //   `layout/barPolar.swift` stage and is read back via `getLayoutPolar`.
-        // PORT-NOTE (deferred): `showBackground` + sector label rotation/position.
+        // TODO: `showBackground` + sector label rotation/position.
         if let polar = seriesModel.coordinateSystem as? Polar {
             self._renderPolarBars(seriesModel, polar, group)
             self._data = data
@@ -453,7 +453,7 @@ open class BarView: ChartView {
 
                 if isChangeOrder {
                     // upstream reuses the previous label's prevValue to skip a new label animation.
-                    // PORT-NOTE (deferred): label subsystem (labelInner / getTextContent label store).
+                    // TODO: label subsystem (labelInner / getTextContent label store).
                 }
                 // Not change anything if only order changed.
                 // Especially not change label.
@@ -528,7 +528,7 @@ open class BarView: ChartView {
         self._updateLargeClip(seriesModel)
     }
 
-    // PORT-TODO (DORMANT — not reachable in the current build, so UNVERIFIED): `incrementalRender` (and
+    // TODO (DORMANT — not reachable in the current build, so UNVERIFIED): `incrementalRender` (and
     //   therefore this method) is only ever invoked from `renderTaskReset`'s progressive branch
     //   (view/Chart.swift `progressMethodMap("incrementalPrepareRender")`), which runs off the Scheduler's
     //   piped render task. `ECharts.renderSeries` (core/ECharts.swift:2341) currently BYPASSES
@@ -756,7 +756,7 @@ open class BarView: ChartView {
         let group = self.group
         let data = self._data
 
-        // PORT-NOTE (no upstream counterpart — ARC): `barCreateLarge` binds mousedown/mousemove on each
+        // note (no upstream counterpart — ARC): `barCreateLarge` binds mousedown/mousemove on each
         //   `LargeBarPath`, and ZRenderKit's `Eventful` holds the handler's `ctx` (here the element
         //   itself, via `Element.on`'s `context ?? self`) STRONGLY — so a large path self-retains through
         //   its own event table and `group.removeAll()` alone would leak it, together with its packed
@@ -846,7 +846,7 @@ func clipCartesian2D(_ coordSysClipArea: CartesianCoordArea, _ layout: inout Rec
 
     return xClipped || yClipped
 }
-// PORT-NOTE (deferred): `clip.polar` (polar clip path).
+// TODO: `clip.polar` (polar clip path).
 
 // ================================================================================================
 // upstream: `interface ElementCreator` + `const elementCreator: { [key in 'polar' | 'cartesian2d'] }`.
@@ -864,7 +864,7 @@ func elementCreatorCartesian2D(
     // upstream: new Rect({ shape: extend({}, layout), z2: 1 })  (RectShape is a value type → copy is implicit)
     let rect = Rect(["shape": layout as PathShape, "z2": Double(1)])
     // upstream: (rect as any).__dataIndex = newIndex;
-    // PORT-NOTE (deferred): dynamic `__dataIndex` prop (used by large-mode hit-testing) has no Swift slot;
+    // TODO: dynamic `__dataIndex` prop (used by large-mode hit-testing) has no Swift slot;
     //   only needed by the deferred large-draw path.
     _ = newIndex
 
@@ -883,7 +883,7 @@ func elementCreatorCartesian2D(
     }
     return rect
 }
-// PORT-NOTE: `elementCreator.polar` (Sector / Sausage) is ported below as `elementCreatorPolar` (the polar block at the end of this file); only its sector text position (label/sectorLabel) is deferred.
+// `elementCreator.polar` (Sector / Sausage) is ported below as `elementCreatorPolar` (the polar block at the end of this file); only its sector text position (label/sectorLabel) is deferred.
 
 func shouldRealtimeSort(
     _ seriesModel: BarSeriesModel,
@@ -1008,12 +1008,12 @@ func getLayoutCartesian2D(_ data: SeriesData, _ dataIndex: Int, _ itemModel: Mod
     out.height = layout.height - signY * fixedLineWidth
     return out
 }
-// PORT-NOTE: `getLayout.polar` lives in the polar block at the bottom of this file (`getLayoutPolar`).
+// `getLayout.polar` lives in the polar block at the bottom of this file (`getLayoutPolar`).
 
 // upstream: function isZeroOnPolar(layout: SectorLayout) {
 //     return layout.startAngle != null && layout.endAngle != null && layout.startAngle === layout.endAngle;
 //   }
-// PORT-NOTE: `SectorShape.startAngle` / `.endAngle` are non-Optional `Double`s, so the two `!= null`
+// `SectorShape.startAngle` / `.endAngle` are non-Optional `Double`s, so the two `!= null`
 //   guards are structurally satisfied (a missing layout is already rejected by `getLayoutPolar`).
 func isZeroOnPolar(_ layout: SectorShape) -> Bool {
     return layout.startAngle == layout.endAngle
@@ -1090,7 +1090,7 @@ func updateStyle(
     if !isPolar {
         // upstream: const borderRadius = itemModel.get(['itemStyle', 'borderRadius']) as number | number[] || 0;
         //   (el as Rect).setShape('r', borderRadius);
-        // PORT-NOTE: the per-key `setShape('r', …)` is a no-op in ZRenderKit (RectShape.animationSet only
+        // the per-key `setShape('r', …)` is a no-op in ZRenderKit (RectShape.animationSet only
         //   tweens x/y/width/height; `r` is a `RectRadius?` enum with no keyed setter — fixing that seam
         //   belongs in ZRenderKit). Here we faithfully thread the corner radius by a whole-shape
         //   read-modify-write, which SURVIVES the subsequent shape animation: initProps/updateProps pass
@@ -1108,7 +1108,7 @@ func updateStyle(
     //     extend(sectorShape, cornerRadius);
     //     (el as Sector).setShape(sectorShape);
     //   }
-    // PORT-NOTE: same whole-shape read-modify-write idiom as the cartesian `r` branch above —
+    // same whole-shape read-modify-write idiom as the cartesian `r` branch above —
     //   `SectorShape.cornerRadius` has no keyed setter and is NOT part of `sectorShapeAnimShape`, so the
     //   value survives the subsequent init/updateProps shape animation. `extend(shape, cornerRadius)` is
     //   the `{cornerRadius, innerCornerRadius}` merge; the Swift helper returns the `cornerRadius`
@@ -1123,7 +1123,7 @@ func updateStyle(
     }
 
     // upstream: el.useStyle(style)
-    // PORT-NOTE: the item visual 'style' is a `[String: Any]` bag (visual/style.swift); ZRenderKit
+    // the item visual 'style' is a `[String: Any]` bag (visual/style.swift); ZRenderKit
     //   `useStyle` takes a typed `PathStyleProps`. `barStyleFromDict` bridges the common paint keys
     //   (this is what colors the bar), gradients/patterns, lineDash and decal.
     el.useStyle(barStyleFromDict(style))
@@ -1309,7 +1309,7 @@ func createBackgroundShape(
     out.width = isHorizontalOrRadial ? rectShape.width : coordLayout.width
     out.height = isHorizontalOrRadial ? coordLayout.height : rectShape.height
     return out
-    // PORT-NOTE (deferred): the `else` (polar Sector) background branch.
+    // TODO: the `else` (polar Sector) background branch.
 }
 
 func createBackgroundEl(
@@ -1343,7 +1343,7 @@ func getLabelPositionForVertical(_ layout: RectLayout, _ coordSys: CoordSysOfBar
     return layout.width >= 0 ? "right" : "left"
 }
 
-// PORT-NOTE: `util/graphic`-level `useStyle(dict)` bridge. The item visual 'style' and the background
+// `util/graphic`-level `useStyle(dict)` bridge. The item visual 'style' and the background
 //   `getItemStyle()` are `[String: Any]` bags; ZRenderKit `Path.useStyle` takes a typed
 //   `PathStyleProps`. This maps the common paint keys (and decal) so bars/backgrounds are actually
 //   colored. Gradient/pattern fills and lineDash are not bridged yet.
@@ -1527,7 +1527,7 @@ private func styleNum(_ v: Any?) -> Double? {
 //     behind upstream's `!seriesModel.get('roundCap')` guard.
 //   * `isZeroOnPolar` — the zero-value no-paint fix-up, applied at the end of `updateStyle`.
 //
-// PORT-NOTE (deferred):
+// TODO:
 //   * sector text rotation / position: `createSectorCalculateTextPosition` +
 //     `createPolarPositionMapping` (label/sectorLabel) are not ported.
 //   * `showBackground` on the polar path.
@@ -1547,7 +1547,7 @@ func sectorShapeAnimShape(_ s: SectorShape) -> [String: Any] {
     ["cx": s.cx, "cy": s.cy, "r0": s.r0, "r": s.r, "startAngle": s.startAngle, "endAngle": s.endAngle]
 }
 
-// PORT-NOTE: local port helper (NOT in upstream). Upstream passes the WHOLE `layout` object to
+// local port helper (NOT in upstream). Upstream passes the WHOLE `layout` object to
 //   `initProps`/`updateProps` (`{shape: layout}`), and zrender's `animateTo` steps non-numeric props
 //   straight to their final value — so `clockwise` retargets along with the angles. `sectorShapeAnimShape`
 //   can only carry the tweenable `Double` fields (`animationSet` is keyed on numbers), so the Bool is
@@ -1565,7 +1565,7 @@ func setPolarClockwise(_ el: BarPossiblePath, _ layout: SectorShape) {
     }
 }
 
-// PORT-NOTE: local port helper (NOT in upstream) — bridges a polar bar's `SectorShape` layout onto the
+// local port helper (NOT in upstream) — bridges a polar bar's `SectorShape` layout onto the
 //   `SausageShape` the round-cap path consumes (upstream passes the SAME untyped `layout` object to
 //   either shape class — `new ShapeClass({shape:
 //   layout})` — which is untyped in JS; the Swift shapes are distinct structs, so the shared fields
@@ -1702,7 +1702,7 @@ func elementCreatorPolar(
         : Sector(["shape": layout as PathShape, "z2": Double(1)])
     sector.name = "item"
     installPolarBarTextPosition(sector, isRadial, isRoundCap)
-    // PORT-NOTE: upstream also runs `(isUpdate ? updateProps : initProps)(sector, {shape: animateTarget},
+    // upstream also runs `(isUpdate ? updateProps : initProps)(sector, {shape: animateTarget},
     //   animationModel)` here; the port performs the equivalent whole-shape init/updateProps at the two
     //   call sites in `_renderPolarBars`, so `newIndex`/`isUpdate` are unused here. `data`/`axisModel`
     //   are likewise unused by upstream's polar creator (only cartesian2d reads them); all four are kept
@@ -1712,7 +1712,7 @@ func elementCreatorPolar(
     // upstream:
     //   const positionMap = createPolarPositionMapping(isRadial);
     //   sector.calculateTextPosition = createSectorCalculateTextPosition(positionMap, {isRoundCap: ShapeClass === Sausage});
-    // PORT-NOTE (deferred): `label/sectorLabel` (createSectorCalculateTextPosition /
+    // TODO: `label/sectorLabel` (createSectorCalculateTextPosition /
     //   createPolarPositionMapping) is not ported — see the polar block header.
 
     // Animation: collapse the bar at its baseline so the entrance grows it open — radial bars grow
@@ -1756,7 +1756,7 @@ extension BarView {
     // data store so hover/highlight/remove animations reach it end-to-end.
     //   `roundCap` is honoured for tangential bars via the ported `SausagePath` (upstream
     //     `elementCreator.polar`'s `ShapeClass`), including the sector<->sausage recreate on change.
-    //   PORT-NOTE (deferred, matching the rest of the polar block): showBackground (polar Sector
+    //   note (deferred, matching the rest of the polar block): showBackground (polar Sector
     //     background) and the sector label rotation subsystem (setSectorTextRotation /
     //     createSectorCalculateTextPosition) are deferred.
     func _renderPolarBars(_ seriesModel: BarSeriesModel, _ polar: Polar, _ group: Group) {
@@ -1805,7 +1805,7 @@ extension BarView {
                 //   || el.type === 'sausage' && !roundCap);
                 // roundCap changed: there is no way to animate from a `sector` to a `sausage` shape,
                 //   so remove the old one and create a new shape.
-                // PORT-NOTE: upstream has no `isRadial` guard here, so a RADIAL bar with `roundCap: true`
+                // upstream has no `isRadial` guard here, so a RADIAL bar with `roundCap: true`
                 //   (which never becomes a Sausage — the creator uses `(!isRadial && roundCap)`) matches
                 //   `sector && roundCap` and is recreated on every update instead of tweened. Upstream
                 //   quirk (BarView.ts:358), reproduced verbatim.

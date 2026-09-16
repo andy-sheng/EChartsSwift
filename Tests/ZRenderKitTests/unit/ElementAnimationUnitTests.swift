@@ -16,7 +16,7 @@ import XCTest
 // base `Element` exposes its primary/Transformable props (x/y/rotation/scale/…) via
 // `animationGet`/`animationSet`; the `shape` and `style` SUB-BAGS are value-type structs on
 // Path/Displayable and are now ALSO exposed through `AnimationTarget` (Displayable/Path override
-// `animationGet`/`animationSet` — see the Element.swift `_getKnownKV` PORT-NOTE and Path.swift /
+// `animationGet`/`animationSet` — see the Element.swift `_getKnownKV` note and Path.swift /
 // Displayable.swift). So `animateTo({shape:{…}})` / `animateTo({style:{…}})` reads an initial
 // sub-value and writes the interpolated/final sub-value. Assertions over primary props (x, y), the
 // shape/style sub-bags, and the animator count / callback surface all run; the one remaining skip

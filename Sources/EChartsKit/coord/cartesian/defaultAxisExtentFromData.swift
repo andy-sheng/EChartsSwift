@@ -1,6 +1,6 @@
 // Ported from echarts/src/coord/cartesian/defaultAxisExtentFromData.ts — keep in sync with upstream
 //
-// PORT-NOTE: This upstream file is a fully commented-out placeholder (marked @obsolete and
+// This upstream file is a fully commented-out placeholder (marked @obsolete and
 //   "not used anywhere currently"). It registers a processor via `echarts.registerProcessor`,
 //   which is chart-orchestrator machinery landing in Phase 6b. Ported here as an empty
 //   namespace to preserve the module structure for mechanical re-sync. When upstream revives

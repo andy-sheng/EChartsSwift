@@ -121,7 +121,7 @@ public func adjustEdge(_ graph: Graph, _ scale: Double) {
         let fromSymbol = edge.getVisual("fromSymbol") as? String
         let toSymbol = edge.getVisual("toSymbol") as? String
 
-        // PORT-NOTE: upstream caches the pristine points on `linePoints.__original` (an attached property
+        // upstream caches the pristine points on `linePoints.__original` (an attached property
         // on the JS layout array) so repeated calls don't re-shrink. We rebuild the edge layout from
         // scratch each pass (CONVENTIONS §5 static render), so `linePoints` is already pristine here;
         // originalPoints is taken directly from it (equivalent to first-run behavior).
@@ -190,7 +190,7 @@ public func adjustEdge(_ graph: Graph, _ scale: Double) {
             linePoints[1] = pts2[1]
         }
 
-        // PORT-NOTE: upstream mutates `linePoints` in place (the JS array is the same object stored in
+        // upstream mutates `linePoints` in place (the JS array is the same object stored in
         // the layout); Swift [Double] arrays are value types (CONVENTIONS §3/§4), so we write the
         // adjusted points back to the store here to make the mutation visible.
         _ = idx

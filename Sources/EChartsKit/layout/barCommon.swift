@@ -24,7 +24,7 @@ import ZRenderKit
 // upstream imports:
 //   import { assert } from 'zrender/src/core/util';                          -> `util.assert` (ZRenderKit Core/util.swift)
 //   import { createMetricsNonOrdinalLinearPositiveMinGap } from '../chart/helper/axisSnippets';
-//       -> chart/helper/axisSnippets.ts NOT yet ported (PREREQ). PORT-NOTE (deferred) stub below mirrors
+//       -> chart/helper/axisSnippets.ts NOT yet ported (PREREQ). TODO: stub below mirrors
 //          its impl; remove it (and use the real symbol) once axisSnippets.swift lands.
 //   import type Axis from '../coord/Axis';                                   -> Axis (coord/Axis.swift)
 //   import { AxisStatKey, requireAxisStatistics } from '../coord/axisStatistics';
@@ -34,7 +34,7 @@ import ZRenderKit
 //   import { isNullableNumberFinite } from '../util/number';                 -> `number.isNullableNumberFinite` (util/number.swift)
 
 
-// PORT-NOTE: upstream `BaseBarSeriesSubType = typeof SERIES_TYPE_BAR | typeof SERIES_TYPE_PICTORIAL_BAR`
+// upstream `BaseBarSeriesSubType = typeof SERIES_TYPE_BAR | typeof SERIES_TYPE_PICTORIAL_BAR`
 //   (a union of string literals). The literal-union brand is dropped in Swift (aliased to String),
 //   matching `ComponentSubType = String` used by `AxisStatKeyedClient.seriesType`.
 public typealias BaseBarSeriesSubType = String
@@ -43,7 +43,7 @@ public let SERIES_TYPE_BAR = "bar"
 public let SERIES_TYPE_PICTORIAL_BAR = "pictorialBar"
 
 
-// PORT-NOTE: upstream `coordSysType: 'cartesian2d' | 'polar'` (string-literal union) modeled as String.
+// upstream `coordSysType: 'cartesian2d' | 'polar'` (string-literal union) modeled as String.
 public func requireAxisStatisticsForBaseBar(
     _ registers: EChartsExtensionInstallRegisters,
     _ axisStatKey: AxisStatKey,
@@ -78,7 +78,7 @@ public func getStartValue(_ baseAxis: Axis) -> Double {
 
 
 // ============================================================================
-// PORT-NOTE (deferred): requires `createMetricsNonOrdinalLinearPositiveMinGap` from
+// TODO: requires `createMetricsNonOrdinalLinearPositiveMinGap` from
 //   `chart/helper/axisSnippets.ts` (PREREQ, not yet ported). Mirrors the upstream one-liner so this
 //   file compiles; remove and import the real symbol from `chart/helper/axisSnippets.swift` when it lands.
 //

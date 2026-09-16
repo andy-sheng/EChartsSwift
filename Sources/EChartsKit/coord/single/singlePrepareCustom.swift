@@ -27,7 +27,7 @@ import ZRenderKit
 // import Single from './Single';                                        -> Single (coord/single/Single.swift; coord-sys master, sibling this phase)
 // import { bind } from 'zrender/src/core/util';                         -> util.bind — replaced by an explicit coordSys param (see below)
 //
-// PORT-NOTE: `Single` (coord/single/Single.swift) is ported alongside this file in the same phase. It
+// `Single` (coord/single/Single.swift) is ported alongside this file in the same phase. It
 //   exposes: getAxis() (-> SingleAxis, an Axis with `type` / `dataToCoord`), getRect() (-> RectLike),
 //   dataToPoint(_ , _). Re-narrow if the sibling surface differs.
 
@@ -55,7 +55,7 @@ private func dataToCoordSize(_ coordSys: Single, _ dataSize: Any, _ dataItem: An
 // upstream: export default function singlePrepareCustom(coordSys: Single) { ... }
 public func singlePrepareCustom(_ coordSys: Single) -> [String: Any] {
     // const rect = coordSys.getRect();
-    //   PORT-NOTE: `coordSys` is the concrete `Single`, whose `getRect() -> LayoutRect` is non-optional
+    //   `coordSys` is the concrete `Single`, whose `getRect() -> LayoutRect` is non-optional
     //   (upstream returns a non-null BoundingRect; the rect is set by resize()). Call it WITHOUT `!`: a
     //   trailing `!` would force overload resolution onto the nil-returning `CoordinateSystem.getRect()
     //   -> RectLike?` protocol default (the concrete method does not witness the optional requirement),

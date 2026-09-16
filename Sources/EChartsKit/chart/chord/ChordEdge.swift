@@ -27,13 +27,13 @@ import ZRenderKit
 //   import { extend, isString } from 'zrender/src/core/util';      -> shape-from-layout build + `isString` bridge (see below).
 //   import * as graphic from '../../util/graphic';                 -> ZRenderKit `Path` / `LinearGradient`;
 //       `graphic.updateProps` is ported (animation/basicTransition.swift); wiring the enter/update
-//       ribbon transition into this static-render view is DEFERRED by design (see PORT-NOTE in updateData).
+//       ribbon transition into this static-render view is DEFERRED by design (see note in updateData).
 //   import SeriesData from '../../data/SeriesData';                -> `SeriesData`.
 //   import { GraphEdge } from '../../data/Graph';                  -> data/Graph.swift `GraphEdge`.
 //   import type Model from '../../model/Model';                    -> `Model`.
 //   import { getSectorCornerRadius } from '../helper/sectorHelper';-> `getSectorCornerRadius`
 //       (only consumed by the `extend(cornerRadius, layout)` merge — cornerRadius is not used by buildPath).
-//   import { saveOldStyle } from '../../animation/basicTransition'; -> PORT-NOTE: animation/basicTransition.swift
+//   import { saveOldStyle } from '../../animation/basicTransition'; -> note: animation/basicTransition.swift
 //       IS ported (saveOldStyle/updateProps available), but this static-render view applies the target
 //       shape directly, so the enter/update transition is intentionally not wired (see updateData).
 //   import ChordSeriesModel, { ChordEdgeItemOption, ChordEdgeLineStyleOption, ChordNodeItemOption } from './ChordSeries';
@@ -73,7 +73,7 @@ public struct ChordPathShape: PathShape {
 
     // Keyed access for animateTo({shape: {...}}). Exposes the tweenable fields (the two endpoint pairs,
     //   the four arc angles, the center, and the radius). `clockwise` is a mode flag, not tweened.
-    // PORT-NOTE (deferred): upstream animates the ribbon via these fields; the enter/update transition
+    // TODO: upstream animates the ribbon via these fields; the enter/update transition
     //   is intentionally not wired in this static-render view, but the keyed seam is provided for parity
     //   with sibling shapes (and for when the transition is wired via updateProps).
     public func animationGet(_ key: String) -> Any? {
@@ -112,7 +112,7 @@ public struct ChordPathShape: PathShape {
 }
 
 // upstream: interface ChordEdgePathProps extends PathProps { shape?: Partial<ChordPathShape> }
-// PORT-NOTE: typed-interface fidelity dropped — PathProps is the dynamic `[String: Any]` prop bag; the
+// typed-interface fidelity dropped — PathProps is the dynamic `[String: Any]` prop bag; the
 //   `shape?` field is set via the `"shape"` key (see Path._init).
 public typealias ChordEdgePathProps = PathProps
 
@@ -199,7 +199,7 @@ public final class ChordEdge: Path {
         // const seriesModel = nodeData.hostModel as ChordSeriesModel;
         let seriesModel = nodeData.hostModel as! ChordSeriesModel
         // const edge = edgeData.graph.getEdgeByIndex(edgeIdx);
-        //   PORT-NOTE: `graph` is `Graph?` and `getEdgeByIndex` is `GraphEdge?` where upstream assumes
+        //   `graph` is `Graph?` and `getEdgeByIndex` is `GraphEdge?` where upstream assumes
         //   non-null; the port guards defensively and returns early (skips this edge) rather than crash.
         guard let edge = edgeData.graph?.getEdgeByIndex(edgeIdx) else { return }
         // const layout = edge.getLayout();

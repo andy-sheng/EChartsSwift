@@ -44,7 +44,7 @@
 // NATIVE PANE IS PARTIAL — one real framework gap, not a port shortcut, and the SAME one
 // official-matrix-sparkline hits: placing a `grid` (or a `title`) INSIDE a matrix cell needs the BOX
 // COORDINATE SYSTEM branch of `layout.createBoxLayoutReference` (`model.boxCoordinateSystem` ->
-// `matrix.dataToLayout(coord)`), still deferred in EChartsKit (PORT-NOTE at
+// `matrix.dataToLayout(coord)`), still deferred in EChartsKit (note at
 // Sources/EChartsKit/util/layout.swift:197 — it always returns the viewport rect). Until that lands,
 // every section's grid resolves to the FULL VIEWPORT and the four charts stack on top of each other
 // instead of tiling the matrix. The option is complete and correct; this is exactly the kind of gap

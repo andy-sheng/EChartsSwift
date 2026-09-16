@@ -34,8 +34,9 @@ rules for this repository and takes precedence over this summary.
   to make it more idiomatic.
 - Every translated Swift file starts with
   `// Ported from <upstream path> — keep in sync with upstream`.
-- Mark omitted, uncertain, stubbed, or deferred behavior with a precise `// PORT-TODO:`.
-  Never silently discard upstream behavior.
+- Mark omitted, uncertain, stubbed, or deferred behavior with a precise `// TODO:`.
+  Never silently discard upstream behavior. Keep implementation notes as ordinary comments;
+  remove resolved TODOs and obsolete migration-stage bookkeeping.
 - Search before adding shared symbols. Reuse an existing port rather than introducing a
   duplicate helper, namespace, or type.
 - Keep renderer-specific Core Graphics, Core Animation, and Metal code outside
@@ -125,6 +126,6 @@ workflows.
 - The change matches the pinned upstream behavior or clearly documents an intentional
   native-only deviation.
 - Ported files retain provenance headers and structural fidelity.
-- New gaps are marked with `PORT-TODO`; resolved gaps remove obsolete markers.
+- New gaps are marked with `TODO`; resolved gaps remove obsolete markers.
 - No read-only checkout or generated build artifact is included.
 - Focused verification and the full relevant test suite pass.

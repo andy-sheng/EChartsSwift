@@ -12,7 +12,7 @@ import Foundation
 
 // upstream: import Eventful from '../core/Eventful';                        → Core/Eventful.swift
 // upstream: import requestAnimationFrame from './requestAnimationFrame';
-//   PORT-NOTE: animation/requestAnimationFrame.ts not ported — the per-frame tick is supplied
+//   animation/requestAnimationFrame.ts not ported — the per-frame tick is supplied
 //   by the host. On iOS NativePainter drives a CADisplayLink that calls `update()` each frame
 //   (Morph+Wire phase) instead of the browser's requestAnimationFrame recursion.
 // upstream: import Animator from './Animator';                              → Animation/Animator.swift
@@ -61,7 +61,7 @@ public struct AnimationOption {
 // NOTE (CONVENTIONS §2): `Eventful` is a `final class` and is applied as a MIXIN elsewhere
 // (see Element), so it cannot be subclassed. Animation composes an Eventful and forwards the
 // event surface (`on`/`off`/`trigger`) — the same pattern Element uses for its Eventful mixin.
-// PORT-NOTE: complete the Eventful surface forwarding if more event methods are needed.
+// complete the Eventful surface forwarding if more event methods are needed.
 public final class Animation {
 
     // upstream: mixin via `extends Eventful` — composed + forwarded here.
@@ -197,7 +197,7 @@ public final class Animation {
 
         self._running = true
 
-        // PORT-NOTE: requestAnimationFrame seam — upstream recursively schedules `step` via
+        // requestAnimationFrame seam — upstream recursively schedules `step` via
         //   requestAnimationFrame; on iOS the host (NativePainter's CADisplayLink) drives the
         //   loop by calling `update()` each frame while `_running` && !`_paused`. The recursive
         //   `step` below is retained for provenance; the actual frame tick is host-supplied.
@@ -292,7 +292,7 @@ public final class Animation {
         )
 
         // upstream: this.addAnimator(animator)
-        // PORT-NOTE: `addAnimator` is typed `Animator<Any>` (matching the Element drive); inline
+        // `addAnimator` is typed `Animator<Any>` (matching the Element drive); inline
         //   the body here so the generic `Animator<T>` can be registered without an unsafe cast.
         animator.animation = self
         let clip = animator.getClip()
@@ -303,7 +303,7 @@ public final class Animation {
         return animator
     }
 
-    // ---- Eventful mixin forwarding (PORT-NOTE: composed `_eventful`, see class note) ----
+    // ---- Eventful mixin forwarding (note: composed `_eventful`, see class note) ----
 
     @discardableResult
     public func on(_ event: String, _ handler: @escaping EventCallback, _ context: AnyObject? = nil) -> Animation {
@@ -326,7 +326,7 @@ public final class Animation {
         case 1:
             self._eventful.trigger(eventType, args[0])
         default:
-            // PORT-NOTE: Swift cannot splat `args` into the variadic forward; Animation only
+            // Swift cannot splat `args` into the variadic forward; Animation only
             //   triggers 'frame' with a single delta arg, so >1 is unused here.
             self._eventful.trigger(eventType, args[0])
         }

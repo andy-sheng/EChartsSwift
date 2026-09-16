@@ -12,7 +12,7 @@
 //     native pane renders to an image — so the cascade itself is not visible in either pane. Both panes
 //     show the settled final state; the delays are still carried in the web pane's JS for fidelity.
 //   - option (native): `animationDelay` (both series) and `animationDelayUpdate` are JS closures, so the
-//     Swift option omits them (see PORT-NOTEs). Everything else — including `animationEasing` — matches.
+//     Swift option omits them (see notes). Everything else — including `animationEasing` — matches.
 //     The 100-point series data is precomputed in `barAnimationDelay*` below with the same formulas.
 import Foundation
 import EChartsKit

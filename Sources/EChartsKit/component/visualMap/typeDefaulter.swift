@@ -24,14 +24,14 @@ import ZRenderKit
 // import Component from '../../model/Component';
 //   -> `ComponentModel` (model/Component.swift) — carries `registerSubTypeDefaulter`.
 // import {VisualMapOption} from './VisualMapModel';
-//   -> PORT-NOTE: component/visualMap/VisualMapModel.swift is ported. This defaulter still reads the
+//   -> note: component/visualMap/VisualMapModel.swift is ported. This defaulter still reads the
 //      option is read out of the dynamic option bag (`ComponentOption.rawOption`) instead of the typed
 //      `VisualMapOption`.
 // import {PiecewiseVisualMapOption} from './PiecewiseModel';
-//   -> PORT-NOTE: component/visualMap/PiecewiseModel.swift is ported; `pieces` / `splitNumber` are read
+//   -> note: component/visualMap/PiecewiseModel.swift is ported; `pieces` / `splitNumber` are read
 //      from the same dynamic bag.
 // import {ContinuousVisualMapOption} from './ContinuousModel';
-//   -> PORT-NOTE: component/visualMap/ContinuousModel.swift is ported; `calculable` read from the bag.
+//   -> note: component/visualMap/ContinuousModel.swift is ported; `calculable` read from the bag.
 
 // upstream is a module-load side effect:
 //

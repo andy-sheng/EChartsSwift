@@ -19,7 +19,7 @@
 */
 
 // upstream:
-//   import Eventful, { EventCallback } from 'zrender/src/core/Eventful';   → see PORT-NOTE below
+//   import Eventful, { EventCallback } from 'zrender/src/core/Eventful';   → see note below
 //   import SeriesModel from '../model/Series';                             → model/Series.swift
 //   import GlobalModel from '../model/Global';                             → model/Global.swift
 //   import { EChartsType } from './echarts';                               → core/ECharts.swift (protocol)
@@ -34,7 +34,7 @@ import Foundation
 //     dimension: DimensionLoose;
 // }
 public struct UpdateLifecycleTransitionSeriesFinder {
-    // PORT-NOTE: `ModelFinderIndexQuery` = `number | number[] | 'all' | 'none'` and
+    // `ModelFinderIndexQuery` = `number | number[] | 'all' | 'none'` and
     //   `ModelFinderIdQuery` = `OptionId | OptionId[]`. universalTransition's `querySeries` only ever
     //   compares them for equality against `series[i].seriesIndex` / `series[i].id`, so the scalar
     //   forms (`Double` / `String`) are what is modeled here; the array/'all'/'none' forms are not
@@ -58,7 +58,7 @@ public struct UpdateLifecycleTransitionItem {
     // There might be transition mapping dy default. Sometimes we do not need them,
     // which might bring about misleading.
     //
-    // PORT-NOTE: the `T | T[]` union is not expressible; both are stored as `Any?` and fed through
+    // the `T | T[]` union is not expressible; both are stored as `Any?` and fed through
     //   `model.normalizeToArray` at the (single) consuming site, exactly like upstream.
     public var from: Any?   // UpdateLifecycleTransitionSeriesFinder | [UpdateLifecycleTransitionSeriesFinder]
     public var to: Any?     // UpdateLifecycleTransitionSeriesFinder | [UpdateLifecycleTransitionSeriesFinder]
@@ -69,7 +69,7 @@ public struct UpdateLifecycleTransitionItem {
 }
 
 // export type UpdateLifecycleTransitionOpt = UpdateLifecycleTransitionItem | UpdateLifecycleTransitionItem[];
-//   PORT-NOTE: the union is carried as `Any?` on `UpdateLifecycleParams.seriesTransition` (below) and
+//   the union is carried as `Any?` on `UpdateLifecycleParams.seriesTransition` (below) and
 //   normalized with `model.normalizeToArray`, as upstream does.
 public typealias UpdateLifecycleTransitionOpt = Any
 
@@ -104,7 +104,7 @@ public struct UpdateLifecycleParams {
 //     'afterupdate': [GlobalModel, ExtensionAPI]
 // }
 //
-// PORT-NOTE: upstream is `new Eventful<{[key in keyof LifecycleEvents]: EventCallback<LifecycleEvents[key]>}>()`
+// upstream is `new Eventful<{[key in keyof LifecycleEvents]: EventCallback<LifecycleEvents[key]>}>()`
 //   — one Eventful instance whose per-event ARGUMENT TUPLE is statically typed by the mapped type.
 //   ZRenderKit's `Eventful` exists, but its `EventCallback` is variadic/untyped (`(Any?...) -> Bool?`),
 //   so routing these through it would force every listener to hand-cast `args[0] as! GlobalModel`.
@@ -183,7 +183,7 @@ public let lifecycle = Lifecycle()
 //   ): void { (lifecycle as any).on(name, cb); }
 // re-exported by extension.ts onto the `EChartsExtensionInstallRegisters` bag that every
 // `install(registers)` receives. The registrar base class lives in coord/axisStatistics.swift (see its
-// PORT-NOTE); the method is added here, next to the emitter it forwards to, mirroring
+// note); the method is added here, next to the emitter it forwards to, mirroring
 // core/action.swift's `extension EChartsExtensionInstallRegisters` precedent for `registerAction`.
 // ============================================================================
 extension EChartsExtensionInstallRegisters {

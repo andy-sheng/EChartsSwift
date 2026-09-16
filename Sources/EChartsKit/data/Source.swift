@@ -25,12 +25,12 @@
 //   -> `isTypedArray`/`clone`/`isArray`/`isObject`/`isArrayLike`/`assert`/`each`/`map`/
 //      `isNumber`/`isString`/`keys` are ZRenderKit.util.* ; `HashMap`/`createHashMap` are
 //      the EChartsKit local shim (same module — see util/model.swift; ZRenderKit has not
-//      yet ported them, see ZRenderKit/Core/util.swift PORT-NOTE).
+//      yet ported them, see ZRenderKit/Core/util.swift note).
 //      `hasOwn` is not ported; replicated inline (own-key check is trivial on a Swift dict).
 // import { ... SourceFormat, SeriesLayoutBy, DimensionDefinition, ... } from '../util/types';
 //   -> same module (util/types.swift).
 // import { DatasetOption } from '../component/dataset/install';
-//   -> PORT-NOTE: dataset/install is ported (component/dataset/datasetInstall.swift); there is no
+//   -> note: dataset/install is ported (component/dataset/datasetInstall.swift); there is no
 //      typed `DatasetOption` here, so `DatasetOption['source']` is read as `Any?`.
 // import { getDataItemValue } from '../util/model';        -> model.getDataItemValue (same module).
 // import { BE_ORDINAL, guessOrdinal } from './helper/sourceHelper';
@@ -167,7 +167,7 @@ public final class SourceImpl {
         // This is the raw user defined `encode` in `series`.
         // If user not defined, DO NOT make a empty object or hashMap here.
         // An empty object or hashMap will prevent from auto generating encode.
-        // PORT-NOTE: `encodeDefine` is declared in the upstream `fields` type but never used
+        // `encodeDefine` is declared in the upstream `fields` type but never used
         //   in the constructor body; kept for faithfulness.
         encodeDefine: HashMap<OptionEncodeValue>? = nil
     ) {
@@ -359,7 +359,7 @@ private func determineSourceDimensions(
     }
 
     if sourceFormat == SOURCE_FORMAT_ARRAY_ROWS {
-        // PORT-NOTE: dynamic cast of `OptionSourceData` (Any) to the typed array shape mirrors
+        // dynamic cast of `OptionSourceData` (Any) to the typed array shape mirrors
         //   upstream's structural typing; the `?? []` fallback preserves the null-data path above.
         let dataArrayRows = (data as? OptionSourceDataArrayRows) ?? []
         // Rule: Most of the first line are string: it is header.
@@ -462,7 +462,7 @@ private func objectRowsCollectDimensions(_ data: OptionSourceDataObjectRows) -> 
     var firstIndex = 0
     var obj: [String: OptionDataValue]? = nil
     // upstream: while (firstIndex < data.length && !(obj = data[firstIndex++])) {} // jshint ignore: line
-    // PORT-NOTE: an empty object `{}` is truthy in JS; the typed element here cannot be
+    // an empty object `{}` is truthy in JS; the typed element here cannot be
     //   null/undefined, so the first element always satisfies the loop guard.
     while firstIndex < data.count {
         obj = data[firstIndex]
@@ -613,7 +613,7 @@ private final class CountBox {   // upstream: { count: number }
 }
 
 // JS `'' + x` string coercion. Only called when the value is non-null.
-private func plusEmptyString(_ v: Any?) -> String {   // PORT-NOTE: JS string coercion shim
+private func plusEmptyString(_ v: Any?) -> String {   // JS string coercion shim
     guard let v = v else { return "undefined" }
     if let s = v as? String { return s }
     if let d = v as? Double { return jsNumberStr(d) }
@@ -623,7 +623,7 @@ private func plusEmptyString(_ v: Any?) -> String {   // PORT-NOTE: JS string co
 }
 
 // JS `Number.prototype.toString` for a Double (integral values print without a fraction).
-private func jsNumberStr(_ x: Double) -> String {   // PORT-NOTE: JS number-to-string shim
+private func jsNumberStr(_ x: Double) -> String {   // JS number-to-string shim
     if x == x.rounded() && Swift.abs(x) < 1e15 {
         return String(Int(x))
     }
@@ -631,7 +631,7 @@ private func jsNumberStr(_ x: Double) -> String {   // PORT-NOTE: JS number-to-s
 }
 
 // JS truthiness for an arbitrary value (used for `sourceHeader ? 1 : 0`).
-private func jsTruthy(_ v: Any?) -> Bool {   // PORT-NOTE: JS truthiness shim
+private func jsTruthy(_ v: Any?) -> Bool {   // JS truthiness shim
     guard let v = v else { return false }
     if let b = v as? Bool { return b }
     if let d = v as? Double { return d != 0 && !d.isNaN }

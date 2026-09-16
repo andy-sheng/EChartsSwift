@@ -29,7 +29,7 @@ import ZRenderKit
 //   import layoutPoints from '../../layout/points';                           -> `pointsLayout` (layout/points.swift, ported).
 
 // export function install(registers: EChartsExtensionInstallRegisters) { ... }
-// PORT-NOTE: registration boilerplate belongs to the Orchestrate/Integrate driver
+// registration boilerplate belongs to the Orchestrate/Integrate driver
 //   (core/ECharts.swift), not this render-layer file (same convention as chart/boxplot/boxplotInstall.swift).
 //   All three registrations are performed there — see the `-- chart/effectScatter/install.ts --` block in
 //   `installOnce()`, the `_chartViewFactories` stored dictionary literal, and the LAYOUT section of
@@ -59,7 +59,7 @@ import ZRenderKit
 //                          `data.getItemLayout(dataIndex)` — without this stage a brush over an
 //                          effectScatter selects nothing. `EffectScatterView.updateTransform` re-runs the
 //                          same stage on roam (as upstream does), so the brush region stays in sync.
-//                          PORT-NOTE (deviation, identical to ScatterView): EffectScatterView does NOT read
+//                          note (deviation, identical to ScatterView): EffectScatterView does NOT read
 //                          that item layout for drawing; it inlines the equivalent `coordSys.dataToPoint`
 //                          math per datum (`getSymbolPoint`, including the stage's stackResultDimension
 //                          substitution for stacked series) so roam repositioning can run without a full

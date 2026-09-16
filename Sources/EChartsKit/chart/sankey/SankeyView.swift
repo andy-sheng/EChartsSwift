@@ -23,7 +23,7 @@ import ZRenderKit
 
 // upstream imports:
 //   import * as graphic from '../../util/graphic';
-//       -> `Group` / `Rect` / `LinearGradient` (ZRenderKit) + the local no-animation shims. PORT-NOTE:
+//       -> `Group` / `Rect` / `LinearGradient` (ZRenderKit) + the local no-animation shims. note:
 //          `util/graphic.initProps` is ported (animation/basicTransition.swift); the first-render grow-in clip animation (createGridClipShape) is wired (see render).
 //   import { enterEmphasis, leaveEmphasis, toggleHoverEmphasis, setStatesStylesFromModel } from '../../util/states';
 //       -> util/states.swift (enterEmphasis/leaveEmphasis/toggleHoverEmphasis/setStatesStylesFromModel); node/edge
@@ -77,7 +77,7 @@ public struct SankeyPathShape: PathShape {
 
     // Keyed access for animateTo({shape: {...}}). Exposes the animatable numeric fields (the two cubic
     //   endpoints + control points + extent). `orient` is a mode flag, not tweened.
-    // PORT-NOTE: upstream animates the ribbon via these fields; the animation infra is ported but the
+    // upstream animates the ribbon via these fields; the animation infra is ported but the
     //   enter/update transition is not wired here (static render). The keyed seam is provided for parity.
     public func animationGet(_ key: String) -> Any? {
         switch key {
@@ -112,7 +112,7 @@ public struct SankeyPathShape: PathShape {
 }
 
 // upstream: interface SankeyPathProps extends PathProps { shape?: Partial<SankeyPathShape> }
-// PORT-NOTE: typed-interface fidelity dropped — PathProps is the dynamic `[String: Any]` prop bag
+// typed-interface fidelity dropped — PathProps is the dynamic `[String: Any]` prop bag
 //   (== DisplayableProps); the `shape?` field is set via the `"shape"` key (see Path._init).
 public typealias SankeyPathProps = PathProps
 
@@ -163,12 +163,12 @@ public final class SankeyPath: Path {
     }
 
     // upstream: highlight() { enterEmphasis(this); }  /  downplay() { leaveEmphasis(this); }
-    //   PORT-NOTE: util/states.swift (enterEmphasis/leaveEmphasis) is ported; this SankeyPath highlight/downplay pair is not wired here.
+    //   util/states.swift (enterEmphasis/leaveEmphasis) is ported; this SankeyPath highlight/downplay pair is not wired here.
 }
 
 // ================================================================================================
 // upstream: class SankeyView extends ChartView implements RoamHostView
-//   PORT-NOTE: RoamHostView (`__updateOnOwnRoam`) is not a protocol conformance here; the `sankeyRoam` action re-renders via update() (see roamHelperViewGroup.swift).
+//   RoamHostView (`__updateOnOwnRoam`) is not a protocol conformance here; the `sankeyRoam` action re-renders via update() (see roamHelperViewGroup.swift).
 // ================================================================================================
 open class SankeyView: ChartView {
 
@@ -185,7 +185,7 @@ open class SankeyView: ChartView {
     // upstream: private _data: SeriesData;
     private var _data: SeriesData?
 
-    // PORT-NOTE: private _controller: RoamController;  — SankeyView holds no controller; roam is wired externally (EChartsView._setupSankeyRoam).
+    // private _controller: RoamController;  — SankeyView holds no controller; roam is wired externally (EChartsView._setupSankeyRoam).
     // upstream: private _firstRender: boolean;
     private var _firstRender: Bool = true
 
@@ -206,7 +206,7 @@ open class SankeyView: ChartView {
     //     this._firstRender = true;
     // }
     open override func init_(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
-        // PORT-NOTE: no RoamController held here; Sankey roam is wired by EChartsView._setupSankeyRoam.
+        // no RoamController held here; Sankey roam is wired by EChartsView._setupSankeyRoam.
         _ = self.group.add(self._mainGroup)
         self._firstRender = true
     }
@@ -222,7 +222,7 @@ open class SankeyView: ChartView {
         let graph = seriesModel.getGraph()
         let mainGroup = self._mainGroup
         // const layoutInfo = seriesModel.layoutInfo;
-        //   PORT-NOTE: `layoutInfo` is `LayoutRect?` in the sibling port (upstream is non-null, set by
+        //   `layoutInfo` is `LayoutRect?` in the sibling port (upstream is non-null, set by
         //   sankeyLayout); guard and bail if absent (no geometry to draw).
         guard let layoutInfo = seriesModel.layoutInfo else { return }
         // view width / height
@@ -257,12 +257,12 @@ open class SankeyView: ChartView {
         mainGroup.y = baseY
 
         // this._updateViewCoordSys(seriesModel, api);
-        //   PORT-NOTE: the upstream `View` VIEW_COORD_SYS placement (createViewCoordSysSimply +
+        //   the upstream `View` VIEW_COORD_SYS placement (createViewCoordSysSimply +
         //   applyViewCoordSysTransToElement) is not used here. The node/edge layout
         //   positions are already in the series' local pixel space (set by sankeyLayout), and `_mainGroup`
         //   is placed at `layoutInfo.x/y` above; the roam pan/zoom is applied to the group as a TRANSFORM
         //   at the end of render (see viewGroupRoamApplyStateToGroup / roamHelperViewGroup.swift).
-        //   PORT-TODO (blocked, not a stub gap): `applyViewCoordSysTransToElement` IS now ported
+        //   TODO (blocked, not a stub gap): `applyViewCoordSysTransToElement` IS now ported
         //   (coord/View.swift:551), but the upstream two-liner here cannot be called until its INPUT
         //   exists — `seriesModel.coordinateSystem` must be a `View`, produced by
         //   `roamHelper.createViewCoordSysSimply` (NOT ported; roamHelperViewGroup.swift ports only the
@@ -279,7 +279,7 @@ open class SankeyView: ChartView {
         // generate a bezier curve (ribbon) for each edge
         graph.eachEdge({ edge, _ in
             // const ecData = getECData(curve); ecData.dataIndex/seriesIndex/dataType = ...
-            //   PORT-NOTE: getECData (util/innerStore.swift) is ported; ECData tagging is not applied to the ribbon here.
+            //   getECData (util/innerStore.swift) is ported; ECData tagging is not applied to the ribbon here.
             guard let edgeModel = edge.getModel() else { return }
             let lineStyleModel = edgeModel.getModel("lineStyle")
             // const curvature = lineStyleModel.get('curveness');
@@ -661,7 +661,7 @@ open class SankeyView: ChartView {
 
     // upstream: dispose() { this._controller && this._controller.dispose(); }
     open override func dispose(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
-        // PORT-NOTE: no RoamController held here to dispose; Sankey roam is wired by EChartsView._setupSankeyRoam.
+        // no RoamController held here to dispose; Sankey roam is wired by EChartsView._setupSankeyRoam.
     }
 
     // upstream: _updateViewCoordSys(seriesModel, api)  — not used here; coord/View.swift + roam are ported (roam applied as a group transform).

@@ -59,7 +59,7 @@ option = {
                     "data": ["Excellent", "Good", "OK", "Bad"]
                 ] as [String: Any]
             ],
-            // PORT-NOTE: array-wrapped (see the DEVIATION note in the file header); upstream's
+            // array-wrapped (see the DEVIATION note in the file header); upstream's
             //   backwardCompat preprocessor does the same normalization before any parallel code runs.
             "series": [
                 [

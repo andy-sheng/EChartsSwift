@@ -41,7 +41,7 @@ public final class CALayerPainter: Painter {
             self.backgroundColor = nil
         }
         rootLayer.isOpaque = (self.backgroundColor?.alpha ?? 0) >= 1
-        // PORT-TODO: gradient/pattern backgrounds still use ECharts' scene background element.
+        // TODO: gradient/pattern backgrounds still use ECharts' scene background element.
     }
 
     /// The layer that hosts the rendered scene. Add it to a view's layer for on-screen display.
@@ -166,7 +166,7 @@ public final class CALayerPainter: Painter {
         sl.opacity = Float(paint.opacity)
 
         // Shadow (CAShapeLayer applies it in layer space; offset sign matches canvas on iOS y-down
-        // and on the flipped AppKit root layer). PORT-NOTE: exact parity with zrender's CG shadow is a platform-specific approximation.
+        // and on the flipped AppKit root layer). note: exact parity with zrender's CG shadow is a platform-specific approximation.
         if let shadow = makeShadow(style) {
             sl.shadowColor = shadow.color
             sl.shadowOpacity = 1
@@ -477,7 +477,7 @@ extension CALayerPainter: LayerHostedPainter {
             rootLayer.bounds = CGRect(origin: .zero, size: surfaceSize)
             _incrementalLayers.removeAll()   // retained bitmaps are sized to the old surface
         }
-        // PORT-NOTE (platform): `dpr` is immutable on CALayerPainter (set at init); a dpr change needs a fresh
+        // note (platform): `dpr` is immutable on CALayerPainter (set at init); a dpr change needs a fresh
         //   painter / backing store. Honored only for width/height here.
     }
 

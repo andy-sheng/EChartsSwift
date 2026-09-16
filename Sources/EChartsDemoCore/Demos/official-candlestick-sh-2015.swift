@@ -14,7 +14,7 @@
 //    was added, dropped or rounded.
 //  - Upstream quirk, deliberately preserved in BOTH panes: rawData ends with two all-empty rows, so
 //    after `.reverse()` the chart leads with two blank categories whose `+''` OHLC coerces to 0.
-// PORT-NOTE: no key omitted — the option holds no JS closures. calculateMA runs before `option` is
+// no key omitted — the option holds no JS closures. calculateMA runs before `option` is
 // assigned (as real JS in the web pane, as `candlestickSH2015MA` in the Swift pane); `handleIcon` is a
 // plain `path://` string, not a function.
 

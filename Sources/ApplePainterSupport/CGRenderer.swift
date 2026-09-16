@@ -313,7 +313,7 @@ public final class CGRenderer: Renderer {
 
     /// Resolve a `Pattern`'s image (`ImageSource`: a URL / file path / data-URI string, or an
     /// already-decoded native image) to a `CGImage`.
-    /// PORT-NOTE: SVG patterns remain the deferred renderer seam (CONVENTIONS §9).
+    /// SVG patterns remain the deferred renderer seam (CONVENTIONS §9).
     private func resolvePatternImage(_ pattern: Pattern) -> CGImage? {
         switch pattern.image {
         case .url(let s):
@@ -443,7 +443,7 @@ public final class CGRenderer: Renderer {
     /// so callers that want a clip in a specific space must set the CTM first (or pre-transform
     /// the path — see `CALayerPainter`).
     ///
-    /// PORT-NOTE: a `nil` argument cannot un-clip in Core Graphics without a `restoreGState`;
+    /// a `nil` argument cannot un-clip in Core Graphics without a `restoreGState`;
     ///   the painter brackets each element in save/restore, so clip removal is handled there.
     public func setClip(_ path: PathRebuilder?) {
         guard let path = path as? CGPathRebuilder else { return }
@@ -485,7 +485,7 @@ public final class CGRenderer: Renderer {
             ctx.setShadow(offset: .zero, blur: 0, color: nil)
             return
         }
-        // PORT-NOTE: the shadow offset is taken in device space, so under a y-down (flipped)
+        // the shadow offset is taken in device space, so under a y-down (flipped)
         //   CTM a positive canvas `shadowOffsetY` (downward) is negated below to stay downward
         //   on screen. The blur is not CTM-scaled (canvas `shadowBlur` is in device px — an
         //   acceptable match for dpr-scaled rendering; revisit for non-uniform CTM scale).
@@ -644,7 +644,7 @@ private let _cgImageDecodeCache = NSCache<NSString, CGImage>()
 #endif
 
 /// Decode a `string` image source (file path or `data:` URI) to a `CGImage` via ImageIO.
-/// PORT-NOTE (deferred): this is the `string` arm of zrender's `ImageLike | string`; remote URL loading
+/// TODO: this is the `string` arm of zrender's `ImageLike | string`; remote URL loading
 /// (`platform.loadImage`) and the cached `ImageLike` handle are the deferred renderer seam.
 /// (public: shared with RasterizerPainter's image/pattern resolution.)
 public func loadCGImage(_ src: String) -> CGImage? {
@@ -684,7 +684,7 @@ public func loadCGImage(_ src: String) -> CGImage? {
     _cgImageDecodeCache.setObject(img, forKey: cacheKey)
     return img
     #else
-    // PORT-NOTE (platform): ImageIO unavailable — pattern/image string decode unsupported on this platform.
+    // note (platform): ImageIO unavailable — pattern/image string decode unsupported on this platform.
     return nil
     #endif
 }
@@ -694,7 +694,7 @@ public func loadCGImage(_ src: String) -> CGImage? {
 public extension TextStyle {
 
     /// Flatten a `TSpanStyleProps` into a Core Text paint descriptor. Resolves fill / stroke
-    /// (solid colors only — gradient/pattern text is a deferred PORT-NOTE) and the font fields.
+    /// (solid colors only — gradient/pattern text is a deferred note) and the font fields.
     static func from(_ s: TSpanStyleProps) -> TextStyle {
         var out = TextStyle()
         out.font = s.font
@@ -707,7 +707,7 @@ public extension TextStyle {
         let strokeOpacity = s.strokeOpacity ?? 1
         out.fill = resolveColor(s.fill, multiplyAlpha: fillOpacity)
         out.stroke = resolveColor(s.stroke, multiplyAlpha: strokeOpacity)
-        // PORT-NOTE (deferred): gradient/pattern text fill (s.fill == .linearGradient/.radialGradient/.pattern)
+        // TODO: gradient/pattern text fill (s.fill == .linearGradient/.radialGradient/.pattern)
         //   is not painted — resolveColor returns nil for those arms (canvas supports it, deferred).
         out.lineWidth = s.lineWidth ?? 1
         out.lineDashOffset = s.lineDashOffset ?? 0
@@ -806,7 +806,7 @@ func makeBaseFont(_ family: String, size: CGFloat) -> CTFont {
 }
 
 /// Parse a CSS font shorthand ("[style] [variant] [weight] <size>px [/lh] <family>") into the
-/// subset Core Text needs. PORT-NOTE: a narrow parser — it scans for the `…px` size token, bold/
+/// subset Core Text needs. note: a narrow parser — it scans for the `…px` size token, bold/
 /// italic keywords before it, and treats the remainder as the family (no line-height, %, em, etc.).
 func parseCSSFont(_ font: String) -> (size: Double, family: String?, bold: Bool, italic: Bool) {
     let tokens = font.split(separator: " ").map(String.init)

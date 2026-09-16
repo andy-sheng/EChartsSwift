@@ -33,7 +33,7 @@ import ZRenderKit
 //   import { GeoJSON, GeoJSONCompressed, GeoJSONSourceInput, GeoResource, GeoSpecialAreas, NameMap }
 //       from './geoTypes';                                        -> geoTypes.swift sibling.
 
-// PORT-NOTE: `geoTypes.swift` has landed and now OWNS the support types once staged here — `GeoResource`,
+// `geoTypes.swift` has landed and now OWNS the support types once staged here — `GeoResource`,
 //   `NameMap`, `GeoSpecialAreas`, and the GeoJSON source unions (shown commented below for reference).
 //   `GeoResourceLoadResult` (the object literal returned by `GeoResource['load']`) remains declared in
 //   this file, below. See integrationNotes.
@@ -187,7 +187,7 @@ public final class GeoJSONResource: GeoResource {
         // https://jsperf.com/try-catch-performance-overhead
         // try { rawRegions = geoJSON ? parseGeoJson(geoJSON, nameProperty) : []; }
         // catch (e) { throw new Error('Invalid geoJson format\n' + e.message); }
-        // PORT-NOTE: upstream wraps `parseGeoJson` in try/catch to rethrow as 'Invalid geoJson format'.
+        // upstream wraps `parseGeoJson` in try/catch to rethrow as 'Invalid geoJson format'.
         //   `parseGeoJson` (sibling) is ported non-throwing as `parseGeoJSON` and takes `[String: Any]`;
         //   the try/catch is omitted (language difference) and the `Any?` source is narrowed to the dict
         //   it always is here.
@@ -199,7 +199,7 @@ public final class GeoJSONResource: GeoResource {
         }
 
         // fixNanhai(mapName, rawRegions);
-        // PORT-NOTE: `fixNanhai` takes `inout [GeoJSONRegion]` (it PUSHES a synthesized region; Swift
+        // `fixNanhai` takes `inout [GeoJSONRegion]` (it PUSHES a synthesized region; Swift
         //   arrays are value types, unlike the mutated JS array reference).
         fixNanhai(mapName, &rawRegions)
 
@@ -211,7 +211,7 @@ public final class GeoJSONResource: GeoResource {
             // fixTextCoord(mapName, region);
             fixTextCoord(mapName, region)
             // fixDiaoyuIsland(mapName, region);
-            // PORT-NOTE (deferred): `fixDiaoyuIsland` PUSHES to `region.geometries`, but the ported
+            // TODO: `fixDiaoyuIsland` PUSHES to `region.geometries`, but the ported
             //   `GeoJSONRegion.geometries` is declared `let` (Region.swift). Wiring it faithfully needs
             //   that field made `var` — a cross-file change, deferred to keep this lane self-contained.
             // fixDiaoyuIsland(mapName, region)
@@ -276,7 +276,7 @@ private func parseInput(_ source: Any?) -> Any? {
     //     ? source
     //     : (typeof JSON !== 'undefined' && JSON.parse) ? JSON.parse(source)
     //     : (new Function('return (' + source + ');'))();
-    // PORT-NOTE: the `new Function(...)` legacy fallback branch (no global JSON) is dropped; Swift
+    // the `new Function(...)` legacy fallback branch (no global JSON) is dropped; Swift
     //   always has JSONSerialization.
     if !util.isString(source) {
         return source
@@ -289,7 +289,7 @@ private func parseInput(_ source: Any?) -> Any? {
 
 // ---------------------------------------------------------------------------
 // Ported from echarts/src/coord/geo/fix/nanhai.ts — Fix for 南海诸岛.
-// PORT-NOTE: the upstream fix/*.ts modules are inlined here as file-private helpers (each is a single
+// the upstream fix/*.ts modules are inlined here as file-private helpers (each is a single
 //   small function only consumed by `_parseToRegions`); logic/names/order mirror upstream.
 // ---------------------------------------------------------------------------
 

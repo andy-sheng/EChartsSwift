@@ -36,7 +36,7 @@ import ZRenderKit
 //   import GlobalModel from '../../model/Global';                  -> GlobalModel (model/Global.swift).
 //   import SeriesData from '../../data/SeriesData';                -> SeriesData (data/SeriesData.swift).
 //   import tokens from '../../visual/tokens';
-//       -> PORT-NOTE: tokens (visual/tokens.swift) is ported; `tokens.color.neutral00` / `tokens.color.primary`
+//       -> note: tokens (visual/tokens.swift) is ported; `tokens.color.neutral00` / `tokens.color.primary`
 //          are inlined as their resolved constants in defaultOption below.
 
 // ============================================================================
@@ -219,7 +219,7 @@ open class FunnelSeriesModel: SeriesModel {
             ] as [String: Any],
             "itemStyle": [
                 // color: 各异,
-                // PORT-NOTE: tokens.color.neutral00 inlined as its resolved constant ('#fff');
+                // tokens.color.neutral00 inlined as its resolved constant ('#fff');
                 //   visual/tokens.swift is ported (Tokens.color.neutral00) if a live read is wanted.
                 "borderColor": "#fff",   // tokens.color.neutral00
                 "borderWidth": 1.0
@@ -231,7 +231,7 @@ open class FunnelSeriesModel: SeriesModel {
             ] as [String: Any],
             "select": [
                 "itemStyle": [
-                    // PORT-NOTE: tokens.color.primary inlined as its resolved constant (color.neutral80);
+                    // tokens.color.primary inlined as its resolved constant (color.neutral80);
                     //   visual/tokens.swift is ported (Tokens.color.primary) if a live read is wanted.
                     "borderColor": "#3c3c41"   // tokens.color.primary
                 ] as [String: Any]

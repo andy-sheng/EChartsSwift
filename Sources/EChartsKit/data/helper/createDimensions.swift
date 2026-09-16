@@ -45,7 +45,7 @@ import ZRenderKit
 //     createDimNameMap, ensureSourceDimNameMap, SeriesDataSchema, shouldOmitUnusedDimensions
 // } from './SeriesDataSchema';
 //
-// PORT-NOTE: this file references several sibling data-engine symbols that are now ported.
+// this file references several sibling data-engine symbols that are now ported.
 //   It uses their conventional public API:
 //     - data/Source:                 `Source` (class) with `dimensionsDefine: [DimensionDefinition]?`
 //                                     and `dimensionsDetectedCount: Double`;
@@ -64,7 +64,7 @@ public struct CoordDimensionDefinition {
     public var name: DimensionName?
     public var displayName: String?
     // ---- own ----
-    // PORT-NOTE: dimsDef is `(DimensionName | { name: DimensionName, defaultTooltip?: boolean })[]`;
+    // dimsDef is `(DimensionName | { name: DimensionName, defaultTooltip?: boolean })[]`;
     //   modeled as `[Any]` whose elements are `String` or `CoordDimensionDimsDefItem`.
     public var dimsDef: [Any]?
     public var otherDims: DataVisualDimensions?
@@ -74,7 +74,7 @@ public struct CoordDimensionDefinition {
     public init() {}
 }
 
-// PORT-NOTE: the inline `{ name: DimensionName, defaultTooltip?: boolean }` object inside `dimsDef`.
+// the inline `{ name: DimensionName, defaultTooltip?: boolean }` object inside `dimsDef`.
 public struct CoordDimensionDimsDefItem {
     public var name: DimensionName
     public var defaultTooltip: Bool?
@@ -85,7 +85,7 @@ public struct CoordDimensionDimsDefItem {
 }
 
 // upstream: CoordDimensionDefinition['name'] | CoordDimensionDefinition
-// PORT-NOTE: union `string | CoordDimensionDefinition` -> Any.
+// union `string | CoordDimensionDefinition` -> Any.
 public typealias CoordDimensionDefinitionLoose = Any
 
 public struct PrepareSeriesDataSchemaParams {
@@ -97,7 +97,7 @@ public struct PrepareSeriesDataSchemaParams {
     /**
      * Will use `source.encodeDefine` if not given.
      */
-    // PORT-NOTE: union `HashMap<OptionEncodeValue, DimensionName> | OptionEncode` -> Any.
+    // union `HashMap<OptionEncodeValue, DimensionName> | OptionEncode` -> Any.
     public var encodeDefine: Any?
     public var dimensionsCount: Double?
     /**
@@ -145,7 +145,7 @@ public enum createDimensions {
      * For outside usage compat (like echarts-gl are using it).
      */
     public static func createDimensions(
-        _ source: Any,   // PORT-NOTE: upstream `Source | OptionSourceData`; OptionSourceData = Any
+        _ source: Any,   // upstream `Source | OptionSourceData`; OptionSourceData = Any
         _ opt: PrepareSeriesDataSchemaParams? = nil
     ) -> [SeriesDimensionDefine] {
         return prepareSeriesDataSchema(source, opt).dimensions
@@ -166,7 +166,7 @@ public enum createDimensions {
     // (default export in upstream)
     public static func prepareSeriesDataSchema(
         // TODO: TYPE completeDimensions type
-        _ source: Any,   // PORT-NOTE: upstream `Source | OptionSourceData`
+        _ source: Any,   // upstream `Source | OptionSourceData`
         _ opt: PrepareSeriesDataSchemaParams? = nil
     ) -> SeriesDataSchema {
         var source = source
@@ -213,7 +213,7 @@ public enum createDimensions {
             encodeDef = encodeDefaulter(srcInst, dimCount)
         }
         // createHashMap<DimensionIndex[] | false, DimensionName>(encodeDef as any)
-        // PORT-NOTE: the EChartsKit `createHashMap` shim has no init-from-object overload, so we
+        // the EChartsKit `createHashMap` shim has no init-from-object overload, so we
         //   populate it manually. Values are either `[DimensionIndex?]` or `false` (or raw
         //   OptionEncodeValue before normalization below). Language diff: `[String: Any]` iteration
         //   loses JS insertion order (a HashMap source preserves it).
@@ -227,11 +227,11 @@ public enum createDimensions {
                     encodeDefMap.set(k, v)
                 }
             }
-            // PORT-NOTE: unknown encode shape -> ignored (only HashMap / [String: Any] sources are
+            // unknown encode shape -> ignored (only HashMap / [String: Any] sources are
             //   producible by the port; any other dynamic shape is defensively skipped).
         }
 
-        // new CtorInt32Array(dimCount)  (PORT-NOTE: CtorInt32Array is a data/DataStore export)
+        // new CtorInt32Array(dimCount)  (note: CtorInt32Array is a data/DataStore export)
         var indicesMap = ContiguousArray<Int32>(repeating: 0, count: Int(dimCount))
         for i in 0..<indicesMap.count {
             indicesMap[i] = -1
@@ -292,7 +292,7 @@ public enum createDimensions {
 
         func ifNoNameFillWithCoordName(_ resultItem: SeriesDimensionDefine) {
             // resultItem.name == null
-            // PORT-NOTE: ported SeriesDimensionDefine.name is non-optional (defaults to ""),
+            // ported SeriesDimensionDefine.name is non-optional (defaults to ""),
             //   so empty string is treated as the upstream `null`/unset state (language diff).
             if resultItem.name.isEmpty {
                 // Duplication will be removed in the next step.
@@ -331,7 +331,7 @@ public enum createDimensions {
                     applyDim(getResultItem(resultDimIdx), coordDim, Double(idx))
                 }
             }
-            // PORT-NOTE: re-set after mutation — Swift arrays are value types, so the push above
+            // re-set after mutation — Swift arrays are value types, so the push above
             //   does not write through to the map (upstream relies on the array reference).
             encodeDefMap.set(coordDim, validDataDims)
         }
@@ -394,7 +394,7 @@ public enum createDimensions {
 
             // Apply templates.
             util.each(dataDims) { resultDimIdxOpt, coordDimIndex in
-                // PORT-NOTE: holes (skipped invalid indices in `validDataDims`) surface as nil;
+                // holes (skipped invalid indices in `validDataDims`) surface as nil;
                 //   upstream would visit them as `undefined`. They do not occur for valid encode.
                 guard let resultDimIdx = resultDimIdxOpt else { return }
                 let resultItem = getResultItem(resultDimIdx)
@@ -498,7 +498,7 @@ public enum createDimensions {
             }
         }
 
-        // PORT-NOTE: model.removeDuplicates takes `inout [TItem?]`; SeriesDimensionDefine is a
+        // model.removeDuplicates takes `inout [TItem?]`; SeriesDimensionDefine is a
         //   class, so resolving (which mutates `item.name` through the reference) is reflected in
         //   `resultList` directly. With `resolve != nil`, the array length is not modified.
         var resultListBox: [SeriesDimensionDefine?] = resultList.map { $0 }
@@ -591,7 +591,7 @@ private func defaultsSeriesDim(_ target: SeriesDimensionDefine, _ source: CoordD
     if target.type == nil { target.type = source.type }
     if target.displayName == nil { target.displayName = source.displayName }
     if target.ordinalMeta == nil { target.ordinalMeta = source.ordinalMeta }
-    // PORT-NOTE: name is non-optional ("") on SeriesDimensionDefine and nil on `source` here,
+    // name is non-optional ("") on SeriesDimensionDefine and nil on `source` here,
     //   so it never contributes — faithful to the upstream `defaults` result.
 }
 
@@ -616,6 +616,6 @@ private func setOtherDim(_ otherDims: inout DataVisualDimensions, _ key: String,
     case "itemGroupId": otherDims.itemGroupId = value
     case "itemChildGroupId": otherDims.itemChildGroupId = value
     case "seriesName": otherDims.seriesName = value
-    default: break   // PORT-NOTE: non-VISUAL_DIMENSIONS key (should not happen here)
+    default: break   // non-VISUAL_DIMENSIONS key (should not happen here)
     }
 }

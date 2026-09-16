@@ -34,7 +34,7 @@ import ZRenderKit
 //   import type Calendar from '../../coord/calendar/Calendar';    -> coord/calendar/Calendar.swift (ported; not wired into heatmap's render path yet).
 //   import Matrix from '../../coord/matrix/Matrix';               -> coord/matrix/Matrix.swift (ported; not wired into heatmap's render path yet).
 //   import tokens from '../../visual/tokens';
-//       -> PORT-NOTE: visual/tokens.swift is ported; `tokens.color.primary` is still inlined verbatim as its
+//       -> note: visual/tokens.swift is ported; `tokens.color.primary` is still inlined verbatim as its
 //          resolved constant in `defaultOption` (same convention as ScatterSeries.swift).
 //            tokens.color.primary = color.neutral80 = '#3c3c41'
 
@@ -84,7 +84,7 @@ open class HeatmapSeriesModel: SeriesModel {
     public override class var type: ComponentFullType { return "series.heatmap" }
 
     // upstream: static readonly dependencies = ['grid', 'geo', 'calendar', 'matrix'];
-    //   PORT-NOTE: only grid/cartesian2d is renderable in heatmap now (the geo/calendar/matrix coord
+    //   only grid/cartesian2d is renderable in heatmap now (the geo/calendar/matrix coord
     //   systems are ported, but heatmap's render path doesn't wire them yet);
     //   the dependency list is kept verbatim so registration/topo order matches.
     public override class var dependencies: [String] {
@@ -110,7 +110,7 @@ open class HeatmapSeriesModel: SeriesModel {
     //       }
     //   }
     // `CoordinateSystem.get` is the coord-creator registry (core/CoordinateSystemManager.swift).
-    // PORT-NOTE: `preventIncremental` is a real `open func` slot on the base `SeriesModel` CLASS BODY
+    // `preventIncremental` is a real `open func` slot on the base `SeriesModel` CLASS BODY
     //   (Series.swift:842), so this `override` is dynamically dispatched. Upstream feature-detects the
     //   optional method (`upstream: progressive && !(seriesModel.preventIncremental && seriesModel.preventIncremental())`);
     //   here `Scheduler.restorePipelines` (Scheduler.swift:343) calls it unconditionally
@@ -141,7 +141,7 @@ open class HeatmapSeriesModel: SeriesModel {
             // yAxisIndex: 0,
 
             // Geo coordinate system
-            // PORT-NOTE: geo coord is ported; kept verbatim for the diffable surface / geo-path deferral.
+            // geo coord is ported; kept verbatim for the diffable surface / geo-path deferral.
             "geoIndex": 0.0,
 
             // The following four drive the geo/large blurred-canvas path (HeatmapLayer.ts, ported as
@@ -157,7 +157,7 @@ open class HeatmapSeriesModel: SeriesModel {
 
             "select": [
                 "itemStyle": [
-                    // PORT-NOTE: tokens.color.primary inlined as resolved constant (color.neutral80);
+                    // tokens.color.primary inlined as resolved constant (color.neutral80);
                     //   visual/tokens.swift is ported — could re-wire to `tokens.color.primary`.
                     "borderColor": "#3c3c41"   // tokens.color.primary
                 ] as [String: Any]

@@ -64,7 +64,7 @@ import ZRenderKit
 //     data?: (MarkArea1DDataItemOption | MarkArea2DDataItemOption)[]
 // }
 //
-// PORT-NOTE: the above option interfaces are the typed documentation surface for the dynamic
+// the above option interfaces are the typed documentation surface for the dynamic
 //   `[String: Any]` option bag (CONVENTIONS §2/§4). `MarkArea2DDataItemOption` (the two-end tuple) is
 //   consumed dynamically in MarkAreaView.swift (`markAreaTransform` reads `item[0]`/`item[1]`).
 

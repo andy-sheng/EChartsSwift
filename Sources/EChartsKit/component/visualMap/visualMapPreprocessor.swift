@@ -31,7 +31,7 @@ import ZRenderKit
 
 // export default function visualMapPreprocessor(option) { ... }
 //
-// PORT-NOTE (CONVENTIONS §3 value-type writeback): upstream mutates the `opt` / `piece` OBJECTS in
+// note (CONVENTIONS §3 value-type writeback): upstream mutates the `opt` / `piece` OBJECTS in
 //   place through JS references, so the changes propagate back into `option.visualMap` even though the
 //   local `visualMap` variable is only reassigned (never written back). Swift dictionaries/arrays are
 //   value types, so we mutate copies and WRITE THE NORMALIZED ARRAY BACK to `option["visualMap"]`.
@@ -100,12 +100,12 @@ public func visualMapPreprocessor(_ option: inout ECUnitOption) {
         //         });
         //     }
         // }
-        // PORT-NOTE: dev-only (`__DEV__`) validation warnings preserved above; not executed in the port.
+        // dev-only (`__DEV__`) validation warnings preserved above; not executed in the port.
 
         visualMapArr[i] = opt
     }
 
-    // value-type writeback (see the top-of-function PORT-NOTE).
+    // value-type writeback (see the top-of-function note).
     option["visualMap"] = visualMapArr
 }
 

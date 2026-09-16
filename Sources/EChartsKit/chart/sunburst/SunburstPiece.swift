@@ -52,7 +52,7 @@ private let DEFAULT_SECTOR_Z: Double = 2
 private let DEFAULT_TEXT_Z: Double = 4
 
 // upstream: interface DrawTreeNode extends TreeNode { piece: SunburstPiece }
-// PORT-NOTE: Swift `TreeNode` (sibling) is a `final class` that can not be externally augmented with a
+// Swift `TreeNode` (sibling) is a `final class` that can not be externally augmented with a
 //   stored `piece` property. Upstream's `(node as DrawTreeNode).piece = this` write-back is used by
 //   the SunburstView DataDiffer (add/update/remove). The static SunburstView.render() rebuilds every
 //   render, so it does not consult `node.piece`; the write-back is therefore dropped here (marked at
@@ -110,8 +110,8 @@ open class SunburstPiece: Sector {
         // this.node = node;
         self.node = node
         // (node as DrawTreeNode).piece = this;
-        // PORT-NOTE: `node.piece` write-back dropped — TreeNode carries no `piece` slot (see the
-        //   DrawTreeNode PORT-NOTE above). Not needed by the static SunburstView.render().
+        // `node.piece` write-back dropped — TreeNode carries no `piece` slot (see the
+        //   DrawTreeNode note above). Not needed by the static SunburstView.render().
 
         // seriesModel = seriesModel || this._seriesModel;
         let seriesModel: SunburstSeriesModel = seriesModelIn ?? self._seriesModel
@@ -125,7 +125,7 @@ open class SunburstPiece: Sector {
         innerStore.getECData(sector).dataIndex = Double(node.dataIndex)
 
         // const itemModel = node.getModel<SunburstSeriesNodeItemOption>();
-        //   PORT-NOTE: `node.getModel()` is `Model?` and returns nil for a node with dataIndex < 0
+        //   `node.getModel()` is `Model?` and returns nil for a node with dataIndex < 0
         //   (the roll-up virtualRoot). Upstream assumes non-null; we guard defensively — a node with no
         //   item model can not be styled/labelled, so bail (no sector body drawn for it).
         guard let itemModel = node.getModel() else {
@@ -209,7 +209,7 @@ open class SunburstPiece: Sector {
             //   the CURRENT shape first (angles preserved); `cornerRadius` goes through the prop bag,
             //   like upstream's whole-`shape` object.
             //   Instant (duration 0) when the series' animation is disabled — same as `attr`.
-            // PORT-TODO: upstream tweens cornerRadius numerically (`number | number[]` is typed
+            // TODO: upstream tweens cornerRadius numerically (`number | number[]` is typed
             //   VALUE_TYPE_NUMBER / VALUE_TYPE_1D_ARRAY by zrender's Track and interpolated across the
             //   morph). Here `CornerRadius` is a tagged enum, opaque to the Animator, so its Track is
             //   VALUE_TYPE_UNKOWN/discrete and — because `animateToShallow` builds the animator with
@@ -298,7 +298,7 @@ open class SunburstPiece: Sector {
     // upstream: _updateLabel(seriesModel)
     func _updateLabel(_ seriesModel: SunburstSeriesModel) {
         // const itemModel = this.node.getModel<SunburstSeriesNodeItemOption>();
-        //   PORT-NOTE: `Model?` — nil for dataIndex < 0 (roll-up virtualRoot); bail defensively (no label).
+        //   `Model?` — nil for dataIndex < 0 (roll-up virtualRoot); bail defensively (no label).
         guard let itemModel = self.node.getModel() else { return }
         // const normalLabelModel = itemModel.getModel('label');
         let normalLabelModel = itemModel.getModel("label")
@@ -335,7 +335,7 @@ open class SunburstPiece: Sector {
         // ── Route text + per-state (normal/emphasis/blur/select) label STYLE through the shared label
         //    core (`labelStyle.setLabelStyle`), replacing the former hand-rolled normal-only text style.
         //
-        // PORT-NOTE: upstream sunburst still hand-builds styles via `createTextStyle` inside its
+        // upstream sunburst still hand-builds styles via `createTextStyle` inside its
         //   `DISPLAY_STATES` loop (with a standing `// TODO use setLabelStyle`). We take the migrated
         //   form, following the sibling **ChordPiece** (its radial-sector analog, which DID land on
         //   `setLabelStyle`): call `setLabelStyle` with the LABEL (the `ZRText` textContent) as the

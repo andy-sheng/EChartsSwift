@@ -20,7 +20,7 @@
 
 import ZRenderKit
 // import { EChartsExtensionInstallRegisters } from '../../extension';
-//   -> PORT-NOTE: the registration registry (`EChartsExtensionInstallRegisters`) is owned by the
+//   -> note: the registration registry (`EChartsExtensionInstallRegisters`) is owned by the
 //      Orchestrate driver (Integrate stage / core/ECharts.swift), not this render-layer file (same
 //      convention as component/title/install.swift and component/grid/installSimple.swift).
 // import checkMarkerInSeries from './checkMarkerInSeries';  -> sibling `checkMarkerInSeries` (ported).
@@ -39,7 +39,7 @@ import ZRenderKit
 //     });
 // }
 //
-// PORT-NOTE: registration + preprocessor wiring now lives in the Orchestrate driver (ECharts.swift
+// registration + preprocessor wiring now lives in the Orchestrate driver (ECharts.swift
 //   registers MarkAreaView and calls `markAreaPreprocessor` in setOption). The faithful preprocessor
 //   body is the free function below; `checkMarkerInSeries` is already ported.
 public func markAreaPreprocessor(_ opt: inout [String: Any]) {

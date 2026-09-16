@@ -12,7 +12,7 @@
 //     Swift up-front (`heatmapCartesianData`), since the Swift option is data, not code. `'-'` (echarts'
 //     empty-value marker, which the falsy-`||` produces for every 0) is preserved as the String "-";
 //     dataValueHelper.parseDataValue coerces it to NaN, so those cells are skipped exactly as on the web.
-//   - no PORT-NOTE below: the option itself has NO function-valued key (no formatter/renderItem/etc.),
+//   - no note below: the option itself has NO function-valued key (no formatter/renderItem/etc.),
 //     so the Swift `option` mirrors the JS one key-for-key with nothing dropped. `visualMap.type` is
 //     omitted here because the official omits it — visualMap's typeDefaulter resolves it to
 //     `continuous` (min/max + calculable), and spelling it out would be an unfaithful embellishment.

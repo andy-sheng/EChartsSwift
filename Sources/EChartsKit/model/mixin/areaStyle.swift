@@ -20,13 +20,13 @@ private let getAreaStyle = makeStyleMapper(AREA_STYLE_KEY_MAP)
 
 // upstream: type AreaStyleProps = Pick<PathStyleProps, 'fill' | 'shadowBlur'
 //   | 'shadowOffsetX' | 'shadowOffsetY' | 'opacity' | 'shadowColor'>
-// PORT-NOTE: `makeStyleMapper` returns the dynamic `Dictionary<Any>` bag (see its port note),
+// `makeStyleMapper` returns the dynamic `Dictionary<Any>` bag (see its port note),
 //   not a fixed-field struct, so we cannot reproduce the `Pick<PathStyleProps, ...>` value type
 //   mechanically. The mapper output IS that subset of `PathStyleProps` keyed by string.
 public typealias AreaStyleProps = Dictionary<Any>
 
 // upstream: class AreaStyleMixin { getAreaStyle(this: Model, ...) { ... } }; export {AreaStyleMixin}
-// PORT-NOTE: TS mixin (applied onto Model subclasses via `this: Model`). Per CONVENTIONS §2
+// TS mixin (applied onto Model subclasses via `this: Model`). Per CONVENTIONS §2
 //   we replicate the upstream method set as a protocol + protocol-extension constrained to
 //   `Self: Model`. Conforming a Model-derived type to `AreaStyleMixin` grants `getAreaStyle`.
 public protocol AreaStyleMixin: AnyObject {
@@ -41,7 +41,7 @@ public extension AreaStyleMixin where Self: Model {
         _ excludes: [String]? = nil,
         _ includes: [String]? = nil
     ) -> AreaStyleProps {
-        // PORT-NOTE: module-qualify the file-private mapper closure to disambiguate it from
+        // module-qualify the file-private mapper closure to disambiguate it from
         //   this same-named method (upstream relies on JS module-vs-method scoping).
         return EChartsKit.getAreaStyle(self, excludes, includes)
     }

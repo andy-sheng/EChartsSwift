@@ -38,10 +38,10 @@ import ZRenderKit
 //       coord/cartesian/cartesianAxisHelper.swift; real util/layout.swift LayoutRect deferred).
 //   import { createTooltipMarkup } from '../../component/tooltip/tooltipMarkup';
 //       -> createTooltipMarkup (component/tooltip/tooltipMarkup.swift); used by formatTooltip below.
-//   import type View from '../../coord/View';                         -> PORT-NOTE (deferred): requires coord/View.ts
+//   import type View from '../../coord/View';                         -> TODO: requires coord/View.ts
 //       (the box `View` coordinate system + roam are not ported); `coordinateSystem` uses the inherited `Any?`.
 //   import tokens from '../../visual/tokens';
-//       -> PORT-NOTE: visual/tokens.swift IS ported, but the consumed values are inlined verbatim in
+//       -> note: visual/tokens.swift IS ported, but the consumed values are inlined verbatim in
 //          `defaultOption` (tokens.color.neutral50 = '#86878c', tokens.color.primary = neutral80 = '#3c3c41').
 
 // export const SERIES_TYPE_SANKEY = 'sankey';
@@ -59,11 +59,11 @@ open class SankeySeriesModel: SeriesModel {
     open override class var layoutMode: Any? { return "box" }
 
     // coordinateSystem: View;
-    //   PORT-NOTE (deferred): upstream types `coordinateSystem: View`; requires coord/View.ts (not ported),
+    //   TODO: upstream types `coordinateSystem: View`; requires coord/View.ts (not ported),
     //   so the inherited `open var coordinateSystem: Any?` slot (model/Series.swift) is used unchanged.
 
     // levelModels: Model<SankeyLevelOption>[];
-    //   PORT-NOTE: upstream is a SPARSE array indexed by node depth (`levelModels[levels[i].depth] = …`,
+    //   upstream is a SPARSE array indexed by node depth (`levelModels[levels[i].depth] = …`,
     //   read back as `levelModels[nodeDepth]` with an `if (levelModel)` presence guard). A sparse JS array
     //   with gaps behaves like a keyed map, so it is modeled as `[Int: Model]` (missing depth == undefined),
     //   which reproduces the index-by-depth semantics exactly.
@@ -102,7 +102,7 @@ open class SankeySeriesModel: SeriesModel {
             }
             else {
                 // if (__DEV__) { throw new Error('levels[i].depth is mandatory and should be natural number'); }
-                // PORT-NOTE: __DEV__ guard — the throw is dropped in release-equivalent builds.
+                // __DEV__ guard — the throw is dropped in release-equivalent builds.
             }
         }
 
@@ -207,7 +207,7 @@ open class SankeySeriesModel: SeriesModel {
      */
     // getGraph() { return this.getData().graph; }
     open func getGraph() -> Graph {
-        // PORT-NOTE: SeriesData.graph is typed `AnyObject?` (see data/SeriesData.swift); force-unwrap to
+        // SeriesData.graph is typed `AnyObject?` (see data/SeriesData.swift); force-unwrap to
         //   the ported Graph — faithful to upstream's non-optional `this.getData().graph` return. The
         //   invariant holds: createGraphFromNodeEdge (getInitialData) always sets graph for sankey.
         return self.getData().graph!

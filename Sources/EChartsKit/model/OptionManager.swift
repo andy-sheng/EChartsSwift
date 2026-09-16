@@ -26,7 +26,7 @@ import ZRenderKit  // upstream: each, clone, map, isTypedArray, setAsPrimitive, 
 //   import {
 //       OptionPreprocessor, MediaQuery, ECUnitOption, MediaUnit, ECBasicOption, SeriesOption
 //   } from '../util/types';                                         -> OptionPreprocessor / MediaQuery / ECUnitOption / MediaUnit / ECBasicOption / SeriesOption (EChartsKit util/types.swift)
-//   import GlobalModel, { InnerSetOptionOpts } from './Global';     -> GlobalModel (util/types.swift placeholder; real type lands this phase). InnerSetOptionOpts -> `Any?` (see setOption PORT-NOTE).
+//   import GlobalModel, { InnerSetOptionOpts } from './Global';     -> GlobalModel (util/types.swift placeholder; real type lands this phase). InnerSetOptionOpts -> `Any?` (see setOption note).
 //   import { normalizeToArray } from '../util/model';               -> model.normalizeToArray (EChartsKit util/model.swift)
 //   import { each, clone, map, isTypedArray, setAsPrimitive, isArray, isObject } from 'zrender/src/core/util'; -> util.* (ZRenderKit)
 //   import { DatasetOption } from '../component/dataset/install';   -> dynamic bag (dataset option) — component/dataset not ported; accessed via the `[String: Any]` bag.
@@ -37,7 +37,7 @@ private let QUERY_REG = try! NSRegularExpression(pattern: "^(min|max)?(.+)$")
 // Key: mainType
 // type FakeComponentsMap = HashMap<(MappingExistingItem & { subType: string })[]>;
 
-// PORT-NOTE: `ParsedRawOption` is an upstream `interface` used as a plain data bag (no identity);
+// `ParsedRawOption` is an upstream `interface` used as a plain data bag (no identity);
 //   ported as a Swift `struct` (CONVENTIONS §2). `mediaDefault` is optional (upstream leaves it
 //   `undefined` when there is no default media unit).
 struct ParsedRawOption {
@@ -51,7 +51,7 @@ struct ParsedRawOption {
  * TERM EXPLANATIONS:
  * See `ECOption` and `ECUnitOption` in `src/util/types.ts`.
  */
-// PORT-NOTE: upstream `class OptionManager` (not subclassed / `export default`) -> `final class`
+// upstream `class OptionManager` (not subclassed / `export default`) -> `final class`
 //   per CONVENTIONS §2 (reference semantics).
 final class OptionManager {
 
@@ -88,12 +88,12 @@ final class OptionManager {
         self._api = api
     }
 
-    // PORT-NOTE: upstream `rawOption: ECBasicOption` (structurally an `ECUnitOption` with optional
+    // upstream `rawOption: ECBasicOption` (structurally an `ECUnitOption` with optional
     //   `baseOption`/`timeline`/`options`/`media` keys). Collapsed to the dynamic `ECUnitOption`
     //   = `[String: Any]` bag per CONVENTIONS: the whole file treats `rawOption` dynamically
     //   (`rawOption.baseOption`, `baseOption = rawOption`, `clone(rawOption)`), which the typed
     //   `ECBasicOption` struct cannot support. Reserved keys are accessed by string.
-    // PORT-NOTE: upstream `opt: InnerSetOptionOpts` (from model/Global). It is read only by the
+    // upstream `opt: InnerSetOptionOpts` (from model/Global). It is read only by the
     //   commented-out `mergeToBackupOption`, so it is unused by the active code; typed `Any?` to
     //   avoid a fragile cross-file dependency until model/Global lands.
     func setOption(
@@ -171,7 +171,7 @@ final class OptionManager {
             // that is, if you `setOption` twice and both has timeline options, the latter
             // timeline options will not be merged to the former, but just substitute them.
             //
-            // PORT-NOTE: upstream mutates the `_optionBackup` object in place (JS reference).
+            // upstream mutates the `_optionBackup` object in place (JS reference).
             //   `ParsedRawOption` is a value-type struct, so mutate a local copy and write it back.
             if !newParsedOption.timelineOptions.isEmpty {
                 optionBackup.timelineOptions = newParsedOption.timelineOptions
@@ -527,7 +527,7 @@ private func matchQueryReg(_ attr: String) -> (String?, String?)? {
     return (group(1), group(2))
 }
 
-// PORT-NOTE: upstream `real: number` — `realMap[realAttr]` may be `undefined` for an unknown attr;
+// upstream `real: number` — `realMap[realAttr]` may be `undefined` for an unknown attr;
 //   modeled as `Double?` (a missing/`nil` `real` compares false, matching JS `undefined >= x`, etc.).
 private func compare(_ real: Double?, _ expect: Double, _ operator_: String) -> Bool {
     guard let real = real else {

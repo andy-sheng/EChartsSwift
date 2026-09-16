@@ -93,7 +93,7 @@ open class LegendModel: ComponentModel {
     public override class var dependencies: [String] { return ["series"] }
 
     // readonly layoutMode = { type: 'box', ignoreSize: true } as const;
-    // PORT-NOTE: upstream declares `layoutMode` here as an INSTANCE readonly member (not static),
+    // upstream declares `layoutMode` here as an INSTANCE readonly member (not static),
     //   whereas the Swift ComponentModel exposes `layoutMode` as `open class var`. Modeled as a
     //   class-var override returning the same object literal. `layout.fetchLayoutMode` (not yet
     //   ported) is the sole consumer.
@@ -112,7 +112,7 @@ open class LegendModel: ComponentModel {
     }
 
     // private _data: Model<DataItem>[];
-    // PORT-NOTE: upstream leaves these uninitialized (assigned by `_updateData`); Swift requires a
+    // upstream leaves these uninitialized (assigned by `_updateData`); Swift requires a
     //   stored value, so they default to empty.
     private var _data: [Model] = []
     // private _availableNames: string[];
@@ -124,7 +124,7 @@ open class LegendModel: ComponentModel {
         self.mergeDefaultAndTheme(option, ecModel)
 
         // option.selected = option.selected || {};
-        // PORT-NOTE: upstream mutates the shared `option` object (=== this.option). Swift option
+        // upstream mutates the shared `option` object (=== this.option). Swift option
         //   bags are value types; after `mergeDefaultAndTheme` wrote `self.option`, operate on
         //   `self.option`. Empty object `{}` is truthy in JS, so only null/undefined trigger the
         //   default -> `nil`-check only.
@@ -151,7 +151,7 @@ open class LegendModel: ComponentModel {
     func _updateSelector(_ option: ModelOption?) {
         // let selector = option.selector;
         // const {ecModel} = this;
-        // PORT-NOTE: upstream reads/writes `option.selector`, where `option === this.option`. Swift
+        // upstream reads/writes `option.selector`, where `option === this.option`. Swift
         //   option bags are value types, so we normalize the selector on `self.option` (in
         //   `mergeOption`, `super.mergeOption` has already merged the incremental option into
         //   `self.option`, so the normalized selector lands where the view reads it; idempotent for
@@ -313,7 +313,7 @@ open class LegendModel: ComponentModel {
     }
 
     // select(name: string)
-    // PORT-NOTE: the DISPATCH that invokes select/unSelect/toggleSelected on user interaction lives
+    // the DISPATCH that invokes select/unSelect/toggleSelected on user interaction lives
     //   in the action layer (legendAction.swift / legendFilter.swift), which is ported.
     //   The method bodies themselves are pure selected-map bookkeeping (no action-layer reference)
     //   and ARE ported faithfully because `optionUpdated`'s single-select initialization (static

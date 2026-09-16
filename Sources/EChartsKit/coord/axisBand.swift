@@ -153,7 +153,7 @@ private func calcBandWidthForCategoryAxis(
     //  - When `scaleLinearSpan === 0`, no need to expand extent.
     //  - `onBand: true` (`boundaryGap: true`) does not need to support `containShape`,
     //    thereby no `invRatio`.
-    // PORT-NOTE: `scaleLinearSpan`/`pxSpan` used as JS truthy (`0` and `NaN` are falsy) — replicated explicitly.
+    // `scaleLinearSpan`/`pxSpan` used as JS truthy (`0` and `NaN` are falsy) — replicated explicitly.
     if !onBand
         && (scaleLinearSpan != 0 && !scaleLinearSpan.isNaN)
         && (pxSpan != 0 && !pxSpan.isNaN) {

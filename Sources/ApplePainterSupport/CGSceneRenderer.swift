@@ -328,7 +328,7 @@ private func drawZRImage(_ img: ZRImage, into r: CGRenderer) {
     guard let style = img.imageStyle else { return }
     if (style.opacity ?? 1) == 0 { return }
     guard let cg = resolveCGImage(img) else {
-        // PORT-NOTE (deferred): image not yet decoded. A remote-URL source needs the async
+        // TODO: image not yet decoded. A remote-URL source needs the async
         // `platform.loadImage` → `__image` path (image.ts `createOrUpdateImage`), still unported.
         return
     }
@@ -368,7 +368,7 @@ private func drawZRImage(_ img: ZRImage, into r: CGRenderer) {
 
 /// Resolve a `ZRImage`'s native `CGImage`. Prefers the painter-decoded `__image` handle, then an
 /// inline `.image(CGImage)` source, then a decode of a `.url` string (file / data URI) via the
-/// `platform.loadImage` seam (CONVENTIONS §9). PORT-NOTE (deferred): remote-URL async loading +
+/// `platform.loadImage` seam (CONVENTIONS §9). TODO: remote-URL async loading +
 /// `onload` dispatch onto `__image` is the still-unported image.ts follow-up.
 private func resolveCGImage(_ img: ZRImage) -> CGImage? {
     if let cg = asCGImage(img.__image) { return cg }

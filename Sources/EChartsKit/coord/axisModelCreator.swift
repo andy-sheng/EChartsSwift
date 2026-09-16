@@ -31,7 +31,7 @@ import ZRenderKit
 // import { DimensionName, BoxLayoutOptionMixin, OrdinalRawValue } from '../util/types';
 //     -> DimensionName / BoxLayoutOptionMixin / OrdinalRawValue (util/types.swift)
 // import { AxisBaseOption, AXIS_TYPES, CategoryAxisBaseOption } from './axisCommonTypes';
-//     -> PORT-NOTE (deferred): requires the full coord/axisCommonTypes (still a minimal stub — only `AxisScaleType`). The axis
+//     -> TODO: requires the full coord/axisCommonTypes (still a minimal stub — only `AxisScaleType`). The axis
 //        option interfaces `AxisBaseOption` / `CategoryAxisBaseOption` are modeled as the dynamic option
 //        bag ([String: Any]) per the option-tree convention, and `AXIS_TYPES` is inlined below (see
 //        `AXIS_TYPES` / `AXIS_TYPES_ORDER`) until the full axisCommonTypes lands.
@@ -42,33 +42,33 @@ import ZRenderKit
 //      registerComponentModel / registerSubTypeDefaulter surface — Phase 6b registrar wiring).
 // import { BaseAxisBreakPayload } from '../component/axis/axisAction';
 // import { AxisBreakUpdateResult, getAxisBreakHelper } from '../component/axis/axisBreakHelper';
-//     -> PORT-NOTE (deferred): requires component/axis/{axisAction,axisBreakHelper} (still absent, out of scope this phase — Phase 6b).
+//     -> TODO: requires component/axis/{axisAction,axisBreakHelper} (still absent, out of scope this phase — Phase 6b).
 //        Minimal stubs are provided below so the creator's method set ports faithfully.
 
 // ============================================================================
-// PORT-NOTE stubs — replace when the sibling modules land (all Phase 6b).
+// note stubs — replace when the sibling modules land (all Phase 6b).
 
 // upstream: import { AxisBaseOption, AXIS_TYPES, CategoryAxisBaseOption } from './axisCommonTypes';
 //   `AXIS_TYPES` (= `{value: 1, category: 1, time: 1, log: 1} as const`) belongs to axisCommonTypes; it
-//   is currently the module-level placeholder declared in coord/axisHelper.swift (PORT-NOTE there), so
+//   is currently the module-level placeholder declared in coord/axisHelper.swift (note there), so
 //   it is NOT redeclared here. `AXIS_TYPES_ORDER` preserves the JS object insertion order that
 //   `each(AXIS_TYPES, ...)` iterates (Swift dictionaries are unordered), keeping registration order.
 private let AXIS_TYPES_ORDER: [String] = ["value", "category", "time", "log"]
 
 // upstream: interfaces `AxisBaseOption` / `CategoryAxisBaseOption` from axisCommonTypes.
-//   PORT-NOTE: modeled as the dynamic option bag ([String: Any]) per the option-tree convention until
+//   modeled as the dynamic option bag ([String: Any]) per the option-tree convention until
 //   the full coord/axisCommonTypes.swift lands (keyed access replaces `.type` / `.data`).
 public typealias AxisBaseOption = [String: Any]
 
 // upstream: import { BaseAxisBreakPayload } from '../component/axis/axisAction';
-public typealias BaseAxisBreakPayload = Any                                // PORT-NOTE (deferred): requires component/axis/axisAction (not ported)
+public typealias BaseAxisBreakPayload = Any                                // TODO: requires component/axis/axisAction (not ported)
 
 // upstream: import { AxisBreakUpdateResult, getAxisBreakHelper } from '../component/axis/axisBreakHelper';
-public struct AxisBreakUpdateResult {                                      // PORT-NOTE (deferred): requires component/axis/axisBreakHelper (not ported)
+public struct AxisBreakUpdateResult {                                      // TODO: requires component/axis/axisBreakHelper (not ported)
     public var breaks: [Any]
     public init(breaks: [Any]) { self.breaks = breaks }
 }
-public protocol AxisBreakHelper {                                          // PORT-NOTE (deferred): requires component/axis/axisBreakHelper (not ported)
+public protocol AxisBreakHelper {                                          // TODO: requires component/axis/axisBreakHelper (not ported)
     func updateModelAxisBreak(_ model: Any, _ payload: BaseAxisBreakPayload) -> AxisBreakUpdateResult
 }
 // getAxisBreakHelper(): AxisBreakHelper | undefined — installed by an optional module; nil in this port.
@@ -79,14 +79,14 @@ func getAxisBreakHelper() -> AxisBreakHelper? {
 // upstream: import { EChartsExtensionInstallRegisters } from '../extension';
 //   The registration surface (`registerComponentModel` / `registerSubTypeDefaulter`) is Phase 6b. The
 //   base stub (coord/axisStatistics.swift) only models `registerProcessor`; these two registrar methods
-//   are added as no-op PORT-NOTE stubs so the creator's structure ports faithfully.
+//   are added as no-op note stubs so the creator's structure ports faithfully.
 //   NOTE: upstream `registerComponentModel(AxisModel)` passes the generated CLASS. Swift cannot
 //   synthesize a subclass of the runtime `BaseAxisModelClass` (see `axisModelCreator`), so the single
 //   `AxisModel` reference type is registered via a factory closure that carries the per-type closure
 //   captures (`axisName` / `axisType` / merged `defaultOption`).
 public typealias AxisModelFactory = (ModelOption?, Model?, GlobalModel?) -> ComponentModel
 extension EChartsExtensionInstallRegisters {
-    // PORT-NOTE: upstream signature is `registerComponentModel(ComponentModelClass)`. Ported as
+    // upstream signature is `registerComponentModel(ComponentModelClass)`. Ported as
     //   (type, factory) to carry the dynamically-generated class's per-type identity/defaults.
     public func registerComponentModel(_ componentModelType: ComponentFullType, _ factory: @escaping AxisModelFactory) {
         // upstream: registerComponentModel(ComponentModelClass) { ComponentModel.registerClass(ComponentModelClass); }
@@ -102,7 +102,7 @@ extension EChartsExtensionInstallRegisters {
         //   2. Instantiation goes back through the metatype (`model/Global.swift`:
         //      `componentModelClass.init(newCmptOptionBag, self, self)`), so even a successful registration
         //      would never invoke `factory`, leaving the created `AxisModel` unconfigured — see the
-        //      AxisModel class PORT-NOTE below for that rationale in full.
+        //      AxisModel class note below for that rationale in full.
         //   3. Registering under the full type would rewrite `storage['xAxis']` from `.clz` to `.container`
         //      (util/clazz.swift `ClassManagement.registerClass`), DISPLACING the live stand-in
         //      `EChartsXAxisModel` / `EChartsYAxisModel` that the cartesian path depends on today.
@@ -121,7 +121,7 @@ extension EChartsExtensionInstallRegisters {
         _ = componentModelType
         _ = factory
     }
-    // PORT-NOTE: upstream defaulter type is `SubTypeDefaulter = (ComponentOption) -> ComponentSubType`;
+    // upstream defaulter type is `SubTypeDefaulter = (ComponentOption) -> ComponentSubType`;
     //   `getAxisType` reads the dynamic option bag, so `[String: Any]` is used here.
     public func registerSubTypeDefaulter(_ componentType: String, _ defaulter: @escaping ([String: Any]) -> ComponentSubType) {
         // upstream: registerSubTypeDefaulter(componentType, defaulter) {
@@ -131,7 +131,7 @@ extension EChartsExtensionInstallRegisters {
         // subType must be inferred from its option (for axes: `getAxisType`, "has `data` -> category")
         // is resolved through `ComponentModel.determineSubType`.
         //
-        // PORT-NOTE: upstream's `SubTypeDefaulter` is `(ComponentOption) -> ComponentSubType`; this
+        // upstream's `SubTypeDefaulter` is `(ComponentOption) -> ComponentSubType`; this
         //   file models the axis defaulter (`getAxisType`) over the dynamic option bag, so adapt via
         //   `rawOption` (mirroring the visualMap defaulter, which likewise reads the raw bag).
         ComponentModel.registerSubTypeDefaulter(componentType) { (option: ComponentOption) -> ComponentSubType in
@@ -142,7 +142,7 @@ extension EChartsExtensionInstallRegisters {
 // ============================================================================
 
 // type Constructor<T> = new (...args: any[]) => T;
-//   -> PORT-NOTE: expressed as `ComponentModel.Type` at the `BaseAxisModelClass` parameter below.
+//   -> note: expressed as `ComponentModel.Type` at the `BaseAxisModelClass` parameter below.
 
 public protocol AxisModelExtendedInCreator: AnyObject {
     func getCategories(_ rawData: Bool?) -> [OrdinalRawValue]?             // OrdinalRawValue[] | CategoryAxisBaseOption['data']
@@ -161,7 +161,7 @@ public func axisModelCreator(
     _ BaseAxisModelClass: ComponentModel.Type,
     _ extraDefaultOption: AxisBaseOption? = nil
 ) {
-    // PORT-NOTE: upstream is generic over <AxisOptionT extends AxisBaseOption,
+    // upstream is generic over <AxisOptionT extends AxisBaseOption,
     //   AxisModelCtor extends Constructor<ComponentModel<AxisOptionT>>>, and the generated `AxisModel`
     //   extends the RUNTIME `BaseAxisModelClass`. Swift cannot subclass a runtime metatype, so the
     //   file-scope `AxisModel` (below) statically extends `AxisBaseModel` (the conventional axis-model
@@ -207,14 +207,14 @@ public func axisModelCreator(
 
 // class AxisModel extends BaseAxisModelClass implements AxisModelExtendedInCreator
 //
-// PORT-NOTE: upstream `axisModelCreator` generates a DISTINCT subclass per axis type INSIDE the
+// upstream `axisModelCreator` generates a DISTINCT subclass per axis type INSIDE the
 //   `each(AXIS_TYPES)` loop, closing over `axisName`, `axisType`, and the merged `defaultOption`
 //   (exposed as `static type` / `type` / `static defaultOption`). Swift cannot synthesize classes at
 //   runtime, so a single reference type models all of them; the per-type values are injected via
 //   `configure(...)` from the factory registered in `axisModelCreator`.
 public final class AxisModel: AxisBaseModel, AxisModelExtendedInCreator {
 
-    // PORT-NOTE: closure captures of the upstream generated class (`axisName` / `axisType` /
+    // closure captures of the upstream generated class (`axisName` / `axisType` /
     //   `defaultOption`), injected per-type by the registered factory.
     private var __axisName: DimensionName = ""
     private var __axisType: String = ""
@@ -228,7 +228,7 @@ public final class AxisModel: AxisBaseModel, AxisModelExtendedInCreator {
 
     // static type = axisName + 'Axis.' + axisType;
     // type = axisName + 'Axis.' + axisType;
-    //   -> instance `type` recomputed from the injected captures. PORT-NOTE: the upstream STATIC `type`
+    //   -> instance `type` recomputed from the injected captures. note: the upstream STATIC `type`
     //      cannot be per-type on a single Swift class; only the instance `type` is per-axis here.
     public override var type: ComponentFullType {
         return __axisName + "Axis." + __axisType
@@ -242,14 +242,14 @@ public final class AxisModel: AxisBaseModel, AxisModelExtendedInCreator {
     }
 
     // private __ordinalMeta: OrdinalMeta;
-    //   PORT-NOTE: modeled as a plain Optional rather than an IUO — an implicit unwrap here is a latent
+    //   modeled as a plain Optional rather than an IUO — an implicit unwrap here is a latent
     //   SIGTRAP (PORTING.md §12) because `getCategories`/`getOrdinalMeta` can be reached before
     //   `optionUpdated` has built the meta. Mirrors the EChartsXAxisModel / EChartsYAxisModel stand-ins
     //   (core/ECharts.swift:197, 219); PolarAxisModel (:113) / SingleAxisModel (:179) / ParallelAxisModel
     //   still use an IUO here and should be converted in the same pass.
     private var __ordinalMeta: OrdinalMeta?
 
-    // PORT-NOTE: this override is not exercised in the current build — AxisModel is only instantiated by
+    // this override is not exercised in the current build — AxisModel is only instantiated by
     //   the factory passed to registers.registerComponentModel(...), which is still a PortStub that does
     //   not invoke the factory (Phase 6b registrar wiring). Live polar/parallel axes use their own
     //   overrides (e.g. PolarAxisModel.mergeDefaultAndTheme). The body is a faithful port kept ready for
@@ -259,7 +259,7 @@ public final class AxisModel: AxisBaseModel, AxisModelExtendedInCreator {
         let layoutMode = layout.fetchLayoutMode(self)
         // const inputPositionParams = layoutMode
         //     ? getLayoutParams(option as BoxLayoutOptionMixin) : {};
-        // PORT-NOTE: `option === self.option` because Model's constructor stores `self.option = option`
+        // `option === self.option` because Model's constructor stores `self.option = option`
         //   before init() calls mergeDefaultAndTheme(option) (upstream Component.ts:155-161), so the input
         //   position params are captured from that bag before the theme/default merges below.
         let inputPositionParams: [String: Any]
@@ -274,7 +274,7 @@ public final class AxisModel: AxisBaseModel, AxisModelExtendedInCreator {
         // merge(option, themeModel.get(axisType + 'Axis'));
         // merge(option, this.getDefaultOption());
         // option.type = getAxisType(option);
-        // PORT-NOTE: upstream mutates the shared `option` object in place; Swift bags are value types,
+        // upstream mutates the shared `option` object in place; Swift bags are value types,
         //   so merge into a mutable copy and write it back to `self.option` (`option === self.option`
         //   at call because Model's constructor stores `self.option = option` before init() calls
         //   mergeDefaultAndTheme(option); see Component.ts:155-161). merge overwrite defaults to false.
@@ -292,7 +292,7 @@ public final class AxisModel: AxisBaseModel, AxisModelExtendedInCreator {
             // if (layoutMode) {
             //     mergeLayoutParam(option as BoxLayoutOptionMixin, inputPositionParams, layoutMode);
             // }
-            // PORT-NOTE: upstream passes the `ComponentLayoutMode` object as `opt`; only its
+            // upstream passes the `ComponentLayoutMode` object as `opt`; only its
             //   `ignoreSize` is read by `mergeLayoutParam`, so it is forwarded via the option bag.
             if let mode = layoutMode {
                 var opt: [String: Any] = [:]
@@ -340,7 +340,7 @@ public final class AxisModel: AxisBaseModel, AxisModelExtendedInCreator {
     }
 
     public func getOrdinalMeta() -> OrdinalMeta {
-        // PORT-NOTE: upstream returns the field raw (`undefined` before `optionUpdated`). The
+        // upstream returns the field raw (`undefined` before `optionUpdated`). The
         //   non-Optional return type of `AxisModelExtendedInCreator.getOrdinalMeta()` forces a Swift-only
         //   deviation: lazily create the meta if `optionUpdated` has not run yet. It MUST be memoized —
         //   OrdinalMeta is a mutable identity object into which categories are collected during data init,

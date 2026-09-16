@@ -41,7 +41,7 @@ public struct ScaleGetTicksOpt {
     //      line / split area, where break area is rendered using zigzag line.
     // NOTE: The returned break ticks do not outside axis extent. And if a break only intersects
     //  with axis extent at start or end, it does not count as a tick.
-    // PORT-NOTE: upstream union `'only_break' | 'none' | NullUndefined` modeled as `String?`.
+    // upstream union `'only_break' | 'none' | NullUndefined` modeled as `String?`.
     public var breakTicks: String?
     public init() {}
 }
@@ -58,12 +58,12 @@ public struct ScaleGetTicksOpt {
 //   setExtent/setExtent2/getFilter/sanitize/getDefaultStartValue/freeze), whose bodies
 //   are *mounted at runtime* via `decorateScaleMapper`/`initBreakOrLinearMapper` inside the
 //   concrete subclasses (Interval/Ordinal/Time/Log) — the abstract base declares no bodies.
-// PORT-NOTE: `Scale extends ScaleMapperGeneric<This>` (the merged interface) → `Scale` subclasses the
+// `Scale extends ScaleMapperGeneric<This>` (the merged interface) → `Scale` subclasses the
 //   sibling base class `ScaleMapper` (scale/scaleMapper.swift), inheriting its stored-closure method
 //   "slots" (needTransform/normalize/.../freeze) and `_extents`/`_frozen`; the concrete subclasses
 //   (Interval/Ordinal/Time/Log) mount the bodies at runtime via `initBreakOrLinearMapper` /
 //   `decorateScaleMapper`.
-// PORT-NOTE: the `<This = unknown>` generic exists only to keep the merged interface's
+// the `<This = unknown>` generic exists only to keep the merged interface's
 //   `this`-typing identical; it is not load-bearing and is dropped (CONVENTIONS §2).
 //
 // `abstract class` → an open (non-final) class whose abstract members `fatalError`
@@ -144,7 +144,7 @@ open class Scale: ScaleMapper {
      */
     // upstream: abstract getLabel(tick: ScaleTick): string;
     open func getLabel(_ tick: ScaleTick) -> String {
-        fatalError("abstract method Scale.getLabel must be overridden") // PORT-NOTE: abstract
+        fatalError("abstract method Scale.getLabel must be overridden") // abstract
     }
 
     /**
@@ -152,7 +152,7 @@ open class Scale: ScaleMapper {
      */
     // upstream: abstract getTicks(opt?: ScaleGetTicksOpt): ScaleTick[];
     open func getTicks(_ opt: ScaleGetTicksOpt? = nil) -> [ScaleTick] {
-        fatalError("abstract method Scale.getTicks must be overridden") // PORT-NOTE: abstract
+        fatalError("abstract method Scale.getTicks must be overridden") // abstract
     }
 
     /**
@@ -160,7 +160,7 @@ open class Scale: ScaleMapper {
      */
     // upstream: abstract getMinorTicks(splitNumber: number): number[][];
     open func getMinorTicks(_ splitNumber: Double) -> [[Double]] {
-        fatalError("abstract method Scale.getMinorTicks must be overridden") // PORT-NOTE: abstract
+        fatalError("abstract method Scale.getMinorTicks must be overridden") // abstract
     }
 
     // upstream: static registerClass: clazzUtil.ClassManager['registerClass'];
@@ -188,7 +188,7 @@ open class Scale: ScaleMapper {
 
 // upstream: type ScaleConstructor = typeof Scale & clazzUtil.ClassManager;
 //           clazzUtil.enableClassManagement(Scale as ScaleConstructor);
-// PORT-NOTE: no Swift equivalent for the `typeof Scale & ClassManager` intersection;
+// no Swift equivalent for the `typeof Scale & ClassManager` intersection;
 //   the class-management surface is provided by `Scale._classManager` + the static
 //   `registerClass`/`getClass` forwarders above (initialized at first access).
 

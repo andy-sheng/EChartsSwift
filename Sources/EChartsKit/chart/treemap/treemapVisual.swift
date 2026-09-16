@@ -52,7 +52,7 @@ private struct TreemapVisualMapping {
 }
 
 // interface TreemapVisual { color?: ZRColor; colorAlpha?: number; colorSaturation?: number }
-// PORT-NOTE: modeled as a dynamic `[String: Any]` bag to mirror upstream's `(visuals as any)[visualName]`
+// modeled as a dynamic `[String: Any]` bag to mirror upstream's `(visuals as any)[visualName]`
 //   dynamic-key access in buildVisuals/mapVisual.
 public typealias TreemapVisual = [String: Any]
 
@@ -110,7 +110,7 @@ private func travelTree(
     _ fallbackPalette: [Any]
 ) {
     // const nodeModel = node.getModel<TreemapSeriesNodeItemOption>();
-    //   PORT-NOTE: `node.getModel()` is `Model?` (nil for dataIndex < 0); upstream assumes non-null.
+    //   `node.getModel()` is `Model?` (nil for dataIndex < 0); upstream assumes non-null.
     //   Bail defensively — a node with no item model can not be visually encoded (handled by the guard).
     guard let nodeModel = node.getModel() else {
         return
@@ -192,7 +192,7 @@ private func buildVisuals(
     var visuals: TreemapVisual = [:]
     _ = util.extend(&visuals, designatedVisual)
     // const designatedVisualItemStyle = seriesModel.designatedVisualItemStyle;
-    // PORT-NOTE: `seriesModel.designatedVisualItemStyle` is a scratch bag on TreemapSeriesModel that the
+    // `seriesModel.designatedVisualItemStyle` is a scratch bag on TreemapSeriesModel that the
     //   node itemStyle resolution consults (parent-designated visual). It is a reference-typed
     //   `NSMutableDictionary` (TreemapSeries.swift) precisely so the in-place writes below are observed by
     //   `nodeItemStyleModel.get(visualName)` through `designatedVisualModel`, like upstream's shared object.
@@ -308,7 +308,7 @@ private func buildVisualMapping(
     // Fallback: the frozen level-0 color range came up empty (see travelTree note), so use the
     //   render-time palette as the color range for this node's children. Only applies when no explicit
     //   color range/visual was configured (the common auto-palette case).
-    // PORT-TODO: non-upstream fallback (no counterpart in treemapVisual.ts) — the real gap is `setDefault`
+    // TODO: non-upstream fallback (no counterpart in treemapVisual.ts) — the real gap is `setDefault`
     //   capturing the palette BEFORE the global default merge, so level-0's `color` range is empty. Prefer
     //   fixing `setDefault` to read the palette lazily and deleting this branch (and `visualsHasExplicitColor`
     //   / the `fallbackPalette` parameter threaded through travelTree) once treemap output is re-validated

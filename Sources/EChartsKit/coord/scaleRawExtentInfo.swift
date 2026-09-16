@@ -502,7 +502,7 @@ private func sanitizeExtent(
     let dataMM = internalBag.dataMM
     if let sanitize = scale.sanitize {
         // upstream: mm[0] = scale.sanitize(mm[0], dataMM); mm[1] = scale.sanitize(mm[1], dataMM);
-        // PORT-NOTE: sanitize returns `Double?` (optional slot); upstream returns a number — keep the
+        // sanitize returns `Double?` (optional slot); upstream returns a number — keep the
         //   existing value if a nil is returned.
         if let s0 = sanitize(mm[0], dataMM) { mm[0] = s0 }
         if let s1 = sanitize(mm[1], dataMM) { mm[1] = s1 }
@@ -526,7 +526,7 @@ private func parseAxisModelMinMax(_ scale: Scale, _ minMax: ScaleDataValue?) -> 
     return scale.parse(minMax!)
 }
 
-// PORT-NOTE: min/max callback `({min, max}) => value` — a JS function stored in the option bag (`Any`),
+// min/max callback `({min, max}) => value` — a JS function stored in the option bag (`Any`),
 //   modeled as a Swift closure. Upstream type: `(extent: {min: number, max: number}) => ScaleDataValue | NullUndefined`.
 //   `ScaleDataValue` aliases `Any`, and Swift function-type `as?` casts are invariant (a closure returning
 //   `Double` does NOT cast to one returning `Any`, nor does one taking two args cast to one taking a dict).

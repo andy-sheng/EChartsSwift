@@ -137,7 +137,7 @@ function makeTakenRegions(takenSeatNames) {
                     "tooltip": ["show": true] as [String: Any],
                     "itemStyle": ["color": "#fff"] as [String: Any],
                     "emphasis": [
-                        // PORT-NOTE: emphasis.itemStyle.color omitted — upstream sets it to `undefined`
+                        // emphasis.itemStyle.color omitted — upstream sets it to `undefined`
                         // (an explicit "no emphasis fill override"), which in Swift is simply an absent key.
                         "itemStyle": ["borderColor": "green", "borderWidth": 2.0] as [String: Any],
                         "label": ["show": false] as [String: Any]

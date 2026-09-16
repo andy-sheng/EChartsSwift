@@ -53,7 +53,7 @@ private let ARRAY_LENGTH: Double = 5
 private let Z2_EMPHASIS_LIFT: Double = 10
 
 // interface OnSelectCallback { (node: TreeNode, e: ZRElementEvent): void }
-// PORT-NOTE: the `e: ZRElementEvent` arg is dropped — no consumer reads it (upstream's TreemapView
+// the `e: ZRElementEvent` arg is dropped — no consumer reads it (upstream's TreemapView
 //   breadcrumb `onSelect` uses only `node`); the TreemapView call site passes a single-arg closure.
 public typealias OnSelectCallback = (TreeNode) -> Void
 

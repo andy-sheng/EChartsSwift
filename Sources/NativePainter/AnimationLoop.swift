@@ -2,7 +2,7 @@
 //
 // zrender's `Animation` expects the *host* to supply the per-frame tick that the browser
 // provides via `requestAnimationFrame` (see Animation.swift `_startLoop` / the
-// `requestAnimationFrame` PORT-NOTE). This file is that platform glue: a small driver that
+// `requestAnimationFrame` note). This file is that platform glue: a small driver that
 // pumps `Animation.update()` on a real frame clock and lets the resulting `stage.update`
 // flow drive a `CALayerPainter` refresh (`Animation.update -> stage.update -> ZRender._flush
 // -> _refresh -> painter.refresh`).

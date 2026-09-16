@@ -19,7 +19,7 @@
 //     normalizes it to anyway.
 //   - `export {};` and the TS type annotations are dropped (a bare export is a SyntaxError in the reference
 //     page's classic script).
-//   - no PORT-NOTE below: the option has NO function-valued key (no formatter / renderItem / label
+//   - no note below: the option has NO function-valued key (no formatter / renderItem / label
 //     callback — `tooltip` is the bare `{}` upstream writes), so the Swift `option` mirrors the JS one
 //     key-for-key with NOTHING dropped.
 import Foundation

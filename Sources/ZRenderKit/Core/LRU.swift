@@ -8,7 +8,7 @@
 /// Upstream `key: string | number`. Swift has no untagged union, so we model the
 /// key as a tagged enum. Literal conformances keep call sites close to upstream
 /// (`lru.put("foo", v)` / `lru.put(1, v)`).
-// PORT-NOTE: upstream stores entries in a plain JS object (`this._map = {}`), so
+// upstream stores entries in a plain JS object (`this._map = {}`), so
 //   numeric keys are coerced to strings and `map[1]` collides with `map["1"]`. We
 //   reproduce that by hashing/comparing every key through its JS-string form, so
 //   `.number(1)` and `.string("1")` are the SAME dictionary key here too.
@@ -62,7 +62,7 @@ public final class Entry<T> {
     var key: LRUKey!
 
     // upstream: next/prev typed Entry<T> but assigned null at runtime → Optional
-    // PORT-NOTE: upstream relies on GC for the doubly-linked list. To avoid a retain
+    // upstream relies on GC for the doubly-linked list. To avoid a retain
     //   cycle (A.next→B, B.prev→A) in ARC, the forward `next` link stays strong (the
     //   list is kept alive by head + the next-chain) and the back `prev` link is weak.
     var next: Entry<T>?

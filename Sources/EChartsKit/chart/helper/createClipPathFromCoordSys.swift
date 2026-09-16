@@ -200,7 +200,7 @@ public func createClipPath(
 // upstream:
 //   export type ShapeClipKind = typeof SHAPE_CLIP_KIND_NOT_CLIPPED | ...;
 //   export const SHAPE_CLIP_KIND_NOT_CLIPPED = 0; (etc.)
-// PORT-NOTE: the union-of-literal-types `ShapeClipKind` is erased to `Int` (the constants' runtime
+// the union-of-literal-types `ShapeClipKind` is erased to `Int` (the constants' runtime
 //   type); callers compare against the `SHAPE_CLIP_KIND_*` constants below.
 public typealias ShapeClipKind = Int
 public let SHAPE_CLIP_KIND_NOT_CLIPPED = 0

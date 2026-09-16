@@ -57,11 +57,11 @@ public final class Graph: LinkableStruct {
     // readonly edges: GraphEdge[] = [];
     public private(set) var edges: [GraphEdge] = []
 
-    // PORT-NOTE: upstream `data: SeriesData` is assigned by linkSeriesData; implicitly-unwrapped.
+    // upstream `data: SeriesData` is assigned by linkSeriesData; implicitly-unwrapped.
     // The linked SeriesData objects own this Graph. These inverse links must not close ARC cycles.
     public weak var data: SeriesData!
 
-    // PORT-NOTE: upstream `edgeData: SeriesData` is assigned by linkSeriesData; implicitly-unwrapped.
+    // upstream `edgeData: SeriesData` is assigned by linkSeriesData; implicitly-unwrapped.
     public weak var edgeData: SeriesData!
 
     /**
@@ -247,7 +247,7 @@ public final class Graph: LinkableStruct {
      * Return true to stop traversing
      */
     // breadthFirstTraverse<Ctx>(cb, startNode, direction, context?)
-    // PORT-NOTE: cb returns `boolean | void`; modeled as `Any?` (truthy -> stop). `this: Ctx`
+    // cb returns `boolean | void`; modeled as `Any?` (truthy -> stop). `this: Ctx`
     //   binding dropped (Swift closures capture context directly); `context` kept for fidelity.
     public func breadthFirstTraverse(
         _ cb: (GraphNode, GraphNode?) -> Any?,
@@ -373,7 +373,7 @@ public final class GraphNode {
 
     public var edges: [GraphEdge] = []
 
-    // PORT-NOTE: upstream `hostGraph: Graph` is set right after construction (addNode/clone);
+    // upstream `hostGraph: Graph` is set right after construction (addNode/clone);
     //   implicitly-unwrapped so the proxy accessors can reach `hostGraph.data`.
     public unowned var hostGraph: Graph!
 
@@ -498,7 +498,7 @@ public final class GraphNode {
     }
 
     // ---- createGraphDataProxyMixin('hostGraph', 'data') ----
-    // PORT NOTE: upstream mixes these accessors onto GraphNode (dataName='data'); Swift has no
+    // upstream mixes these accessors onto GraphNode (dataName='data'); Swift has no
     //   prototype mixin, so they are implemented directly against `hostGraph.data`.
 
     // getValue(dimension?: DimensionLoose): ParsedValue
@@ -557,7 +557,7 @@ public final class GraphEdge {
 
     public var dataIndex: Int = -1
 
-    // PORT-NOTE: upstream `hostGraph: Graph` is set right after construction; implicitly-unwrapped.
+    // upstream `hostGraph: Graph` is set right after construction; implicitly-unwrapped.
     public unowned var hostGraph: Graph!
 
     // constructor(n1: GraphNode, n2: GraphNode, dataIndex?: number)
@@ -641,7 +641,7 @@ public final class GraphEdge {
     }
 
     // ---- createGraphDataProxyMixin('hostGraph', 'edgeData') ----
-    // PORT NOTE: upstream mixes these accessors onto GraphEdge (dataName='edgeData'); implemented
+    // upstream mixes these accessors onto GraphEdge (dataName='edgeData'); implemented
     //   directly against `hostGraph.edgeData`.
 
     public func getValue(_ dimension: DimensionLoose? = nil) -> ParsedValue {

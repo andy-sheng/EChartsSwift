@@ -33,7 +33,7 @@ import ZRenderKit
 //   import { Dictionary } from '../util/types';                          -> `[String: T]`.
 //   import { calcBandWidth } from '../coord/axisBand';                   -> `calcBandWidth` (coord/axisBand.swift).
 //   import { createBandWidthBasedAxisContainShapeHandler, makeAxisStatKey2 } from '../chart/helper/axisSnippets';
-//     -> PORT-NOTE (deferred): chart/helper/axisSnippets.ts NOT yet ported (PREREQ). The stubs at the
+//     -> TODO: chart/helper/axisSnippets.ts NOT yet ported (PREREQ). The stubs at the
 //        bottom mirror the upstream one-liners so this file compiles (same convention as barGrid.swift).
 //   import { createSimpleOverallStageHandler, makeCallOnlyOnce } from '../util/model';
 //     -> `model.makeCallOnlyOnce`; the overall stage handler is invoked directly by the ECharts driver
@@ -51,7 +51,7 @@ import ZRenderKit
 //   import { assert, each } from 'zrender/src/core/util';                -> `util.assert` / `util.each`.
 
 
-// PORT-NOTE: `makeCallOnlyOnce()` is generic (`<Host: AnyObject>`); specialize to the registrar type,
+// `makeCallOnlyOnce()` is generic (`<Host: AnyObject>`); specialize to the registrar type,
 //   matching barGrid.swift / axisStatistics.swift.
 private let callOnlyOnce: (EChartsExtensionInstallRegisters, () -> Void) -> Void = model.makeCallOnlyOnce()
 
@@ -366,7 +366,7 @@ public func registerBarPolarAxisHandlers(
 
 
 // ============================================================================
-// PORT-NOTE: local port helpers (NOT in upstream barPolar.ts).
+// local port helpers (NOT in upstream barPolar.ts).
 // ============================================================================
 
 // `data.get(...)` returns `ParsedValue` (Any); numeric bar data is stored as `Double`. Mirrors the
@@ -385,7 +385,7 @@ private func polarTruthy(_ v: Double) -> Bool {
 
 
 // ============================================================================
-// PORT-NOTE (deferred): stubs for `chart/helper/axisSnippets.ts` (PREREQ, not yet ported). Mirror the
+// TODO: stubs for `chart/helper/axisSnippets.ts` (PREREQ, not yet ported). Mirror the
 //   upstream one-liners so this file compiles; remove them and import the real symbols from
 //   chart/helper/axisSnippets.swift when it lands (same convention as barGrid.swift's identical stubs —
 //   these must stay behavior-identical to barGrid's copies).

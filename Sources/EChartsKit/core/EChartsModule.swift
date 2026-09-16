@@ -1,5 +1,5 @@
 // Ported from echarts/src/core/echarts.ts — keep in sync with upstream
-// PORT-NOTE: filename avoids a case-insensitive collision with the existing ECharts.swift
+// filename avoids a case-insensitive collision with the existing ECharts.swift
 // driver. Public module spelling remains `echarts`.
 import Foundation
 import ZRenderKit
@@ -15,7 +15,7 @@ public struct EChartsInitOpts {
     public var ssr: Bool?
     public var locale: Any?
     public init() {}
-    // PORT-TODO: upstream number|string sizing and hoverLayerThreshold are not modeled.
+    // TODO: upstream number|string sizing and hoverLayerThreshold are not modeled.
 }
 
 public enum EChartsInitError: Error {
@@ -24,7 +24,7 @@ public enum EChartsInitError: Error {
 
 /// Public module namespace, corresponding to `import * as echarts`.
 public enum echarts {
-    // PORT-NOTE: the existing EChartsView is the live chart driver. Preserve its event
+    // the existing EChartsView is the live chart driver. Preserve its event
     // wiring instead of creating another chart lifecycle beside it.
     @discardableResult
     public static func `init`(_ dom: ZRenderHost? = nil, _ theme: Any? = nil,

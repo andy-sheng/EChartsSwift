@@ -31,7 +31,7 @@ import ZRenderKit
 //   import GlobalModel from '../../model/Global';                   -> `GlobalModel`.
 //   import { inheritDefaultOption } from '../../util/component';    -> `component.inheritDefaultOption`.
 //   import tokens from '../../visual/tokens';
-//     -> PORT-NOTE: `visual/tokens.swift` is ported; here the consumed constants are inlined verbatim
+//     -> note: `visual/tokens.swift` is ported; here the consumed constants are inlined verbatim
 //        (same deviation as LegendModel.swift):
 //          tokens.color.accent50 = '#6578ba'
 //          tokens.color.accent10 = '#e0e4f2'

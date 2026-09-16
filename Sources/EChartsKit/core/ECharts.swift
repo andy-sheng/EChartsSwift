@@ -294,7 +294,7 @@ public struct DispatchActionOpt {
 // (registered event types are always lowercase — see `registerAction`'s `createEventType`). Here that
 // is simply what `MessageCenter.on/off` and `ECharts.on/off` do inline.
 //
-// PORT-NOTE (CONVENTIONS §2): ZRenderKit's `Eventful` is a `final class` (upstream applies it as a
+// note (CONVENTIONS §2): ZRenderKit's `Eventful` is a `final class` (upstream applies it as a
 //   MIXIN to Element via `applyMixin`), so `extends Eventful` becomes COMPOSITION + forwarding — the
 //   same shape `Element`/`Handler`/`ZRender` already use.
 // ============================================================================
@@ -461,7 +461,7 @@ public final class ECharts: EChartsType {
     //   `loadingEffects` map (echarts.ts:2907) and `registerLoading(name, loadingFx)`
     //   (echarts.ts:3290) writes to it; `showLoading(name, cfg)` looks the creator up
     //   there and adds the returned element to zr.
-    //   PORT-NOTE (deferred, out of this symbol's scope): the three consumers are
+    //   note (deferred, out of this symbol's scope): the three consumers are
     //   unported — (1) the built-in `default` creator (`loading/default.ts`), which
     //   upstream registers at module scope (echarts.ts:3371, alongside
     //   registerPreprocessor/registerProcessor); the port's equivalent site is
@@ -702,7 +702,7 @@ public final class ECharts: EChartsType {
         // -- chart/bar/install.ts --
         ComponentModel.registerClass(BarSeriesModel.self)                  // registerSeriesModel(BarSeries)
         // registerLayout(VISUAL.LAYOUT, createCrossSeriesLayoutHandler(bar)) → `_barLayoutHandler`.
-        // registerLayout(PROGRESSIVE_LAYOUT, createProgressiveLayout(bar)) → PORT-NOTE: `createProgressiveLayout`
+        // registerLayout(PROGRESSIVE_LAYOUT, createProgressiveLayout(bar)) → note: `createProgressiveLayout`
         //   is ported (barGrid.swift) but not registered here — the non-large bar path recomputes per-item
         //   geometry inside `BarView.render`, so the progressive layout task is not needed for a basic render.
         // registerProcessor(PROCESSOR.STATISTIC, dataSample(bar)) — captured in `_dataSamplers` and run
@@ -753,7 +753,7 @@ public final class ECharts: EChartsType {
         // -- chart/heatmap/install.ts (minimal) -- registerSeriesModel(HeatmapSeriesModel) +
         //   registerChartView(HeatmapView) (view keyed by subType 'heatmap' below). Heatmap renders ONLY on
         //   cartesian2d in the port (one colored Rect per cell); geo/calendar/matrix coord paths are
-        //   PORT-NOTE (deferred): those HeatmapView coord branches are not ported. Cell fill comes from the per-datum color the visualMap ENCODING wrote, so a
+        //   TODO: those HeatmapView coord branches are not ported. Cell fill comes from the per-datum color the visualMap ENCODING wrote, so a
         //   `visualMap` component MUST be present for cells to be colored. heatmapInstall.swift is
         //   commented-only (diffable surface); actual wiring lives here per the effectScatterInstall convention.
         ComponentModel.registerClass(HeatmapSeriesModel.self)
@@ -854,7 +854,7 @@ public final class ECharts: EChartsType {
         // -- chart/lines/install.ts (minimal) -- registerChartView(LinesView) +
         //   registerSeriesModel(LinesSeries) + registerLayout(linesLayout) + registerVisual(linesVisual).
         //   Lines is a coord-space series (default coord 'geo'; ONLY cartesian2d is rendered by the ported
-        //   static view — polar/geo/calendar are PORT-NOTE (deferred): unported in linesLayout/LinesView). `linesLayout` is a
+        //   static view — polar/geo/calendar are TODO: unported in linesLayout/LinesView). `linesLayout` is a
         //   SERIES_STAGE_TASK (seriesType 'lines') whose reset→progress writes each line's per-item layout
         //   (`data.setItemLayout(i, pts)`), same wiring as candlestickLayout. LinesView also inlines the
         //   per-item dataToPoint + curveness control-point math (like ScatterView/LineView), so the layout
@@ -955,7 +955,7 @@ public final class ECharts: EChartsType {
         //   active-interval selection ACTION is now wired (installParallelActions below → sets
         //   ParallelAxisModel.activeIntervals → Parallel.eachActiveState dims out-of-interval lines via
         //   parallelVisual). The LIVE axis-drag BrushController that would EMIT axisAreaSelect (ParallelAxisView
-        //   ._refreshBrushController/_onBrush) + the axis-expand pointer roam remain // PORT-NOTE (deferred): live brush/roam interaction unported.
+        //   ._refreshBrushController/_onBrush) + the axis-expand pointer roam remain // TODO: live brush/roam interaction unported.
         CoordinateSystemManager.register("parallel", ParallelCoordinateSystemCreator()) // registerCoordinateSystem('parallel', parallelCoordSysCreator)
         ComponentModel.registerClass(ParallelModel.self)                            // registerComponentModel(ParallelModel)
         ComponentModel.registerClass(ParallelAxisModel.self)                        // registerComponentModel(ParallelAxisModel) + axisModelCreator(..,'parallel',..)
@@ -972,7 +972,7 @@ public final class ECharts: EChartsType {
         //   registerCoordinateSystem('matrix', Matrix) + registerComponentModel(MatrixModel) +
         //   registerComponentView(MatrixView). The matrix coord maps an (x,y) header/body cell to a rect;
         //   MatrixView draws the table backdrop (header + body cell rects + header text labels).
-        //   PORT-NOTE (deferred): matrixPrepareCustom (custom-series coord hook) is unregistered — same as
+        //   TODO: matrixPrepareCustom (custom-series coord hook) is unregistered — same as
         //   calendarPrepareCustom (no prepareCustom registry yet). Cell interaction is deferred (unported) in MatrixView.
         CoordinateSystemManager.register("matrix", MatrixCoordinateSystemCreator()) // registerCoordinateSystem('matrix', Matrix)
         ComponentModel.registerClass(MatrixModel.self)                              // registerComponentModel(MatrixModel)
@@ -1012,7 +1012,7 @@ public final class ECharts: EChartsType {
         //   CustomSeriesRenderItem (CustomSeriesModel.getRenderItem() casts it) OR registered globally via
         //   registerCustomSeries(subType, renderItem). CustomChartView resolves it as
         //   `series.getRenderItem() ?? getCustomSeries(subType)`. cartesian2d prepareCustom supplies
-        //   api.coord/api.size. transitions/morph/states are PORT-NOTE (deferred): unported. customInstall.swift is commented-only
+        //   api.coord/api.size. transitions/morph/states are TODO: unported. customInstall.swift is commented-only
         //   (diffable surface); actual wiring lives here per the boxplot/heatmap install convention.
         ComponentModel.registerClass(CustomSeriesModel.self)                        // registerSeriesModel(CustomSeries)
 
@@ -1098,7 +1098,7 @@ public final class ECharts: EChartsType {
         //   TooltipView + the hover TRIGGER are DEFERRED (need the live-view host — a later phase),
         //   so ONLY the model is registered here (no view). `dependencies = ['axisPointer']`; AxisPointerModel
         //   is ported (AxisPointerModel.swift), but the tooltip's embedded `axisPointer` sub-option is kept as an
-        //   untyped `[String: Any]` bag (see TooltipModel.swift PORT-NOTE).
+        //   untyped `[String: Any]` bag (see TooltipModel.swift note).
         ComponentModel.registerClass(TooltipModel.self)                    // registerComponentModel(TooltipModel)
         installTooltipActions(ECharts._registers)                      // registerAction('showTip'/'hideTip', noop)
 
@@ -1116,7 +1116,7 @@ public final class ECharts: EChartsType {
         //   The draggable axisPointer HANDLE dispatches this action (BaseAxisPointer._doDispatchAxisPointer)
         //   while dragged; the `axisTrigger` handler recomputes the hovered/dragged axis value(s) and
         //   writes them onto each axisPointer model (updateModelActually), then fires showTip/hideTip.
-        // PORT-NOTE (update method): upstream's `update:':updateAxisPointer'` broadcasts to every
+        // note (update method): upstream's `update:':updateAxisPointer'` broadcasts to every
         //   `AxisView.updateAxisPointer` to re-draw the crosshair+handle at the new value. In THIS port
         //   there is NO live per-axis `AxisView` (ECharts is zr-less; `EChartsView` owns the pointer
         //   managers — see EChartsView._updateAxisPointers), so that empty-mainType broadcast has no
@@ -1176,7 +1176,7 @@ public final class ECharts: EChartsType {
         //   implemented, so both COORDINATE markers (`{yAxis:v}`/`{coord:[x,y]}`) and STATISTIC markers
         //   (type:'min'/'max'/'average'/'median') resolve. markPoint renders via the real SymbolDraw
         //   (symbol + value label); markLine via a static LineDraw stand-in (dashed lineStyle + end
-        //   symbols + label); markArea via its Polygon band. PORT-NOTE (deferred): enter/leave animation + emphasis unported.
+        //   symbols + label); markArea via its Polygon band. TODO: enter/leave animation + emphasis unported.
         ComponentModel.registerClass(MarkPointModel.self)                  // registerComponentModel(MarkPointModel)
         ComponentModel.registerClass(MarkLineModel.self)                   // registerComponentModel(MarkLineModel)
         ComponentModel.registerClass(MarkAreaModel.self)                   // registerComponentModel(MarkAreaModel)
@@ -1240,7 +1240,7 @@ public final class ECharts: EChartsType {
         //   'axisAreaSelect', event 'axisAreaSelected') (sets each queried parallelAxis model's active
         //   intervals → Parallel.eachActiveState dims the out-of-interval lines via the visual stage on the
         //   full update) + registerAction('parallelAxisExpand') (the axis expand-window; the LIVE axis-drag
-        //   BrushController that would emit these is still // PORT-NOTE (deferred): unported in ParallelAxisView). See
+        //   BrushController that would emit these is still // TODO: unported in ParallelAxisView). See
         //   component/axis/parallelAxisAction.swift.
         installParallelActions(ECharts._registers)
 
@@ -1505,7 +1505,7 @@ public final class ECharts: EChartsType {
         // `optionChanged: true` is exactly what gates universalTransition's 'series:transition' handler
         // (a dispatchAction-driven update leaves it unset → no cross-series morph). `seriesTransition`
         // comes from `setOption`'s `transition` opt, which the port's setOption signature does not carry
-        // (PORT-NOTE: `SetOptionOpts.transition` unported — the option-driven finder form; the seriesKey/
+        // (note: `SetOptionOpts.transition` unported — the option-driven finder form; the seriesKey/
         // id-driven form, which is what every ported demo uses, is fully wired).
         // A render hook may dispatch an internal action (realtimeSort does this on its first frame).
         // Upstream marks the whole setOption/update pipeline as the EC main process, so that action is
@@ -1634,7 +1634,7 @@ public final class ECharts: EChartsType {
         //   brush visual CANNOT run here (item layout is still nil at this point); it runs at the end of
         //   `render()`, right before `renderSeries` — see the `brushVisual(...)` call there.
 
-        // background / darkMode (zr.setBackgroundColor / setDarkMode) — PORT-NOTE (platform): the driver exposes a
+        // background / darkMode (zr.setBackgroundColor / setDarkMode) — note (platform): the driver exposes a
         //     bare Group; background is a host concern, handled by the native host, not this layer.
 
         // (7) LAYOUT + RENDER — `render(this, ecModel, api, payload, updateParams)`.
@@ -1923,7 +1923,7 @@ public final class ECharts: EChartsType {
     // ------------------------------------------------------------------------
     private func render(_ ecModel: GlobalModel, _ api: ExtensionAPI,
                         _ updateParams: UpdateLifecycleParams = UpdateLifecycleParams()) {
-        // allocateZlevels(ecModel) — PORT-NOTE skip (single grid + one series; default z ordering).
+        // allocateZlevels(ecModel) — note skip (single grid + one series; default z ordering).
 
         // View REUSE (L5): the driver no longer wipes root + the view registries each render.
         //   `prepareView` now performs upstream's mark-and-sweep (echarts.ts:1687-1770): every view
@@ -2041,7 +2041,7 @@ public final class ECharts: EChartsType {
         //   holds zero axes, so the stage is already a no-op; plain bar bandWidth/offset/size are never
         //   touched either way, and `runSeriesStageHandler` likewise skips every series whose `subType`
         //   differs from `handler.seriesType`.
-        //   PORT-NOTE (ordering deviation): upstream registers the second stage at
+        //   note (ordering deviation): upstream registers the second stage at
         //   `PRIORITY.VISUAL.PROGRESSIVE_LAYOUT` so it runs after EVERY overall layout stage ("Do layout
         //   after other overall layout, which can prepare some information."). This driver has no priority
         //   buckets and runs both pictorialBar stages back-to-back here, so the overall layouts below
@@ -2142,7 +2142,7 @@ public final class ECharts: EChartsType {
         graphSimpleLayoutStageHandler.overallReset?(ecModel, api, nil)
         // `layout:'force'` — iterative physics simulation (graphForceLayoutStageHandler). Self-gates on
         //   the series `layout` option; for a static frame it settles the simulation synchronously (the
-        //   live per-frame tick is a PORT-NOTE (deferred): unported — see forceLayout.swift). Runs alongside the other two.
+        //   live per-frame tick is a TODO: unported — see forceLayout.swift). Runs alongside the other two.
         graphForceLayoutStageHandler.overallReset?(ecModel, api, nil)
         // graphCategoryVisualStageHandler / graphEdgeVisualStageHandler are now run in `performVisualStage`
         //   (the visual phase, before renderComponents) so the legend can read the category swatch colours.
@@ -2180,7 +2180,7 @@ public final class ECharts: EChartsType {
         //   chart/helper/LargeLineDraw — remove this call and a `large: true` lines series renders NOTHING.
         //   Only the NON-large per-item projection is ADDITIONALLY inlined in the view (like
         //   ScatterView/LineView), so for those modes the stage is redundant-but-faithful.
-        //   Polar is not handled (PORT-NOTE (deferred): `Polar` does not witness `CoordinateSystem` in
+        //   Polar is not handled (TODO: `Polar` does not witness `CoordinateSystem` in
         //   linesLayout).
         runSeriesStageHandler(linesLayout, ecModel, api)
 
@@ -2301,7 +2301,7 @@ public final class ECharts: EChartsType {
                     //   type is 'legend.plain'). Most components have full type == mainType, so the fallback
                     //   is what they resolve through.
                     guard let factory = _componentViewFactories[model.type] ?? _componentViewFactories[model.mainType] else {
-                        // PORT-NOTE: no component view registered for this mainType — skip (a general fallback guard).
+                        // no component view registered for this mainType — skip (a general fallback guard).
                         return nil as ComponentView?
                     }
                     let v = factory()
@@ -2324,7 +2324,7 @@ public final class ECharts: EChartsType {
                 let view = existing ?? {
                     // ChartView.getClass(classType.sub) → factory keyed by series subType.
                     guard let factory = _chartViewFactories[seriesModel.subType] else {
-                        // PORT-NOTE: no chart view registered for this subType — skip (a general fallback guard).
+                        // no chart view registered for this subType — skip (a general fallback guard).
                         return nil as ChartView?
                     }
                     let v = factory()
@@ -2342,7 +2342,7 @@ public final class ECharts: EChartsType {
                 _chartViewByModel[ObjectIdentifier(seriesModel)] = chartView
                 // upstream: `scheduler.prepareView(view, model, ...)` builds the series pipeline and sets
                 //   `seriesModel.pipelineContext` (progressive/large flags read by `BarView._updateDrawMode`
-                //   at BarView.swift:221). PORT-NOTE: this assignment is only the INITIAL value — it makes
+                //   at BarView.swift:221). note: this assignment is only the INITIAL value — it makes
                 //   the implicitly-unwrapped `pipelineContext` non-nil for every series the moment its view
                 //   is resolved, so any reader is safe. The REAL context is computed right after, by the
                 //   `updateStreamModes` pass in `update()` (see the `_scheduler.updateStreamModes` loop
@@ -2586,7 +2586,7 @@ public final class ECharts: EChartsType {
     //   label. When `liftLabelZ2` is set, also threads the running max `z2`
     //   through the DFS and LIFTS each label to `z2 = subtreeMaxZ2 + 2` (and the text guide line to
     //   `maxZ2 ± 1`) so it paints over the glyph it annotates.
-    //   PORT-NOTE: `ignoreModelZ` (an ExtendedElement flag used to intentionally pin lifted elements) is
+    //   `ignoreModelZ` (an ExtendedElement flag used to intentionally pin lifted elements) is
     //   not ported → not checked here.
     @discardableResult
     private func doUpdateZ(
@@ -2676,7 +2676,7 @@ public final class ECharts: EChartsType {
         }
 
         // upstream echarts.ts:2520 — lifecycle.trigger('series:layoutlabels', ...).
-        //   PORT-NOTE: nothing listens on it here. The port hand-calls the label-layout stage
+        //   nothing listens on it here. The port hand-calls the label-layout stage
         //   (`LabelManager.runLabelLayoutStage`) at the end of `render()` instead of registering
         //   `installLabelLayout` as a listener, so the label layout currently runs AFTER 'series:transition'
         //   rather than before it. Harmless for the morph (labels are `ZRText` textContents, never
@@ -2706,7 +2706,7 @@ public final class ECharts: EChartsType {
             self.updateRenderedStates(seriesModel, chartView.eachRendered)
         }
 
-        // updateHoverLayerStatus(ecIns, ecModel) — PORT-NOTE (deferred): hover layer not ported.
+        // updateHoverLayerStatus(ecIns, ecModel) — TODO: hover layer not ported.
 
         lifecycle.trigger("series:afterupdate", ecModel, api, updateParams)
     }
@@ -2721,7 +2721,7 @@ public final class ECharts: EChartsType {
     /// Ported from `ECharts.dispatchAction` (echarts.ts:1574-1624).
     public func dispatchAction(_ payload: Payload, _ opt: DispatchActionOpt? = nil) {
         // if (this._disposed) { disposedWarning(this.id); return; }
-        //   PORT-NOTE: the driver has no `_disposed` flag / lifecycle (dispose is Phase 6b) — no guard.
+        //   the driver has no `_disposed` flag / lifecycle (dispose is Phase 6b) — no guard.
 
         // if (!isObject(opt)) { opt = {silent: !!opt}; }
         //   The `boolean | {silent,flush}` normalization is absorbed by `DispatchActionOpt` (nil → silent:false;
@@ -2753,13 +2753,13 @@ public final class ECharts: EChartsType {
         let flush = opt.flush
         if flush == true {
             // upstream: this._zr.flush();
-            // PORT-NOTE (platform): forces a SYNCHRONOUS zrender repaint of the deferred frame. There is no live zr
+            // note (platform): forces a SYNCHRONOUS zrender repaint of the deferred frame. There is no live zr
             //   this phase, and the driver's `update()` ALREADY renders synchronously inside
             //   doDispatchAction, so there is no pending frame to flush → no-op.
         }
         else if flush != false {
             // upstream: `else if (flush !== false && env.browser.weChat) this._throttledZrFlush();`
-            // PORT-NOTE (platform): the WeChat throttled-flush workaround is N/A (no browser env / live zr).
+            // note (platform): the WeChat throttled-flush workaround is N/A (no browser env / live zr).
         }
 
         flushPendingActions(silent)
@@ -2790,7 +2790,7 @@ public final class ECharts: EChartsType {
 
         _inEcCycle = true
         // updateECUpdateCycleVersion(this);
-        //   PORT-NOTE: util/states (the emphasis/blur state machine) is ported and wired; the EC update-cycle
+        //   util/states (the emphasis/blur state machine) is ported and wired; the EC update-cycle
         //   version counter it uses as a staleness guard is simply not tracked in this driver.
 
         // Batch action → one payload per batch item (`defaults(extend({}, item), payload); item.batch = null`).
@@ -2922,7 +2922,7 @@ public final class ECharts: EChartsType {
         if !silent {
             // let refinedEvent: ECActionEvent;
             // if (actionInfo.refineEvent) { ... refinedEvent = defaults({type: actionInfo.refinedEventType}, eventContent); ... }
-            //   PORT-NOTE (gap): `refineEvent` is not ported (it needs `makeSelectChangedEvent` →
+            //   note (gap): `refineEvent` is not ported (it needs `makeSelectChangedEvent` →
             //   `getAllSelectedIndices`; see core/actionRegister.swift, which registers select/unselect/
             //   toggleSelect WITHOUT it). Consequence: the REFINED 'selectchanged' event is not emitted;
             //   the non-refined per-action event ('select'/'unselect'/'toggleselect') IS — those are the
@@ -2992,7 +2992,7 @@ public final class ECharts: EChartsType {
         ecModel.setUpdatePayload(payload)
 
         // if (!mainType) { broadcast to all views; return; }
-        //   PORT-NOTE: the empty-mainType broadcast branch (`:updateAxisPointer`) is unreachable from the
+        //   the empty-mainType broadcast branch (`:updateAxisPointer`) is unreachable from the
         //   ported call sites (doDispatchAction always passes a concrete mainType), so it is elided.
 
         let condition = model.makeQueryConditionKindA(payload, mainType, subType)
@@ -3049,7 +3049,7 @@ public final class ECharts: EChartsType {
                 if let seriesModel = m as? SeriesModel {
                     states.toggleSelectionFromPayload(seriesModel, payload, api)
                     states.updateSeriesElementSelection(seriesModel)
-                    // markStatusToUpdate(ecIns);  — PORT-NOTE: no status-needs-update flag tracked in the
+                    // markStatusToUpdate(ecIns);  — note: no status-needs-update flag tracked in the
                     //   driver (upstream sets it so a later flush repaints; here the caller repaints).
                 }
             }
@@ -3128,7 +3128,7 @@ public final class ECharts: EChartsType {
         _ query: EventQuery?,
         _ handler: @escaping (ECEventParams) -> Void
     ) -> ECharts {
-        // PORT-NOTE: `if (this.isDisposed()) { disposedWarning(this.id); return; }` — the driver has no
+        // `if (this.isDisposed()) { disposedWarning(this.id); return; }` — the driver has no
         //   `_disposed` flag / dispose lifecycle (see `dispatchAction`), so there is no guard to port.
         // `args[0]` is event name. Event name is all lowercase.
         let lowerName = eventName.lowercased()
@@ -3138,7 +3138,7 @@ public final class ECharts: EChartsType {
                 handler(params)
             }
             else {
-                // PORT-NOTE: upstream triggers the LIFECYCLE events with NO param object
+                // upstream triggers the LIFECYCLE events with NO param object
                 //   (`this.trigger('updated')`, `trigger('finished')`), so the JS handler's `params` is
                 //   `undefined`. The Swift handler takes a non-optional `ECEventParams`, so a param-less
                 //   trigger is delivered as an otherwise-EMPTY packed event carrying only `type`. No field
@@ -3152,7 +3152,7 @@ public final class ECharts: EChartsType {
 
     /// upstream: `chart.off(eventName)`.
     ///
-    /// PORT-NOTE (closure identity): upstream also supports `off(eventName, handler)` — removing ONE
+    /// note (closure identity): upstream also supports `off(eventName, handler)` — removing ONE
     ///   handler. Swift closures have no identity, so `Eventful.off(event, handler)` cannot filter a
     ///   specific handler out (documented in ZRenderKit/Core/Eventful.swift) and is not exposed here.
     ///   Consequence: you can unbind ALL handlers of an event, not a single one.
@@ -3214,7 +3214,7 @@ public final class ECharts: EChartsType {
         //   `legacy/dataSelectAction.ts` is now ported (dataSelectAction.handleLegacySelectEvents): it
         //   registers the deprecated 'pieselectchanged' / 'mapselectchanged' / 'selected' back-compat
         //   events that re-emit the modern 'selectchanged' under the pre-v5 names.
-        //   PORT-NOTE (gap — the handler RUNS today, it is NOT dormant): 'selectchanged' is already
+        //   note (gap — the handler RUNS today, it is NOT dormant): 'selectchanged' is already
         //   published as the NON-refined event type (actionRegister.swift:48 registers select/unselect/
         //   toggleSelect with `event = SELECT_CHANGED_EVENT_TYPE` and no `refineEvent`, so
         //   `nonRefinedEventType` resolves to 'selectchanged'), and doDispatchAction triggers it with an
@@ -3255,7 +3255,7 @@ public final class ECharts: EChartsType {
                             // const dataModel = ecData.dataModel || ecModel.getSeriesByIndex(ecData.seriesIndex);
                             // params = dataModel && dataModel.getDataParams(ecData.dataIndex, ecData.dataType, el) || {};
                             //
-                            // PORT-NOTE: `ecData.dataModel` is populated by all three marker views now that
+                            // `ecData.dataModel` is populated by all three marker views now that
                             //   `MarkerModel` conforms to `DataModel` (MarkerModel.swift):
                             //   `getECData(el).dataModel = mlModel` (MarkLineView.renderSeries),
                             //   `= mpModel` (MarkPointView.renderSeries) and `= maModel`
@@ -3265,7 +3265,7 @@ public final class ECharts: EChartsType {
                             //   not the host series. `SeriesModel` does not conform to `DataModel`, so the two
                             //   arms of the `||` cannot share one `DataModel?` binding and are branched
                             //   instead; the evaluation order is upstream's.
-                            // PORT-NOTE: `getDataParams(dataIndex, dataType, el)` — the 3rd argument (`el`)
+                            // `getDataParams(dataIndex, dataType, el)` — the 3rd argument (`el`)
                             //   exists only on the CustomSeries override (`DataFormatMixin.getDataParams` takes
                             //   two); `MarkerModel`'s 3-arg `DataModel` witness delegates to the 2-arg form and
                             //   ignores it. `CustomSeries` DOES define a 3-arg `getDataParams`
@@ -3384,7 +3384,7 @@ public final class ECharts: EChartsType {
             guard let self = self else { return nil }
 
             // ecIns.trigger('rendered', params);
-            //   PORT-NOTE: upstream's param is zrender's `RenderedEvent` ({elapsedTime}). The chart bus
+            //   upstream's param is zrender's `RenderedEvent` ({elapsedTime}). The chart bus
             //   carries `ECEventParams`, which that struct is not, so 'rendered' is published with an
             //   otherwise-empty packed event whose `elapsedTime` is put in the dynamic bag — the one place
             //   the packed event is assembled from a zr event rather than a model.
@@ -3397,7 +3397,7 @@ public final class ECharts: EChartsType {
             // The `finished` event should not be triggered repeatedly, so it should only be triggered
             // when rendering indeed happens in zrender.
             if zr.animation.isFinished()
-                // !ecIns[PENDING_UPDATE] — PORT-NOTE: the driver has no lazy/pending setOption
+                // !ecIns[PENDING_UPDATE] — note: the driver has no lazy/pending setOption
                 //   (`setOption` renders synchronously), so there is no pending-update flag to check.
                 && !(self._scheduler?.unfinished ?? false)
                 && self._pendingActions.isEmpty
@@ -3432,7 +3432,7 @@ public final class ECharts: EChartsType {
                 // const coordSys = (model as CoordinateSystemHostModel).coordinateSystem;
                 // if (coordSys && coordSys.containPoint) { result = result || !!coordSys.containPoint(value); }
                 //
-                // PORT-NOTE: `model.coordinateSystem` is not one property in this port — a coord-sys HOST
+                // `model.coordinateSystem` is not one property in this port — a coord-sys HOST
                 //   model (GridModel/PolarModel/…) declares it through `CoordinateSystemHostModel`
                 //   (a `CoordinateSystemMaster`), while a SeriesModel stores its own as `Any?` (a
                 //   `CoordinateSystem`). Both are checked; both protocols declare `containPoint`.

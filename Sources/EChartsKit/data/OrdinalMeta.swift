@@ -21,7 +21,7 @@
 // import {createHashMap, isObject, map, HashMap, isString} from 'zrender/src/core/util';
 //   -> `isObject`/`map`/`isString` are ZRenderKit.util.* ; `createHashMap`/`HashMap` are
 //      the EChartsKit local shim (same module — see util/model.swift; ZRenderKit has not
-//      yet ported them, see ZRenderKit/Core/util.swift PORT-NOTE).
+//      yet ported them, see ZRenderKit/Core/util.swift note).
 // import Model from '../model/Model';                     -> Model (same-module forward ref)
 // import { OrdinalNumber, OrdinalRawValue } from '../util/types';  -> same module
 import Foundation
@@ -32,7 +32,7 @@ private var uidBase: Double = 0
 public final class OrdinalMeta {
 
     public private(set) var categories: [OrdinalRawValue]   // readonly categories: OrdinalRawValue[]
-    // PORT-NOTE: upstream is `readonly` (reference fixed, elements mutable). Modeled as
+    // upstream is `readonly` (reference fixed, elements mutable). Modeled as
     // `private(set) var` so `parseAndCollect` can mutate elements while keeping it
     // externally read-only.
 
@@ -169,7 +169,7 @@ public final class OrdinalMeta {
             return map
         }
         // upstream: this._map = createHashMap<OrdinalNumber>(this.categories)
-        // PORT-NOTE: the EChartsKit `createHashMap` shim has no init-from-array overload
+        // the EChartsKit `createHashMap` shim has no init-from-array overload
         // (upstream seeds value->index from the array via `set(value, key)`); seed manually
         // until ZRenderKit ports `createHashMap`.
         let map: HashMap<OrdinalNumber> = createHashMap()
@@ -182,7 +182,7 @@ public final class OrdinalMeta {
 }
 
 // upstream: function getName(obj: any): string
-// PORT-NOTE: returns OrdinalRawValue (not String) so the object branch can pass `obj.value`
+// returns OrdinalRawValue (not String) so the object branch can pass `obj.value`
 // through unchanged, as upstream does at runtime despite its `: string` annotation.
 private func getName(_ obj: Any?) -> OrdinalRawValue {
     if util.isObject(obj), let dict = obj as? [String: Any],

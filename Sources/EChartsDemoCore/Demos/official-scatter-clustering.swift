@@ -228,7 +228,7 @@ option = {
 };
 """#,
         option: [
-            // PORT-NOTE: dataset[1].transform ('ecStat:clustering') omitted — EChartsKit registers only
+            // dataset[1].transform ('ecStat:clustering') omitted — EChartsKit registers only
             // the built-in filter/sort transforms, and the clustering body is a JS closure a Swift option
             // cannot carry. The single dataset below IS that transform's output: the POST-transform table
             // (the web pane's dataset[1]), [x, y, clusterIndex], precomputed by the same k-means.

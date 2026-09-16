@@ -24,7 +24,7 @@
 //     `myChart` interaction beyond `getWidth()`/`getHeight()`), so there is no `drive` timeline.
 //   - The option contains NO JS closures: `priceFormatter` / `getPriceColor` / `Array.from` / `.map`
 //     all evaluate to plain values before `option` is assigned, so the Swift port carries the option in
-//     full — no PORT-NOTE omissions.
+//     full — no note omissions.
 import Foundation
 
 // MARK: - deterministic RNG + the example's JS number semantics

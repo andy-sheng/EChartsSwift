@@ -8,7 +8,7 @@
 // public API surface (`get` / `set` / `delete` / `has`). The `wmUniqueIndex` /
 // `supportDefineProperty` / `_id` machinery only existed to namespace the hidden property
 // on the key, so it is intentionally dropped here.
-// PORT-NOTE: storage mechanism deviates from upstream (NSMapTable instead of hidden
+// storage mechanism deviates from upstream (NSMapTable instead of hidden
 //            property on key); behavior of the public API is preserved.
 
 import Foundation

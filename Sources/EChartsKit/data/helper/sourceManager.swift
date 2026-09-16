@@ -507,16 +507,16 @@ public func disableTransformOptionMerge(_ datasetModel: DatasetModel) {
     if jsTruthy(transformOption) {
         // transformOption && setAsPrimitive(datasetModel.option.transform);
         //
-        // PORT-NOTE: upstream tags the transform option OBJECT itself and every holder of that
+        // upstream tags the transform option OBJECT itself and every holder of that
         //   reference sees the tag. Here the option tree is a `[String: Any]` value bag, so the
         //   tag must be written back into `datasetModel.option` (see util.setAsPrimitive's
         //   `inout` overload). `DatasetModel.option` is declared `{ get set }` for exactly this
         //   write — do not reintroduce a `datasetModel as? Model` downcast to reach it.
-        // PORT-TODO: an ARRAY-valued `transform` (a list of transforms) cannot carry the tag —
+        // TODO: an ARRAY-valued `transform` (a list of transforms) cannot carry the tag —
         //   see util.setAsPrimitive. Harmless for merge: `util.merge` never recurses into
         //   arrays, so an array transform option is already replaced wholesale rather than
-        //   deep-merged. (util.clone does deep-copy it, unlike upstream; see that PORT-TODO.)
-        // PORT-NOTE: upstream performs no diagnostic here — a truthy `transform` of an
+        //   deep-merged. (util.clone does deep-copy it, unlike upstream; see that TODO.)
+        // upstream performs no diagnostic here — a truthy `transform` of an
         //   unexpected shape (array, scalar/string shorthand, bridged NSDictionary) is tolerated
         //   silently. The tag is therefore best-effort: applied when the option is a plain
         //   `[String: Any]` bag, and otherwise left untagged with no assert/log, matching
@@ -578,7 +578,7 @@ private func jsAnyString(_ v: Any?) -> String {
 
 // JS `Number.prototype.toString` for a Double (integral values print without a fraction).
 // (Local shim; mirrors the one in data/Source.swift. Used by `_getVersionSign`.)
-private func jsNumberStr(_ x: Double) -> String {   // PORT-NOTE: JS number-to-string shim
+private func jsNumberStr(_ x: Double) -> String {   // JS number-to-string shim
     if x == x.rounded() && Swift.abs(x) < 1e15 {
         return String(Int(x))
     }
@@ -587,7 +587,7 @@ private func jsNumberStr(_ x: Double) -> String {   // PORT-NOTE: JS number-to-s
 
 // JS truthiness for an arbitrary value (used for `!!sourceHeader !== !!upMetaRawOption.sourceHeader`).
 // (Local shim; mirrors the one in data/Source.swift.)
-private func jsTruthy(_ v: Any?) -> Bool {   // PORT-NOTE: JS truthiness shim
+private func jsTruthy(_ v: Any?) -> Bool {   // JS truthiness shim
     guard let v = v else { return false }
     if let b = v as? Bool { return b }
     if let d = v as? Double { return d != 0 && !d.isNaN }

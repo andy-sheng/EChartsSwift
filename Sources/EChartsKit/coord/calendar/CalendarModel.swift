@@ -25,7 +25,7 @@ import ZRenderKit
 // import ComponentModel from '../../model/Component';                 -> ComponentModel (model/Component.swift)
 // import { getLayoutParams, sizeCalculable, mergeLayoutParam }
 //     from '../../util/layout';                                       -> layout.mergeLayoutParam (util/layout.swift).
-//     PORT-NOTE (deferred): requires util/layout `getLayoutParams` / `sizeCalculable` (confirmed absent
+//     TODO: requires util/layout `getLayoutParams` / `sizeCalculable` (confirmed absent
 //     from the partial util/layout.swift port, which covers only the cartesian surface). They are
 //     faithfully reproduced here as file-scope helpers (calendarGetLayoutParams / calendarSizeCalculable)
 //     and should be folded into the `layout` namespace once the full util/layout.ts port lands.
@@ -43,7 +43,7 @@ import ZRenderKit
 // export interface CalendarMonthLabelFormatterCallbackParams { nameMap; yyyy; yy; MM; M }
 // export interface CalendarYearLabelFormatterCallbackParams { nameMap; start; end }
 // export interface CalendarOption extends ComponentOption, BoxLayoutOptionMixin { ... }
-//   PORT-NOTE: the label-formatter callback param interfaces and `CalendarOption` describe the dynamic
+//   the label-formatter callback param interfaces and `CalendarOption` describe the dynamic
 //   option shape; modeled as the dynamic option bag ([String: Any]) per CONVENTIONS §2 — no standalone
 //   Swift structs emitted. The `formatter` callbacks are stored as closures in the bag at use time.
 
@@ -68,7 +68,7 @@ public final class CalendarModel: ComponentModel, CoordinateSystemHostModel {
     public override class var type: ComponentFullType { return "calendar" }
 
     // coordinateSystem: Calendar;
-    //   PORT-NOTE: upstream types this the concrete `Calendar` (a `CoordinateSystemMaster`), injected once
+    //   upstream types this the concrete `Calendar` (a `CoordinateSystemMaster`), injected once
     //   the coordinate system is built. `Calendar` (coord/calendar/Calendar.swift) is a sibling in a later
     //   phase; typed here as the `CoordinateSystemMaster?` required by `CoordinateSystemHostModel`
     //   (narrow via `as? Calendar` at use), mirroring PolarModel.
@@ -253,7 +253,7 @@ private func mergeAndNormalizeLayoutParams(_ target: inout [String: Any], _ raw:
     layout.mergeLayoutParam(&target, raw, ["type": "box", "ignoreSize": ignoreSize] as [String: Any])
 }
 
-// PORT-NOTE: faithful reproduction of util/layout.ts `getLayoutParams` + `copyLayoutParams({}, source)`
+// faithful reproduction of util/layout.ts `getLayoutParams` + `copyLayoutParams({}, source)`
 // and `sizeCalculable` (+ their `LOCATION_PARAMS` / `HV_NAMES` tables), which are not yet in the partial
 // `layout` port. Fold these into the `layout` namespace when the full util/layout.ts port lands.
 

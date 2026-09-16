@@ -44,7 +44,7 @@ import ZRenderKit
 //       -> `mapDataStatisticStageHandler` (sibling mapDataStatistic.swift, ported).
 
 // export function install(registers: EChartsExtensionInstallRegisters) { ... }
-// PORT-NOTE: registration boilerplate belongs to the Orchestrate/Integrate driver, not this
+// registration boilerplate belongs to the Orchestrate/Integrate driver, not this
 //   render-layer file (same convention as chart/sankey/sankeyInstall.swift). `MapView`,
 //   `mapSymbolLayout`, `mapDataStatisticStageHandler` and `createLegacyDataSelectAction` are ALL ported
 //   AND wired by the driver (see INTEGRATION SURFACE below for the exact call sites); nothing is
@@ -53,10 +53,10 @@ import ZRenderKit
 //     export function install(registers) {
 //         use(installGeo);                                        // -> geo component (geoCreator/GeoModel/GeoView)
 //
-//         registers.registerChartView(MapView);                  // PORT-NOTE: MapView (ported)
+//         registers.registerChartView(MapView);                  // note: MapView (ported)
 //         registers.registerSeriesModel(MapSeries);              // -> MapSeriesModel (MapSeries.swift)
 //
-//         registers.registerLayout(mapSymbolLayoutStageHandler); // PORT-NOTE: mapSymbolLayout (ported; the
+//         registers.registerLayout(mapSymbolLayoutStageHandler); // note: mapSymbolLayout (ported; the
 //                                                                //   driver calls mapSymbolLayout(ecModel)
 //                                                                //   directly — see below)
 //         registers.registerProcessor(
@@ -80,7 +80,7 @@ import ZRenderKit
 //   - registerSeriesModel: `MapSeriesModel` (chart/map/MapSeries.swift — ported) —
 //                          `ComponentModel.registerClass(MapSeriesModel.self)` in `installOnce()` (:986).
 //   - registerChartView:   `MapView` (chart/map/MapView.swift — ported; `render` still runs the inlined
-//                          STATIC path rather than a persistent MapDraw, see the PORT-NOTE at
+//                          STATIC path rather than a persistent MapDraw, see the note at
 //                          MapView.swift:34) — entry `"map": { MapView() }` in the `_chartViewFactories`
 //                          stored dictionary (:1364), NOT in `installOnce()`.
 //   - registerLayout:      the driver calls the faithful 1-arg `mapSymbolLayout(ecModel)` DIRECTLY from the

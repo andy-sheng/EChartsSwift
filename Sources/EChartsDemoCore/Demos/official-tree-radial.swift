@@ -30,7 +30,7 @@
 // node's label to follow its ray in a radial tree (TreeView's node update derives `label.rotation` /
 // alignment from the node's angle, flipping the text on the left half of the circle). The port's TreeView
 // routes node symbols through the shared SymbolDraw and marks radial label rotation DEFERRED (see the
-// deferred PORT-NOTE at Sources/EChartsKit/chart/tree/TreeView.swift, "node/link scale + radial label
+// deferred note at Sources/EChartsKit/chart/tree/TreeView.swift, "node/link scale + radial label
 // rotation are DEFERRED"), so the native pane draws every label horizontally: the ring of names reads
 // upright instead of fanning out along the spokes. Node/edge GEOMETRY is radial on both panes
 // (treeLayout.swift + TreeView's `radialCoordinate` are ported) — only the label transform differs.

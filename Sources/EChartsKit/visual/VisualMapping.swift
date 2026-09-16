@@ -20,13 +20,13 @@ private let CATEGORY_DEFAULT_VISUAL_INDEX: Double = -1
 typealias RawValue = ParsedValue                 // Any
 // Type of mapping visual value
 // upstream: type VisualValue = AllPropTypes<VisualOptionUnit>;
-typealias VisualValue = Any                      // PORT-NOTE: AllPropTypes<VisualOptionUnit>
+typealias VisualValue = Any                      // AllPropTypes<VisualOptionUnit>
 // Type of value after normalized. 0 - 1
 // upstream: type NormalizedValue = number;
 typealias NormalizedValue = Double
 
 // upstream: type MappingMethod = 'linear' | 'piecewise' | 'category' | 'fixed';
-public typealias MappingMethod = String          // PORT-NOTE: 'linear' | 'piecewise' | 'category' | 'fixed'
+public typealias MappingMethod = String          // 'linear' | 'piecewise' | 'category' | 'fixed'
 
 // May include liftZ. which is not provided to developers.
 
@@ -36,7 +36,7 @@ typealias Normalizer = (VisualMapping, RawValue?) -> NormalizedValue
 // upstream: interface ColorMapper {
 //     (this, value: RawValue | NormalizedValue, isNormalized?: boolean, out?: number[]): ColorString | number[]
 // }
-// PORT-NOTE: DEFERRED usage helper. Return is ColorString | number[] modeled as `Any`.
+// DEFERRED usage helper. Return is ColorString | number[] modeled as `Any`.
 public typealias ColorMapper = (_ value: Any, _ isNormalized: Bool, _ out: [Double]?) -> Any
 // upstream: interface DoMap { (this, normalzied?, value?): VisualValue }
 typealias DoMap = (VisualMapping, NormalizedValue, RawValue?) -> VisualValue?
@@ -197,7 +197,7 @@ final class VisualMappingInnerOption {
      */
     var parsedVisual: [[Double]] = []
 
-    // PORT-NOTE: JS stores the CATEGORY_DEFAULT_VISUAL_INDEX (-1) default as the `arr[-1]` object
+    // JS stores the CATEGORY_DEFAULT_VISUAL_INDEX (-1) default as the `arr[-1]` object
     //   property on the visual array. Swift arrays have no negative index, so it is held separately.
     var categoryDefaultVisual: Any?
 
@@ -413,7 +413,7 @@ final class VisualMapping {
      * @public
      * @return {Array.<string>}
      */
-    // PORT-NOTE: Swift dictionaries are unordered, so the returned order differs from upstream's
+    // Swift dictionaries are unordered, so the returned order differs from upstream's
     //   JS object insertion order.
     static func listVisualTypes() -> [String] {
         return util.keys(VisualMapping.visualHandlers)
@@ -512,7 +512,7 @@ final class VisualMapping {
         else if util.isObject(visualTypes), let dict = visualTypes as? [String: Any] {
             var collected: [String] = []
             for (type, _) in dict {
-                // PORT-NOTE: upstream's visualSolution.createMappings() stashes the extra opacity->colorAlpha
+                // upstream's visualSolution.createMappings() stashes the extra opacity->colorAlpha
                 //   mapping in a prototype-hidden slot (`mappings.__hidden.__alphaForOpacity`), so this
                 //   `each` — which iterates own properties only — never sees it. A Swift dictionary has no
                 //   hidden slot, so skip the key explicitly to match. The caller's dict still holds the
@@ -556,7 +556,7 @@ final class VisualMapping {
      * @param findClosestWhenOutside Default to be false
      * @return index
      */
-    // PORT-NOTE: upstream types `value: number`, but the parameter is loosely used — for a `categories`
+    // upstream types `value: number`, but the parameter is loosely used — for a `categories`
     //   visualMap the caller passes the raw CATEGORY VALUE, which can be a string (e.g. a food-group
     //   name). The equality clause below (`pieceValue === value || (isString(pieceValue) && pieceValue ===
     //   value + '')`) relies on that. Narrowing `value` to `Double` (as the old port did) coerced string

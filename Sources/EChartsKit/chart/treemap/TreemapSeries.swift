@@ -42,7 +42,7 @@ import ZRenderKit
 //   import enableAriaDecalForTree from '../helper/enableAriaDecalForTree';
 //       -> enableAriaDecalForTree (chart/helper/enableAriaDecalForTree.swift).
 //   import tokens from '../../visual/tokens';
-//       -> PORT-NOTE: tokens (visual/tokens.swift) is ported; every `tokens.*` value in `defaultOption` is
+//       -> note: tokens (visual/tokens.swift) is ported; every `tokens.*` value in `defaultOption` is
 //          inlined below as its resolved constant, with the token path kept in a trailing comment.
 
 // ============================================================================
@@ -70,7 +70,7 @@ open class TreemapSeriesModel: SeriesModel {
 
     // designatedVisualItemStyle: TreemapSeriesItemStyleOption;
     //   The dynamic itemStyle bag; set (and shared with `designatedVisualModel`) in `getInitialData`.
-    // PORT-NOTE: upstream relies on this being a LIVE-SHARED object: it is the `itemStyle` of
+    // upstream relies on this being a LIVE-SHARED object: it is the `itemStyle` of
     //   `designatedVisualModel`, and every `Model` derived from that model (`getModel`, the node item
     //   models re-parented onto it) keeps a REFERENCE to it — so `treemapVisual`'s per-node writes here
     //   are observed by `nodeItemStyleModel.get(visualName)` through the parent chain. That aliasing IS
@@ -213,7 +213,7 @@ open class TreemapSeriesModel: SeriesModel {
         let tree = Tree.createTree(root, self, beforeLink)
         treeRef = tree
 
-        // PORT-NOTE (level-model wiring): upstream reparents each node's item model onto its depth's
+        // note (level-model wiring): upstream reparents each node's item model onto its depth's
         //   level model inside the `beforeLink` `wrapMethod('getItemModel')` injection. The port's
         //   getItemModel does not run wrapMethod injections, so the level models (and the designated-
         //   visual fallback) are published on the tree here and applied in `TreeNode.getModel()`.
@@ -270,7 +270,7 @@ open class TreemapSeriesModel: SeriesModel {
         var params = super.getDataParams(dataIndex, dataType)
 
         // const node = this.getData().tree.getNodeByDataIndex(dataIndex);
-        // PORT-NOTE: upstream types `tree`/`getNodeByDataIndex` optimistically, but
+        // upstream types `tree`/`getNodeByDataIndex` optimistically, but
         //   `getNodeByDataIndex` indexes `this._nodes[rawIndex]` unchecked and yields `undefined` for
         //   an out-of-range index; `wrapTreePathInfo(undefined, ...)` then falls straight out of its
         //   `while (node)` loop and returns `[]`. So upstream ALWAYS assigns an array — never leaves
@@ -340,7 +340,7 @@ open class TreemapSeriesModel: SeriesModel {
 
     // getViewRoot() { return this._viewRoot; }
     public func getViewRoot() -> TreeNode? {
-        // PORT-NOTE: upstream returns `this._viewRoot`, which is set by `optionUpdated()` (a model
+        // upstream returns `this._viewRoot`, which is set by `optionUpdated()` (a model
         //   lifecycle hook). If the driver has not invoked `optionUpdated` yet, `_viewRoot` is nil;
         //   lazily reset here so the layout/view see a valid root (safe fallback, mirrors SunburstSeries).
         if self._viewRoot == nil {

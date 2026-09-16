@@ -53,7 +53,7 @@ import ZRenderKit
 // PORT SCOPE (CONVENTIONS §5): only the STATIC transform machinery of View is ported here —
 //   the VIEW_COORD_SYS_TRANS_RAW / _ROAM / _OVERALL transform chain and the raw-rect -> view-rect
 //   linear map that `dataToPoint`/`pointToData` rely on. ROAM interaction (pan/zoom actions), the
-//   sync-back to model, and roaming animation are DEFERRED. See PORT-NOTE markers below.
+//   sync-back to model, and roaming animation are DEFERRED. See note markers below.
 // -----------------------------------------------------------------------------------------------------
 
 // upstream: VIEW_COORD_SYS_TRANS_RAW / _ROAM / _OVERALL — index into `ViewInner['trans']`.
@@ -88,7 +88,7 @@ public struct ViewCoordSysLegacyCenterBase {
  *   holds the concrete `View` type and calls the concrete methods. `Transformable` subclassing is
  *   preserved because VIEW_COORD_SYS_TRANS_OVERALL is copied onto the View/Geo instance itself for
  *   backward compatibility (see legacyCopyOverallTrans).
- *   PORT-NOTE: re-add `CoordinateSystem`/`CoordinateSystemMaster` conformance when graph/tree/sankey
+ *   re-add `CoordinateSystem`/`CoordinateSystemMaster` conformance when graph/tree/sankey
  *   (which use View as their `coordinateSystem`) are ported.
  *
  * ViewInner state: upstream stashes private props on the instance via `inner(this)` casting. Here they
@@ -115,7 +115,7 @@ open class View: Transformable {
 
     // upstream: lgGeo?: Transformable;
     //   weak to break the Geo<->View retain cycle (Geo owns `view` strongly and passes itself as
-    //   legacyGeo → view.lgGeo = geo). PORT-NOTE: upstream holds a plain (strong) reference.
+    //   legacyGeo → view.lgGeo = geo). note: upstream holds a plain (strong) reference.
     weak var lgGeo: Transformable?
 
     // upstream: centerOption: RoamOptionMixin['center'] | NullUndefined;  (ROAM input, DEFERRED — stays nil)
@@ -144,7 +144,7 @@ open class View: Transformable {
     var syncBackEl: Element?
 
     // upstream: syncBackType: typeof VIEW_COORD_SYS_TRANS_ROAM | typeof VIEW_COORD_SYS_TRANS_OVERALL;
-    // PORT-NOTE: Optional so that "never assigned" stays distinguishable from ROAM. Upstream's
+    // Optional so that "never assigned" stays distinguishable from ROAM. Upstream's
     //   `ViewInner` is a `makeInner` bag whose `syncBackType` is `undefined` until
     //   `applyViewCoordSysTransToElement` writes it, and upstream relies on that: `viewCoordSysSyncBack`
     //   asserts `viewInner.syncBackType != null` (View.ts:653). A defaulted non-Optional Int would let
@@ -564,7 +564,7 @@ public func applyViewCoordSysTransToElement(
     }
 }
 
-// PORT-NOTE: no upstream counterpart — upstream passes the `Transformable` object straight to
+// no upstream counterpart — upstream passes the `Transformable` object straight to
 //   `updateProps`, which reads the keys off it. The Swift `updateProps` is dict-based, so this
 //   adapter enumerates the same key list as `ZRenderKit.copyTransform`
 //   (Sources/ZRenderKit/Core/Transformable.swift TRANSFORMABLE_PROPS). Keep the two in sync;
@@ -811,7 +811,7 @@ public func calcCompensationScaleToPreserveNodeSize(
         / jsNumOr(viewCoordSys.trans[VIEW_COORD_SYS_TRANS_OVERALL].scaleX, 1)
 }
 
-// PORT-NOTE (deferred): requires the ROAM interaction module. The following upstream exports are part of the roam interaction /
+// TODO: requires the ROAM interaction module. The following upstream exports are part of the roam interaction /
 //   roaming-animation / sync-back flow and are NOT ported in this phase (CONVENTIONS §5):
 //     ownRoamModelCoordSysUpdateInAction, getOwnRoamViewCoordSys,
 //     ownRoamViewUpdateDirectlyInAction, calcOverallTransFromSyncBackEl,
@@ -822,7 +822,7 @@ public func calcCompensationScaleToPreserveNodeSize(
 // upstream: import { decomposeTransform } from '../util/graphic';
 //   Reproduced here (util/graphic.swift has not landed this export yet). Decomposes an affine matrix
 //   into x/y/scaleX/scaleY/rotation/skewX/skewY on `out`, using a parent-less tmp Transformable to
-//   avoid parent effects (upstream `tmpDTR`). PORT-NOTE: dedupe once util/graphic.decomposeTransform lands.
+//   avoid parent effects (upstream `tmpDTR`). note: dedupe once util/graphic.decomposeTransform lands.
 private let tmpDTR: Transformable = {
     let t = Transformable()
     t.transform = matrix.create()
@@ -855,7 +855,7 @@ private func anyToDouble(_ v: Any?) -> Double? {
 
 // JS `value + ''` for a number (used by invertToPercentPerCenterDim's `... + '%'`). Integers render
 //   without a decimal point (`50` → "50"); non-integers keep their shortest decimal form.
-//   PORT-NOTE: not a full ECMAScript Number→String (no exponent form).
+//   not a full ECMAScript Number→String (no exponent form).
 private func jsNumberToString(_ v: Double) -> String {
     if v.isNaN { return "NaN" }
     if v == v.rounded() && Swift.abs(v) < 1e15 {

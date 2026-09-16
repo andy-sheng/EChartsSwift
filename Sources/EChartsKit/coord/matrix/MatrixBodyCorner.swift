@@ -25,7 +25,7 @@ import ZRenderKit
 //   -> HashMap / createHashMap (util/modelUtil.swift shim); each/extend/isArray/isObject (util.*)
 // import type { NullUndefined } from '../../util/types';                   -> modeled as Swift Optional
 // import type { MatrixXYLocator, MatrixDimPair, MatrixXYLocatorRange } from './MatrixDim';
-//   -> MatrixDim.swift (sibling; see PORT-NOTE in matrixCoordHelper.swift for the referenced shapes)
+//   -> MatrixDim.swift (sibling; see note in matrixCoordHelper.swift for the referenced shapes)
 // import { error } from '../../util/log';                                  -> log.error
 // import Point from 'zrender/src/core/Point';                             -> Point (ZRenderKit)
 // import { RectLike } from 'zrender/src/core/BoundingRect';               -> RectLike (ZRenderKit)
@@ -36,7 +36,7 @@ import ZRenderKit
 //   resetXYLocatorRange, cloneXYLocatorRange } from './matrixCoordHelper';  -> SIBLING (matrixCoordHelper.swift)
 // import type Model from '../../model/Model';                             -> Model (model/Model.swift; dynamic [String: Any] bag)
 //
-// PORT-NOTE: `MatrixDim` (and `MatrixDimPair`, `MatrixXYLocator`, `MatrixXYLocatorRange`) are ported by a
+// `MatrixDim` (and `MatrixDimPair`, `MatrixXYLocator`, `MatrixXYLocatorRange`) are ported by a
 //   sibling agent in this same phase; this file references them forward and does not compile standalone.
 
 /**

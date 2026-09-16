@@ -33,7 +33,7 @@ import ZRenderKit
 //       (sibling layout-stage port — circular arc layout for nodes + edges).
 
 // export function install(registers: EChartsExtensionInstallRegisters) { ... }
-// PORT-NOTE: registration boilerplate belongs to the Orchestrate/Integrate driver (core/ECharts.swift),
+// registration boilerplate belongs to the Orchestrate/Integrate driver (core/ECharts.swift),
 //   not this series/render-layer file (same convention as chart/sankey/sankeyInstall.swift). The port does
 //   not bridge the upstream `registers` surface to model instantiation, so the aggregate registration
 //   entry point is the static `ECharts.installOnce()`, complemented by the `_chartViewFactories` /

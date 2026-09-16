@@ -12,7 +12,7 @@
 //   subset into the inherited `self.style` so the inherited machinery (shouldBePainted /
 //   getPaintRect) reads correct shadow / opacity / blend.
 //
-// PORT-NOTE (LAYOUT SEAM): the layout helpers `parsePlainText` / `parseRichText` /
+// note (LAYOUT SEAM): the layout helpers `parsePlainText` / `parseRichText` /
 //   `calcInnerTextOverflowArea` / `tSpanCreateBoundingRect2` and the content-block types live upstream in
 //   `graphic/helper/parseText.ts`. They are ported in-file (not yet split into a separate
 //   `graphic/helper/parseText.swift`); a clearly-fenced translation is provided at the BOTTOM of this file:
@@ -24,7 +24,7 @@
 //       `contain/text` which is ported).
 //   When `graphic/helper/parseText.swift` is ported, REMOVE the fenced stub block.
 //
-// PORT-NOTE (inherited from Displayable/Element):
+// note (inherited from Displayable/Element):
 //   - the states machinery (states / getState / ensureState / stateProxy) is ported (Phase 2).
 //   - the animation surface (animate('style') / Animator) is ported (Phase 3).
 //   - `getComputedTransform`'s host inner-text update relies on `Element.updateInnerText` (stub).
@@ -35,7 +35,7 @@ import Foundation
 // import { TextAlign, TextVerticalAlign, ImageLike, Dictionary, MapToType, FontWeight, FontStyle,
 //   NullUndefined } from '../core/types';
 // import { parseRichText, parsePlainText, CalcInnerTextOverflowAreaOut, calcInnerTextOverflowArea,
-//   tSpanCreateBoundingRect2 } from './helper/parseText';   → PORT-NOTE seam stub (bottom of file)
+//   tSpanCreateBoundingRect2 } from './helper/parseText';   → note seam stub (bottom of file)
 // import TSpan, { TSpanStyleProps } from './TSpan';         → Graphic/TSpan.swift
 // import { retrieve2, each, normalizeCssArray, trim, retrieve3, extend, keys, defaults } from
 //   '../core/util';                                          → util.*
@@ -53,19 +53,19 @@ import Foundation
 // import { GroupLike } from './Group';
 // import { DEFAULT_FONT, DEFAULT_FONT_SIZE } from '../core/platform';
 
-// PORT-NOTE: type TextContentBlock = ReturnType<typeof parseRichText>; TextLine / TextToken are the
+// type TextContentBlock = ReturnType<typeof parseRichText>; TextLine / TextToken are the
 //   RichTextContentBlock line / token types — provided by the parseText seam stub (bottom of file).
 
-// PORT-NOTE: upstream `number | string` (used by `fontSize` / token `width`). Reuses the
+// upstream `number | string` (used by `fontSize` / token `width`). Reuses the
 //   `NumberOrString` tagged enum from contain/text.swift.
-// PORT-NOTE: upstream `number | number[]` (used by `padding` / `margin` / `borderRadius`). Tagged
+// upstream `number | number[]` (used by `padding` / `margin` / `borderRadius`). Tagged
 //   enum — same pattern as `RectRadius` (Rect.swift).
 public enum NumberOrNumberArray {
     case number(Double)
     case array([Double])
 }
 
-// PORT-NOTE: upstream `backgroundColor?: string | { image: ImageLike | string }`. Tagged enum.
+// upstream `backgroundColor?: string | { image: ImageLike | string }`. Tagged enum.
 //   `.string` is a plain color / gradient string; `.image` wraps the `{ image }` object's source,
 //   modeled with `ImageSource` (Image.swift: `.url(String) | .image(ImageLike)`).
 public enum TextBackgroundColor {
@@ -79,9 +79,9 @@ public struct TextStylePropsPart {
     // TODO Text is assigned inside zrender
     public var text: String?
 
-    // PORT-NOTE: upstream `fill?: string` / `stroke?: string` (NOT ZRColor here). `getFill`/`getStroke`
+    // upstream `fill?: string` / `stroke?: string` (NOT ZRColor here). `getFill`/`getStroke`
     //   cast to `any` to peek `.image`/`.colorStops` for gradients/patterns; that branch is unreachable
-    //   for a Swift `String` (see getFill/getStroke PORT-NOTEs).
+    //   for a Swift `String` (see getFill/getStroke notes).
     public var fill: String?
     public var stroke: String?
     public var strokeNoScale: Bool?
@@ -224,7 +224,7 @@ public struct TextStyleProps {
     //   no subtyping, so the field lives directly on `TextStyleProps` (a stored property — an extension
     //   cannot add one). Stamped by `labelStyle.setTextStyleCommon` (labelStyle.ts:472/478), read by
     //   `labelLayoutHelper.computeLabelGeometry` (labelLayoutHelper.ts:178).
-    // PORT-NOTE (module layering): the tag's upstream type `LabelMarginType` is an EChartsKit symbol
+    // note (module layering): the tag's upstream type `LabelMarginType` is an EChartsKit symbol
     //   (`labelStyle.LabelMarginType`, Int raw: minMargin = 1, textMargin = 2) and EChartsKit depends on
     //   ZRenderKit (not vice-versa), so this field stores the RAW VALUE as `Int?`. The enum stays in
     //   EChartsKit; consumers write `.minMargin.rawValue` / compare against `.textMargin.rawValue`.
@@ -241,7 +241,7 @@ public struct TextStyleProps {
     public var shadowOffsetX: Double?
     public var shadowOffsetY: Double?
 
-    // PORT-NOTE: replaces upstream's dynamic STYLE_MAGIC_KEY stamp (see Displayable.swift). `true`
+    // replaces upstream's dynamic STYLE_MAGIC_KEY stamp (see Displayable.swift). `true`
     //   iff produced by `createStyle`. NOT part of TextStylePropsPartLike.
     public var zrStyleMagic: Bool = false
 
@@ -278,14 +278,14 @@ public struct TextStyleProps {
     public init() {}
 }
 
-// PORT-NOTE (Swift bridge): upstream relies on `TextStyleProps` being a SUBTYPE of
+// note (Swift bridge): upstream relies on `TextStyleProps` being a SUBTYPE of
 //   `TextStylePropsPart` so free functions typed on the base (`normalizeStyle`, `makeFont`,
 //   `setSeparateFont`, `hasSeparateFont`, `needDrawBackground`, `_renderBackground`) accept both.
 //   Swift has no struct subtyping, so we expose the shared base surface through this protocol; both
 //   structs conform. `width` (which differs: `number | string` vs `number`) is intentionally NOT
 //   part of the protocol.
 //
-// PORT-NOTE (label/labelStyle.swift retrofit): every field below was widened from `{ get }` to
+// note (label/labelStyle.swift retrofit): every field below was widened from `{ get }` to
 //   `{ get set }` (originally only `text`/`font`/`align`/`verticalAlign`/`padding` had setters — the
 //   fields the PRE-EXISTING read-oriented helpers below happened to write). `label/labelStyle.ts`'s
 //   `setTokenTextStyle` needs to WRITE nearly every one of these fields generically across BOTH
@@ -336,12 +336,12 @@ public protocol TextStylePropsPartLike {
 extension TextStylePropsPart: TextStylePropsPartLike {}
 extension TextStyleProps: TextStylePropsPartLike {}
 
-// PORT-NOTE: interface TextProps extends DisplayableProps { style?, zlevel?, z?, z2?, culling?,
+// interface TextProps extends DisplayableProps { style?, zlevel?, z?, z2?, culling?,
 //   cursor? }. The `attr`/`attrKV` setter machinery uses the dynamic `[String: Any]` prop bag
 //   (collapsed onto DisplayableProps == ElementProps). Typed-interface fidelity dropped.
 public typealias TextProps = DisplayableProps
 
-// PORT-NOTE: TextState = Pick<TextProps, DisplayableStatePropNames> & ElementCommonState.
+// TextState = Pick<TextProps, DisplayableStatePropNames> & ElementCommonState.
 //   Collapsed onto Displayable's ElementState-based `DisplayableState` (the states machinery is ported).
 public typealias TextState = DisplayableState
 
@@ -375,7 +375,7 @@ private let tmpCITOverflowAreaOut = CalcInnerTextOverflowAreaOut()
 
 // const DEFAULT_TEXT_STYLE: TextStyleProps = { ... }  (commented out upstream)
 
-// PORT-NOTE: upstream `MapToType<TextProps, boolean>` — recursive mapped utility type. Collapsed to
+// upstream `MapToType<TextProps, boolean>` — recursive mapped utility type. Collapsed to
 //   a loose `[String: Any]` bag (matches Displayable's DEFAULT_COMMON_ANIMATION_PROPS). Only read by
 //   `getAnimationStyleProps` (animation surface deferred, Phase 3).
 public let DEFAULT_TEXT_ANIMATION_PROPS: [String: Any] = [
@@ -634,7 +634,7 @@ public final class ZRText: Displayable, GroupLike {
      * instead of Element itself if it's give.
      * Not exposed to developers
      */
-    // PORT-NOTE: upstream non-optional `innerTransformable: Transformable`; `Element` assigns it
+    // upstream non-optional `innerTransformable: Transformable`; `Element` assigns it
     //   (Transformable()) on attach and `nil` on detach, so it is Optional in the Swift port.
     public var innerTransformable: Transformable?
 
@@ -644,7 +644,7 @@ public final class ZRText: Displayable, GroupLike {
     // Only take effect after rendering. So do not visit it before it.
     public var isTruncated: Bool = false
 
-    // PORT-NOTE: upstream union `(ZRImage | Rect | TSpan)[]`; all three are `Displayable` subclasses,
+    // upstream union `(ZRImage | Rect | TSpan)[]`; all three are `Displayable` subclasses,
     //   so modeled as `[Displayable]`.
     private var _children: [Displayable] = []
 
@@ -670,7 +670,7 @@ public final class ZRText: Displayable, GroupLike {
                     self.useStyle(s)
                 }
                 else {
-                    // PORT-NOTE (language): upstream JS always passes a style object; a non-`TextStyleProps`
+                    // note (language): upstream JS always passes a style object; a non-`TextStyleProps`
                     //   value has no analogue, so fall back to an empty style (defensive, semantically equivalent).
                     self.useStyle(TextStyleProps())
                 }
@@ -697,7 +697,7 @@ public final class ZRText: Displayable, GroupLike {
         style.shadowOffsetY = 0
         style.shadowColor = "#000"
         style.opacity = 1
-        // PORT-NOTE: DEFAULT_COMMON_STYLE.blend ('source-over') has no field on TextStyleProps.
+        // DEFAULT_COMMON_STYLE.blend ('source-over') has no field on TextStyleProps.
         style.zrStyleMagic = true
         if let obj = obj {
             extendTextStyle(&style, obj)
@@ -737,7 +737,7 @@ public final class ZRText: Displayable, GroupLike {
     //   the dynamically-bound `elementStateProxy(textContent, ...)` returns that same `textContent`
     //   state object — the style content is identical; reading the state directly also side-steps the
     //   host-bound proxy `setLabelStyle` copies onto the text (a documented `setDefaultStateProxy`
-    //   PORT-NOTE), whose default color-lift targets the generic `.style` bag, not `.textStyle`.
+    //   note), whose default color-lift targets the generic `.style` bag, not `.textStyle`.
 
     // Saved pristine (normal) textStyle for state restoration — the ZRText analogue of
     //   `Displayable._normalState.style`. Snapshotted on first state entry, cleared on return to normal.
@@ -819,7 +819,7 @@ public final class ZRText: Displayable, GroupLike {
 
     // Mirror the CommonStyleProps subset of `textStyle` into the inherited `Displayable.style` so the
     // inherited machinery (shouldBePainted / getPaintRect) reads correct shadow / opacity.
-    // PORT-NOTE: a Swift-only bridge — upstream has a single `this.style` object.
+    // a Swift-only bridge — upstream has a single `this.style` object.
     private func _syncCommonStyle() {
         var c = CommonStyleProps()
         c.shadowBlur = self.textStyle.shadowBlur
@@ -980,7 +980,7 @@ public final class ZRText: Displayable, GroupLike {
 
     // upstream: setTextContent(textContent: never) — throws in dev: can't attach text on text.
     public override func setTextContent(_ textEl: ZRText?) {
-        // PORT-NOTE: dev-mode guard — upstream throws 'Can\'t attach text on another text'.
+        // dev-mode guard — upstream throws 'Can\'t attach text on another text'.
     }
 
     // getDefaultStyleValue<T>(key): on the prototype — commented out upstream.
@@ -1324,7 +1324,7 @@ public final class ZRText: Displayable, GroupLike {
             }
             return TextStylePropsPart()
         }()
-        // PORT-NOTE: upstream mutates the SHARED rich style object (`tokenStyle.text = token.text`);
+        // upstream mutates the SHARED rich style object (`tokenStyle.text = token.text`);
         //   Swift value semantics make this a local copy (re-set on every token anyway).
         tokenStyle.text = token.text
 
@@ -1505,7 +1505,7 @@ public final class ZRText: Displayable, GroupLike {
         else if isImageBg {
             imgEl = self._getOrCreateChild { ZRImage() }
             // Refresh and relayout after image loaded.
-            // PORT-NOTE: verify capture (CONVENTIONS §8) — weak self to avoid the el→self cycle.
+            // verify capture (CONVENTIONS §8) — weak self to avoid the el→self cycle.
             imgEl!.onload = { [weak self] _ in
                 self?.dirtyStyle()
             }
@@ -1534,7 +1534,7 @@ public final class ZRText: Displayable, GroupLike {
         }
 
         // const commonStyle = (rectEl || imgEl).style;
-        // PORT-NOTE: Rect & ZRImage carry their style in different struct types (pathStyle /
+        // Rect & ZRImage carry their style in different struct types (pathStyle /
         //   imageStyle); the shared common-style writes are branched instead of one assignment.
         let shadowBlur = numOr(style.shadowBlur, 0)
         let shadowColor = strOr(style.shadowColor, "transparent")
@@ -1586,7 +1586,7 @@ public final class ZRText: Displayable, GroupLike {
 
 // upstream: const VALID_TEXT_ALIGN = {left:true, right:1, center:1};
 //   const VALID_TEXT_VERTICAL_ALIGN = {top:1, bottom:1, middle:1};
-//   PORT-NOTE: the validation maps are moot here — `TextAlign`/`TextVerticalAlign` are closed enums,
+//   the validation maps are moot here — `TextAlign`/`TextVerticalAlign` are closed enums,
 //   so an invalid value is unrepresentable. The 'middle'→'center' / 'center'→'middle' legacy-string
 //   coercions in `normalizeStyle` are dead for the same reason (kept as comments).
 
@@ -1619,7 +1619,7 @@ func setSeparateFont<U: TextStylePropsPartLike>(_ targetStyle: inout TSpanStyleP
     if sourceStyle.fontStyle != nil { targetStyle.fontStyle = sourceStyle.fontStyle }
     if sourceStyle.fontWeight != nil { targetStyle.fontWeight = sourceStyle.fontWeight }
     if let fs = sourceStyle.fontSize {
-        // PORT-NOTE: TSpanStyleProps.fontSize is Double; the string arm of `number | string`
+        // TSpanStyleProps.fontSize is Double; the string arm of `number | string`
         //   (e.g. '12px') can't be represented there and is dropped (svg-only field).
         if case .number(let n) = fs { targetStyle.fontSize = n }
     }
@@ -1657,13 +1657,13 @@ func normalizeStyle<U: TextStylePropsPartLike>(_ style: inout U) {
     // upstream `if (style)` — `style` is a non-nil Swift value here.
     style.font = ZRText.makeFont(style)
     let textAlign = style.align
-    // 'middle' is invalid, convert it to 'center' — PORT-NOTE: 'middle' not representable in the
+    // 'middle' is invalid, convert it to 'center' — note: 'middle' not representable in the
     //   TextAlign enum; the coercion is dead. VALID_TEXT_ALIGN check is moot (enum guarantees validity).
     style.align = textAlign
 
     // Compatible with textBaseline.
     let verticalAlign = style.verticalAlign
-    // 'center' → 'middle' — PORT-NOTE: 'center' not representable; dead. Validation moot.
+    // 'center' → 'middle' — note: 'center' not representable; dead. Validation moot.
     style.verticalAlign = verticalAlign
 
     // TODO Should not change the orignal value.
@@ -1681,7 +1681,7 @@ func getStroke(_ stroke: String?, _ lineWidth: Double? = nil) -> String? {
     if stroke == nil || (lineWidth != nil && lineWidth! <= 0) || stroke == "transparent" || stroke == "none" {
         return nil
     }
-    // PORT-NOTE: upstream `(stroke as any).image || (stroke as any).colorStops ? '#000' : stroke` —
+    // upstream `(stroke as any).image || (stroke as any).colorStops ? '#000' : stroke` —
     //   gradient/pattern strokes return '#000'. `stroke` is typed `String` here, so that branch is
     //   unreachable (gradient/pattern text stroke not representable).
     return stroke
@@ -1692,7 +1692,7 @@ func getFill(_ fill: String?) -> String? {
     if fill == nil || fill == "none" {
         return nil
     }
-    // PORT-NOTE: upstream `(fill as any).image || (fill as any).colorStops ? '#000' : fill` —
+    // upstream `(fill as any).image || (fill as any).colorStops ? '#000' : fill` —
     //   gradient/pattern fills return '#000'. `fill` is `String` here, so that branch is unreachable.
     return fill
 }
@@ -1709,7 +1709,7 @@ func getTextXForPadding(_ x: Double, _ textAlign: String, _ textPadding: [Double
 // upstream: function getStyleText(style: TextStylePropsPart): string
 func getStyleText(_ style: TextStyleProps) -> String? {
     // Compat: set number to text is supported. set null/undefined to text is supported.
-    // PORT-NOTE: upstream `text += ''` coerces a number → string; `text` is already `String?` here.
+    // upstream `text += ''` coerces a number → string; `text` is already `String?` here.
     let text = style.text
     return text
 }
@@ -1728,9 +1728,9 @@ func needDrawBackground<U: TextStylePropsPartLike>(_ style: U) -> Bool {
 // ===== Swift helpers (extend / JS `||` for numbers & strings / union conversions) =====
 
 // extend(target, source) over TextStyleProps' known fields (value-copy of non-nil fields).
-// PORT-NOTE: upstream `extend` copies all own enumerable keys (dynamic bag); here we copy the known
+// upstream `extend` copies all own enumerable keys (dynamic bag); here we copy the known
 //   fields only. `rich` is copied shallowly (the deep-merge of rich is handled by `_mergeStyle`).
-// PORT-NOTE: widened `internal` -> `public` so `label/labelStyle.swift` (EChartsKit module) can reuse
+// widened `internal` -> `public` so `label/labelStyle.swift` (EChartsKit module) can reuse
 //   it for `createTextStyle`'s `specifiedTextStyle && extend(textStyle, specifiedTextStyle)` line
 //   instead of re-implementing an equivalent 40-field merge.
 public func extendTextStyle(_ target: inout TextStyleProps, _ source: TextStyleProps) {
@@ -1882,7 +1882,7 @@ private func zrNumberToString(_ n: Double) -> String {
 
 
 // ============================================================================================
-// PORT-NOTE (provenance) — graphic/helper/parseText.ts is ported INLINE below (not as a separate
+// note (provenance) — graphic/helper/parseText.ts is ported INLINE below (not as a separate
 //   `Graphic/Helper/parseText.swift` file). The full layout engine (wrap / truncate / rich-text token
 //   measurement — `truncateText` / `parsePlainText` / `parseRichText` and their support types) lives in
 //   this fence. Move it to its own file if/when the helper directory is split out.
@@ -2404,7 +2404,7 @@ public enum parseText {
                     if tokenWidthNotSpecified {
                         // FIXME (upstream): if bg image not loaded and textWidth not specified,
                         //   getBoundingRect() will be incorrect.
-                        // PORT-NOTE (deferred): the `backgroundColor.image` → token-width-from-image-size branch
+                        // TODO: the `backgroundColor.image` → token-width-from-image-size branch
                         //   requires the image-loading seam (imageHelper.findExistImage / isImageReady),
                         //   which is the canvas/browser image cache (CONVENTIONS §9), not ported.
                         //   Token width falls back to its measured text width below.

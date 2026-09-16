@@ -3,7 +3,7 @@
 // Upstream ScatterView delegates ENTIRELY to `SymbolDraw`/`LargeSymbolDraw` (helper/SymbolDraw +
 // helper/LargeSymbolDraw), driven by the `pointsLayout` stage and a `createCoordSysClipAreaSimply`
 // clip shape. NONE of those are ported yet (SymbolDraw enter/update/leave diff, LargeSymbolDraw,
-// layout/points, helper/createClipPathFromCoordSys, incremental pipeline — all documented PORT-NOTEs).
+// layout/points, helper/createClipPathFromCoordSys, incremental pipeline — all documented notes).
 //
 // This is a DELIBERATE DEVIATION: a STATIC faithful render inlines the per-point symbol placement the
 // same way `LineView` inlines `dataToPoint` per datum — guard the cartesian coord system, derive the
@@ -19,7 +19,7 @@ import ZRenderKit
 //   import LargeSymbolDraw from '../helper/LargeSymbolDraw';       -> LargeSymbolDraw is ported (chart/helper/LargeSymbolDraw.swift); this static view does not use it.
 //   import pointsLayout from '../../layout/points';                -> `pointsLayout` (layout/points.swift, ported; the stage is run by the driver — its setItemLayout feeds the brush selector — while this view inlines the per-datum placement below).
 //   import ChartView from '../../view/Chart';                      -> ChartView (view/Chart.swift).
-//   import { getIncrementalId } from '../../util/model';           -> PORT-NOTE (deferred): incremental/progressive render pipeline not wired for this static view.
+//   import { getIncrementalId } from '../../util/model';           -> TODO: incremental/progressive render pipeline not wired for this static view.
 //   import { createCoordSysClipAreaSimply } from '../helper/createClipPathFromCoordSys';
 //       -> createCoordSysClipAreaSimply IS ported (chart/helper/createClipPathFromCoordSys.swift) and is now wired as `opt.clipShape` (createSymbolDrawOpt).
 //   import { ISymbolDraw, SymbolDrawUpdateOpt } from '../helper/baseDraw';  -> SymbolDrawUpdateOpt is ported (chart/helper/SymbolDraw.swift); ISymbolDraw modeled implicitly (no separate baseDraw file).
@@ -41,7 +41,7 @@ open class ScatterView: ChartView {
     // L2: the shared `SymbolDraw` (chart/helper) drives per-point symbols (enter/update/leave diff,
     //   emphasis hover-scale, symbolRotate/offset/keepAspect, symbol labels). The large-mode fast path
     //   (`large: true` past `largeThreshold`) instead routes to `LargeSymbolDraw` (a SINGLE path that
-    //   paints every point). PORT-NOTE (deferred): the incremental/progressive pipeline is single-pass here.
+    //   paints every point). TODO: the incremental/progressive pipeline is single-pass here.
     private var _data: SeriesData?
     private var _symbolDraw: SymbolDraw?
     // upstream: private _largeSymbolDraw: LargeSymbolDraw; private _isLargeDraw: boolean;
@@ -161,7 +161,7 @@ open class ScatterView: ChartView {
             }
         }
         else {
-            // PORT-NOTE (deferred): coord systems other than the branches above not wired for scatter.
+            // TODO: coord systems other than the branches above not wired for scatter.
             return
         }
 
@@ -175,7 +175,7 @@ open class ScatterView: ChartView {
 
         // upstream `_updateSymbolDraw`: `isLargeDraw = pipelineContext.large` — for a scatter series
         //   that is `large: true` and past its `largeThreshold`.
-        // PORT-NOTE (deviation, not a deferral): `seriesModel.pipelineContext` IS populated in this port —
+        // note (deviation, not a deferral): `seriesModel.pipelineContext` IS populated in this port —
         //   `ECharts.prepareView` seeds it (ECharts.swift:2192) and the `updateStreamModes` pass
         //   (ECharts.swift:1891) recomputes the real one via `SeriesModel.__preparePipelineContext` ->
         //   `modelUtil.preparePipelineContext` before render, exactly as upstream. The predicate is still
@@ -251,7 +251,7 @@ open class ScatterView: ChartView {
         opt.getSymbolPoint = { i in pointAt(i) }
         symbolDraw.updateData(data, opt)
 
-        // PORT-NOTE (deferred): incrementalPrepareRender/incrementalRender/updateTransform — deferred with
+        // TODO: incrementalPrepareRender/incrementalRender/updateTransform — deferred with
         //   the incremental/progressive pipeline (Scheduler C2) and coord-sys roam re-layout.
         self._data = data
     }

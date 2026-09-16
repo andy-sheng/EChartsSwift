@@ -26,7 +26,7 @@ import ZRenderKit
 //   import IntervalScale from '../../scale/Interval';                       -> IntervalScale (scale/Interval.swift).
 //   import * as numberUtil from '../../util/number';                        -> `number.*` (util/number.swift).
 //   import { CoordinateSystemMaster, CoordinateSystem } from '../CoordinateSystem';
-//       -> CoordinateSystemMaster (coord/CoordinateSystem.swift). PORT-NOTE: upstream also `implements
+//       -> CoordinateSystemMaster (coord/CoordinateSystem.swift). note: upstream also `implements
 //       CoordinateSystem`, but Radar's `dataToPoint(value, indicatorIndex)` / `coordToPoint(coord,
 //       indicatorIndex)` have radar-specific signatures that do NOT match the `CoordinateSystem`
 //       protocol requirements (`dataToPoint(data, opt?)`). Since every use site holds the *concrete*

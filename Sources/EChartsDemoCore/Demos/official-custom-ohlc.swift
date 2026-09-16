@@ -15,7 +15,7 @@
 //   - NATIVE PANE UNSUPPORTED: the chart IS the renderItem closure — every mark on screen is produced by
 //     JS (`api.coord` / `api.size` / `api.style`), and a Swift `[String: Any]` option cannot carry a
 //     function. Without it the `custom` series has nothing to draw, so nativeSupported is false. The
-//     Swift option below still mirrors every other key (see the PORT-NOTEs for the two JS closures).
+//     Swift option below still mirrors every other key (see the notes for the two JS closures).
 import Foundation
 import EChartsKit
 
@@ -264,7 +264,7 @@ option = {
                 "axisPointer": [
                     "type": "cross"
                 ] as [String: Any]
-                // PORT-NOTE: tooltip.position omitted — JS closure pinning the tooltip to top:10 and to
+                // tooltip.position omitted — JS closure pinning the tooltip to top:10 and to
                 // whichever side (left/right, inset 30) is opposite the cursor's half of the viewport.
             ] as [String: Any],
             "axisPointer": [

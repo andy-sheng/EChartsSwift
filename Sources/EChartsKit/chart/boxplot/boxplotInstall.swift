@@ -35,7 +35,7 @@ import ZRenderKit
 //       -> sibling boxplotTransform.swift (ported): the `echarts:boxplot` dataset transform.
 
 // export function install(registers: EChartsExtensionInstallRegisters) { ... }
-// PORT-NOTE: registration boilerplate belongs to the Orchestrate/Integrate driver, not this
+// registration boilerplate belongs to the Orchestrate/Integrate driver, not this
 //   render-layer file (same convention as chart/themeRiver/themeRiverInstall.swift and
 //   component/grid/installSimple.swift). Upstream's registrars are not bridged to GlobalModel
 //   instantiation in this port (the base `EChartsExtensionInstallRegisters` only exposes
@@ -46,7 +46,7 @@ import ZRenderKit
 //   in `transformInstall` (which `installOnce()` calls); and `registerLayout` as the bare
 //   `boxplotLayout(ecModel)` call in `ECharts.render()`'s layout stage — see
 //   the INTEGRATION SURFACE block for the exact call sites (this note claims registration liveness
-//   only; per-file gaps stay tracked by the `PORT-TODO:` markers in the sibling files). Preserved as
+//   only; per-file gaps stay tracked by the `TODO: ` markers in the sibling files). Preserved as
 //   commented source for the diffable surface:
 //
 //     export function install(registers) {

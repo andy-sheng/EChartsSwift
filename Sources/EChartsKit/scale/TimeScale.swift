@@ -114,7 +114,7 @@ fileprivate func bisect(
 
 // upstream: type TimeScaleSetting = { locale; useUTC; breakOption };
 //   `locale: Model<LocaleOption>` -> `Model` (forward-ref placeholder in types.swift; the
-//   `<LocaleOption>` generic argument is dropped — PORT-NOTE: core/locale.swift is ported, but the
+//   `<LocaleOption>` generic argument is dropped — note: core/locale.swift is ported, but the
 //   `Model` placeholder here is not yet generic, so the argument is still dropped).
 public struct TimeScaleSetting {
     public var locale: Model
@@ -766,7 +766,7 @@ fileprivate func createIntervalTicks(
 
     // Remove duplicates, which may cause jitter of `splitArea` and other bad cases.
     // upstream: removeDuplicates(ticks, removeDuplicatesGetKeyFromValueProp, null);
-    // PORT-NOTE: `model.removeDuplicatesGetKeyFromValueProp` extracts `value` from a `[String:Any]`
+    // `model.removeDuplicatesGetKeyFromValueProp` extracts `value` from a `[String:Any]`
     //   bag; our ticks are `ScaleTick` structs, so the key closure mirrors its semantics (`item.value + ''`).
     //   `model.removeDuplicates` takes `inout [TItem?]`, so bridge through an optional array.
     var ticksForDedup: [ScaleTick?] = ticks
@@ -856,7 +856,7 @@ public func calcNiceForTimeScale(_ scale: TimeScale, _ opt: ScaleCalcNiceMethodO
 }
 
 // upstream: Scale.registerClass(TimeScale);
-// PORT-NOTE: upstream runs this side-effecting registration at module import time. Swift libraries have
+// upstream runs this side-effecting registration at module import time. Swift libraries have
 //  no import-time hook, so it is exposed as an idempotent static bootstrap the EChartsKit registration
 //  entry point must invoke once (mirrors Interval.swift's `registerScaleClass`).
 extension TimeScale {

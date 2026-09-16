@@ -102,7 +102,7 @@ option = {
 """#,
         option: [
             "title": [
-                // PORT-NOTE: upstream computes this as
+                // upstream computes this as
                 //   echarts.format.addCommas(data1.length / 2 + data2.length / 2) + ' Points'
                 // — a JS call over the live data. Inlined here for the native (reduced) point count.
                 "text": "40,000 Points"

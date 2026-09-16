@@ -35,7 +35,7 @@ import ZRenderKit
 //   import SeriesData from '../../data/SeriesData';                  -> SeriesData (data/SeriesData.swift).
 //   import Cartesian2D from '../../coord/cartesian/Cartesian2D';     -> Cartesian2D (coord/cartesian/Cartesian2D.swift).
 //   import { BrushCommonSelectorsForSeries } from '../../component/brush/selector';
-//     -> PORT-NOTE (deferred): `BrushCommonSelectorsForSeries` IS ported (brushVisual.swift), but the
+//     -> TODO: `BrushCommonSelectorsForSeries` IS ported (brushVisual.swift), but the
 //        central brush dispatch (`brushSelectorSupported`) does not yet enable candlestick, so the
 //        per-series `brushSelector` below stays deferred (see below).
 //   import { mixin } from 'zrender/src/core/util';                   -> see the mixin note above.
@@ -206,7 +206,7 @@ open class CandlestickSeriesModel: SeriesModel {
         // This behavior is preserved until it causes problems.
         if xAxisType == "category" {
             layout = "horizontal"
-            // PORT-NOTE: upstream's generated `CartesianAxisModel` implements `AxisModelExtendedInCreator`
+            // upstream's generated `CartesianAxisModel` implements `AxisModelExtendedInCreator`
             //   (getOrdinalMeta); the port supplies that surface via the axisModelCreator-generated subclass
             //   (the driver's EChartsXAxisModel), reachable through the protocol. Cast through it here.
             ordinalMeta = (xAxisModel as? AxisModelExtendedInCreator)?.getOrdinalMeta()

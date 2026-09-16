@@ -38,7 +38,7 @@ import ZRenderKit
 //   `Task<TaskContext>` is not expressible (a protocol does not conform to itself), so the
 //   cross-context pipeline wiring (`_upstream`/`_downstream`/`pipe`/`getUpstream`/`getDownstream`)
 //   is erased through this protocol. `core/Scheduler.swift` aliases `GeneralTask = any AnyTask`.
-//   PORT-NOTE: `_upstream`/`_downstream`/`_disposed`/`_outputDueEnd` are `private` upstream; they are
+//   `_upstream`/`_downstream`/`_disposed`/`_outputDueEnd` are `private` upstream; they are
 //   exposed here (public / public-private(set)) only to satisfy the erased protocol witnesses.
 public protocol AnyTask: AnyObject {
     var __pipeline: Pipeline? { get set }
@@ -181,7 +181,7 @@ public final class Task<Ctx: TaskContext>: AnyTask {
     private var _dirty: Bool
     private var _modBy: Double?
     private var _modDataCount: Double?
-    // PORT-NOTE: `_upstream`/`_downstream` form a strong reference cycle (upstream JS relies on GC;
+    // `_upstream`/`_downstream` form a strong reference cycle (upstream JS relies on GC;
     //   `dispose()` breaks the chain). Kept strong to preserve upstream lifetime semantics.
     //   Erased to `(any AnyTask)?` (upstream `Task<Ctx>`) to allow cross-context piping (see AnyTask).
     public weak var _upstream: (any AnyTask)?

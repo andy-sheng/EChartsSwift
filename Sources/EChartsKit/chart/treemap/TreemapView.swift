@@ -30,7 +30,7 @@ import ZRenderKit
 //            Z2_EMPHASIS_LIFT } from '../../util/states';
 //       -> util/states IS ported (util/states.swift); treemap's states/emphasis/high-down dispatch is
 //          still DEFERRED here. `Z2_EMPHASIS_LIFT` is inlined below as its upstream literal (10).
-//   import DataDiffer from '../../data/DataDiffer';                 -> PORT-NOTE (deferred): DataDiffer IS ported, but treemap's hierarchical dualTravel diff/reuse is deferred; static rebuild used.
+//   import DataDiffer from '../../data/DataDiffer';                 -> TODO: DataDiffer IS ported, but treemap's hierarchical dualTravel diff/reuse is deferred; static rebuild used.
 //   import * as helper from '../helper/treeHelper';                 -> treeHelper IS ported (chart/helper/treeHelper.swift)
 //       and USED: `retrieveTargetInfo` in `render()`, `aboveViewRoot` in `_renderBreadcrumb`'s findTarget
 //       and in treemapAction.swift. Only the `reRoot` descriptor / `_doAnimation` consumers are deferred.
@@ -40,9 +40,9 @@ import ZRenderKit
 //          controller, while this view ports upstream's controller options and pan/zoom handlers.
 //   import BoundingRect, { RectLike } from 'zrender/src/core/BoundingRect';  -> `BoundingRect` (ZRenderKit).
 //   import * as matrix from 'zrender/src/core/matrix';             -> `matrix` (ZRenderKit) — used by the deferred zoom.
-//   import * as animationUtil from '../../util/animation';         -> PORT-NOTE (deferred): the treemap _doAnimation subsystem is deferred; static render is the final state.
+//   import * as animationUtil from '../../util/animation';         -> TODO: the treemap _doAnimation subsystem is deferred; static render is the final state.
 //   import makeStyleMapper from '../../model/mixin/makeStyleMapper';
-//       -> PORT-NOTE: makeStyleMapper's treemap-custom mapping (strokeColor→stroke, strokeWidth→lineWidth)
+//       -> note: makeStyleMapper's treemap-custom mapping (strokeColor→stroke, strokeWidth→lineWidth)
 //          is approximated by `Model.getItemStyle()` + the three-field clear below.
 //   import ChartView from '../../view/Chart';                      -> `ChartView` (view/Chart.swift).
 //   import Tree, { TreeNode } from '../../data/Tree';              -> `Tree` / `TreeNode` (data/Tree.swift).
@@ -75,7 +75,7 @@ private let DRAG_THRESHOLD: Double = 3
 private let PATH_LABEL_NOAMAL = "label"
 // const PATH_UPPERLABEL_NORMAL = 'upperLabel';
 private let PATH_UPPERLABEL_NORMAL = "upperLabel"
-// PORT-NOTE: util/states.Z2_EMPHASIS_LIFT (== 10) inlined.
+// util/states.Z2_EMPHASIS_LIFT (== 10) inlined.
 private let Z2_EMPHASIS_LIFT: Double = 10
 // Should larger than emphasis states lift z
 // const Z2_BASE = Z2_EMPHASIS_LIFT * 10;  // Should bigger than every z2.
@@ -86,7 +86,7 @@ private let Z2_BG = Z2_EMPHASIS_LIFT * 2
 private let Z2_CONTENT = Z2_EMPHASIS_LIFT * 3
 
 // const getStateItemStyle = makeStyleMapper([ ['fill','color'], ['stroke','strokeColor'], ... ]);
-// PORT-NOTE: makeStyleMapper IS ported (model/mixin/makeStyleMapper.swift), so the treemap-custom
+// makeStyleMapper IS ported (model/mixin/makeStyleMapper.swift), so the treemap-custom
 //   option→style mapping is now ported EXACTLY (was previously approximated by `Model.getItemStyle()`).
 //   `borderColor`/`borderWidth` are occupied (the container gap), so the rect stroke reads
 //   `strokeColor`/`strokeWidth` instead. Closure params: (model, excludes, includes) — pass nils.
@@ -667,7 +667,7 @@ open class TreemapView: ChartView {
         // containerGroup.on('click', (e) => { ... }, this);
         //   The click bubbles up from the per-node rects to this container group, so a single listener
         //   (installed once, when the container group is created) serves every tile — as upstream.
-        // PORT-NOTE: upstream's trailing `, this` context argument is DROPPED. `Eventful` retains the
+        // upstream's trailing `, this` context argument is DROPPED. `Eventful` retains the
         //   context strongly (EventHandler.ctx, ZRenderKit/Core/Eventful.swift), and this view owns
         //   `_containerGroup`, so passing `self` would form the cycle TreemapView -> Group -> handler.ctx
         //   -> TreemapView and leak the view (and its series data) on dispose. The closure reaches `self`
@@ -918,7 +918,7 @@ open class TreemapView: ChartView {
         // const data = seriesModel.getData();
         let data = seriesModel.getData()
         // const nodeModel = thisNode.getModel<TreemapSeriesNodeItemOption>();
-        //   PORT-NOTE: `Model?` — nil for dataIndex < 0; upstream assumes non-null. Guard defensively.
+        //   `Model?` — nil for dataIndex < 0; upstream assumes non-null. Guard defensively.
         let nodeModel = thisNode.getModel()
 
         // Only for enabling highlight/downplay. Clear firstly.
@@ -1098,7 +1098,7 @@ open class TreemapView: ChartView {
             if let content { renderContent(group, content, contentWasOld) }
 
             // (bg as ECElement).disableMorphing = true;
-            //   PORT-NOTE: `ECElement` is an augmentation interface Swift cannot add stored props for;
+            //   `ECElement` is an augmentation interface Swift cannot add stored props for;
             //   the flag lives in the `makeInner` side store (animation/morphTransitionHelper.swift),
             //   read by `getPathList` — so the node BACKGROUND rect is not a universalTransition morph
             //   endpoint (only its content rect is), exactly as upstream.
@@ -1290,7 +1290,7 @@ open class TreemapView: ChartView {
 
             if let up = upperLabelRect {
                 // upstream: rectEl.setTextConfig({ layoutRect: upperLabelRect }) — a field MERGE. The
-                //   ported `setTextConfig` REPLACES the config (see Element.swift PORT-NOTE), so mutate
+                //   ported `setTextConfig` REPLACES the config (see Element.swift note), so mutate
                 //   the existing config to preserve the `position` just written by setLabelStyle.
                 var tc = rectEl.textConfig ?? ElementTextConfig()
                 tc.layoutRect = up

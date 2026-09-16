@@ -12,7 +12,7 @@
 // `ActionRefineEvent`, `ECActionEvent`, `ECEventData`) already live in util/types.swift — this
 // file REUSES them and only adds the registry state + `registerAction` + an accessor.
 //
-// PORT NOTE: upstream keeps these as private module locals of echarts.ts. Swift has no
+// upstream keeps these as private module locals of echarts.ts. Swift has no
 // file-private module scope shared across files, so the registry is module-`internal` here and
 // exposed for reads only through `lookupAction(_:)` (the dispatch author reads via that accessor).
 
@@ -179,7 +179,7 @@ private func registerActionInternal(_ arg0: Any, _ arg1Input: Any?, _ actionInpu
         publicEventTypeMap[nonRefinedEventType] = true
     }
 
-    // PORT-NOTE: upstream's `if (__DEV__ && connectionEventRevertMap[nonRefinedEventType]) error(...)`
+    // upstream's `if (__DEV__ && connectionEventRevertMap[nonRefinedEventType]) error(...)`
     //   dev-only shared-event-name warning is omitted (no __DEV__ flag / logging path wired here).
     // connectionEventRevertMap[nonRefinedEventType] = actionType;
     connectionEventRevertMap[nonRefinedEventType] = actionType

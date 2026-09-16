@@ -23,7 +23,7 @@ import Foundation
 import ZRenderKit
 
 // import {each, createHashMap, assert, map} from 'zrender/src/core/util';   -> ZRenderKit.util.{each, assert, map}
-//   (createHashMap/HashMap are NOT yet ported in ZRenderKit — see ZRenderKit/Core/util.swift PORT-NOTE.)
+//   (createHashMap/HashMap are NOT yet ported in ZRenderKit — see ZRenderKit/Core/util.swift note.)
 // import SeriesData from '../SeriesData';                                    -> sibling data/SeriesData (this phase)
 // import { DimensionName, VISUAL_DIMENSIONS, DimensionType, DimensionIndex } from '../../util/types';
 // import { DataStoreDimensionType } from '../DataStore';                     -> util/types.DataStoreDimensionType
@@ -37,7 +37,7 @@ import ZRenderKit
 //           DimensionName[]
 //   };
 // All values are `DimensionName[]` (incl. the two named keys), so model as a string-keyed map.
-// PORT-NOTE: JS sparse-array holes (`arr[i]` assigned past `length` -> `undefined`) are
+// JS sparse-array holes (`arr[i]` assigned past `length` -> `undefined`) are
 // represented as empty-string placeholders; in practice `coordDimIndex` is sequential so
 // no holes are ever produced (see `encodeArrSet`).
 public typealias DimensionSummaryEncode = Dictionary<[DimensionName]>
@@ -45,7 +45,7 @@ public typealias DimensionSummaryEncode = Dictionary<[DimensionName]>
 public final class DimensionSummary {
     public var encode: DimensionSummaryEncode = [:]
     // Those details that can be expose to users are put int `userOutput`.
-    // PORT-NOTE: implicitly-unwrapped; upstream builds the object incrementally
+    // implicitly-unwrapped; upstream builds the object incrementally
     // (`{} as DimensionSummary`) and always assigns `userOutput` before returning.
     public var userOutput: DimensionUserOuput!
     // All of the data dim names that mapped by coordDim.
@@ -63,7 +63,7 @@ public final class DimensionSummary {
 
 public final class DimensionUserOuput {
     private var _encode: DimensionUserOuputEncode
-    // PORT-NOTE: upstream `_cachedDimNames: DimensionName[]`; sibling
+    // upstream `_cachedDimNames: DimensionName[]`; sibling
     // `SeriesDataSchema.makeOutputDimensionNames()` returns `[DimensionName?]`
     // (name may be `undefined`), so element type is optional here.
     private var _cachedDimNames: [DimensionName?]?
@@ -117,7 +117,7 @@ public func summarizeDimensions(
     let summary = DimensionSummary()
     var encode = DimensionSummaryEncode()
     summary.encode = encode
-    // PORT-NOTE: createHashMap<1, DimensionName> — modeled as an insertion-ordered key set
+    // createHashMap<1, DimensionName> — modeled as an insertion-ordered key set
     // (the values are all `1`). Swift `Dictionary` is unordered, so use an array + `contains`
     // to preserve upstream iteration/concat order.
     var notExtraCoordDimMap: [DimensionName] = []
@@ -247,7 +247,7 @@ private func getOrCreateEncodeArr(_ encode: inout DimensionUserOuputEncode, _ di
     }
 }
 
-// PORT-NOTE: replicates `getOrCreateEncodeArr(encode, dim)[index] = value` (JS array-by-reference
+// replicates `getOrCreateEncodeArr(encode, dim)[index] = value` (JS array-by-reference
 // index-assignment) for Swift value-type arrays. The `while` pad mirrors JS sparse-array growth
 // (holes -> placeholder); `index` is sequential in practice so it never actually pads.
 private func encodeArrSet(_ encode: inout DimensionSummaryEncode, _ dim: DimensionName, _ index: Int, _ value: DimensionName) {
@@ -265,7 +265,7 @@ private func encodeArrSet(_ encode: inout DimensionUserOuputEncode, _ dim: Dimen
     encode[dim] = arr
 }
 
-// PORT-NOTE: upstream indexes the dynamic `otherDims` bag by string key
+// upstream indexes the dynamic `otherDims` bag by string key
 // (`dimItem.otherDims[otherDim]`). `DataVisualDimensions` is a typed struct here, so map the
 // known VISUAL_DIMENSIONS keys explicitly. Returns `Any?` because `tooltip` may be `false`.
 private func otherDimsValue(_ otherDims: DataVisualDimensions?, _ otherDim: String) -> Any? {
@@ -299,7 +299,7 @@ public func getDimensionTypeByAxis(_ axisType: String) -> DataStoreDimensionType
         : .float
 }
 
-// PORT-NOTE: upstream signature is `mayLabelDimType(dimType: DimensionType)`; `SeriesDimensionDefine.type`
+// upstream signature is `mayLabelDimType(dimType: DimensionType)`; `SeriesDimensionDefine.type`
 // is optional, so accept an optional here (an absent type is neither 'ordinal' nor 'time' -> labelable).
 private func mayLabelDimType(_ dimType: DimensionType?) -> Bool {
     // In most cases, ordinal and time do not suitable for label.

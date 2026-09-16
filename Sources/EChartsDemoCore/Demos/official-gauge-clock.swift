@@ -17,7 +17,7 @@
 //     `export {};` are dropped from webOptionJS — a classic script cannot parse either.
 //   - NATIVE PANE ONLY: `series[0].axisLabel.formatter` is a JS closure (blanks the "0" label so the
 //     dial reads 1…12, not 0/12 twice) and cannot be expressed in a Swift option; the key is omitted,
-//     so the native dial labels 0 where the web dial labels nothing. Marked with a PORT-NOTE below.
+//     so the native dial labels 0 where the web dial labels nothing. Marked with a note below.
 //   - NATIVE PANE ONLY: upstream's `option.animationDurationUpdate = 300;` inside the interval is
 //     dead code (it mutates the already-consumed option literal; echarts has cloned it into its
 //     models by then), so `drive` does not replicate it. It stays in webOptionJS verbatim.
@@ -350,7 +350,7 @@ private let gaugeClockHourSeries: [String: Any] = [
     "axisLabel": [
         "fontSize": 50.0,
         "distance": 25.0
-        // PORT-NOTE: axisLabel.formatter omitted — the JS closure returned '' for value 0 (so the dial
+        // axisLabel.formatter omitted — the JS closure returned '' for value 0 (so the dial
         // reads 1…12 with nothing at the top) and `value + ''` otherwise. Without it the native dial
         // prints a "0" at 12 o'clock.
     ] as [String: Any],

@@ -118,7 +118,7 @@ open class VisualMapModel: ComponentModel {
     ]
 
     // readonly layoutMode = { type: 'box', ignoreSize: true } as const;
-    // PORT-NOTE: upstream declares `layoutMode` as an INSTANCE readonly member; the Swift
+    // upstream declares `layoutMode` as an INSTANCE readonly member; the Swift
     //   ComponentModel exposes it as `open class var`. Modeled as a class-var override.
     public override class var layoutMode: Any? {
         return ["type": "box", "ignoreSize": true] as [String: Any]
@@ -131,12 +131,12 @@ open class VisualMapModel: ComponentModel {
     public var dataBound: [Double] = [-Double.infinity, Double.infinity]
 
     // protected _dataExtent: [number, number];
-    // PORT-NOTE: upstream leaves this uninitialized (assigned by `resetExtent`); Swift requires a
+    // upstream leaves this uninitialized (assigned by `resetExtent`); Swift requires a
     //   stored value, so it defaults to empty.
     internal var _dataExtent: [Double] = []   // upstream: protected
 
     // targetVisuals = {} as ReturnType<typeof visualSolution.createVisualMappings>;
-    // PORT-NOTE: visualSolution IS ported. `createVisualMappings` returns a per-state map of
+    // visualSolution IS ported. `createVisualMappings` returns a per-state map of
     //   `VisualMapping` instances (`{ inRange: {...}, outOfRange: {...} }`). Held here as the untyped
     //   `[String: Any]` bag.
     public var targetVisuals: [String: Any] = [:]
@@ -145,12 +145,12 @@ open class VisualMapModel: ComponentModel {
     public var controllerVisuals: [String: Any] = [:]
 
     // textStyleModel: Model<LabelOption>;
-    // PORT-NOTE: upstream leaves this uninitialized (assigned by `optionUpdated`); Swift requires a
+    // upstream leaves this uninitialized (assigned by `optionUpdated`); Swift requires a
     //   stored value, so it defaults to a fresh empty Model until `optionUpdated` runs.
     public var textStyleModel: Model = Model()
 
     // itemSize: number[];
-    // PORT-NOTE: assigned by `resetItemSize`; defaults to empty until then.
+    // assigned by `resetItemSize`; defaults to empty until then.
     public var itemSize: [Double] = []
 
     // init(option, parentModel, ecModel) { this.mergeDefaultAndTheme(option, ecModel); }

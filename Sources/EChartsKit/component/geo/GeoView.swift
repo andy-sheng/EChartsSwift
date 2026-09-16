@@ -28,7 +28,7 @@ import ZRenderKit
 //       emphasis/select/blur states, and the event/tooltip/state triggers (`setTooltipConfig` wired) —
 //       with TWO documented gaps: the `GeoProjection.stream` clip/resample path (`projectionStream` is
 //       nil, `projectPolys` dormant) and the name-keyed geo `labelFetcher` (replaced by an eager
-//       `getFormattedLabel`); see its PORT-TODOs.
+//       `getFormattedLabel`); see its TODOs.
 //     → SWITCHOVER DONE: this view now owns a persistent `_mapDraw` and delegates the WHOLE region
 //       backdrop to `MapDraw.draw` (upstream lifecycle: create-on-demand, `remove()` when `show` is
 //       false / on dispose, `__updateOnOwnRoam`, `findHighDownDispatchers`). The previously inlined
@@ -106,7 +106,7 @@ public final class GeoView: ComponentView {
             self._mapDraw = mapDraw
 
             // upstream: mapDraw.group.on('click', this._handleRegionClick, this);  — bound in `render`.
-            //   PORT-NOTE (deviation, deliberate): `mapDraw.group` PERSISTS across renders, so re-binding
+            //   note (deviation, deliberate): `mapDraw.group` PERSISTS across renders, so re-binding
             //   every render would accumulate one handler per render (upstream's `on` appends too). Bind
             //   exactly ONCE per MapDraw instance instead: the group's lifetime is the MapDraw's, and
             //   `_mapDraw` is nil'd on `show: false` / `dispose`, so a fresh instance always gets a fresh
@@ -119,7 +119,7 @@ public final class GeoView: ComponentView {
         }
 
         // upstream: mapDraw.draw(geoModel, ecModel, api, this, payload);
-        //   PORT-NOTE: upstream `payload` is nullable and `MapDraw.draw` keys its "no animation" flag off
+        //   upstream `payload` is nullable and `MapDraw.draw` keys its "no animation" flag off
         //   it; the driver passes `Payload(type: "")` as the "no payload" sentinel, so map it back to
         //   `nil` (same bridging as MapView.render).
         mapDraw.draw(geoModel, ecModel, api, self, payload.type.isEmpty ? nil : payload)
@@ -230,7 +230,7 @@ public final class GeoView: ComponentView {
 extension GeoView: RoamHostView {}
 
 // ============================================================================
-// PORT-NOTE helper — NOT part of GeoView.ts upstream: the JS-truthiness bridge
+// note helper — NOT part of GeoView.ts upstream: the JS-truthiness bridge
 // for the dynamic option bag (`if (geoModel.get('show'))`). The MapDraw subset
 // that used to live here (getFixedItemStyle / the style-bag → PathStyleProps
 // bridge) is DELETED — it now lives in its real upstream home, MapDraw.swift.

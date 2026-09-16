@@ -40,7 +40,7 @@
 // `Scale` class from sibling `scale/Scale.swift`; the subtype imports are therefore dropped.
 
 // ============================================================================
-// PORT-NOTE: FORWARD-REFERENCE PLACEHOLDERS — ALL RESOLVED
+// FORWARD-REFERENCE PLACEHOLDERS — ALL RESOLVED
 // Upstream `scale/helper.ts` imports these from sibling files that, at the time
 // this file was first ported, were still in flight. Those siblings have all landed,
 // so the placeholders were removed and calls now resolve to the real types/APIs

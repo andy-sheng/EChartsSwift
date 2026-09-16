@@ -23,10 +23,10 @@ import ZRenderKit
 
 // upstream imports:
 //   import GraphSeriesModel from './GraphSeries';
-//       -> PORT-NOTE: `GraphSeries.swift` is ported; `getNodeGlobalScale` is still typed against
+//       -> note: `GraphSeries.swift` is ported; `getNodeGlobalScale` is still typed against
 //          the base `SeriesModel` (it only touches `.coordinateSystem`, an `Any?` on SeriesModel).
 //   import { calcCompensationScaleToPreserveNodeSize, isViewCoordSys } from '../../coord/View';
-//       -> PORT-NOTE: `coord/View.swift` is ported (`isViewCoordSys` available). Upstream's
+//       -> note: `coord/View.swift` is ported (`isViewCoordSys` available). Upstream's
 //          `calcCompensationScaleToPreserveNodeSize` is a deferred roam export in coord/View.swift, so
 //          it is inlined locally (this is its only caller); see `getNodeGlobalScale` below.
 //   import { GraphNode } from '../../data/Graph';   -> data/Graph.swift (sibling port)
@@ -37,7 +37,7 @@ import ZRenderKit
 public enum graphHelper {
 
     // export function getNodeGlobalScale(seriesModel: GraphSeriesModel)
-    // PORT-NOTE: upstream parameter type is `GraphSeriesModel`; typed as the base `SeriesModel`
+    // upstream parameter type is `GraphSeriesModel`; typed as the base `SeriesModel`
     //   (only `.coordinateSystem` is accessed). `GraphSeries.swift` is ported.
     public static func getNodeGlobalScale(_ seriesModel: SeriesModel) -> Double {
         let coordSys = seriesModel.coordinateSystem
@@ -47,7 +47,7 @@ public enum graphHelper {
         //     // PENDING: historially `nodeScaleRatio` has not been applied on
         //     // geo based graph series.
         //     : 1;
-        // PORT-NOTE: `isViewCoordSys(coordSys)` == `coordSys is View` (a View always has
+        // `isViewCoordSys(coordSys)` == `coordSys is View` (a View always has
         //   `type === VIEW_COORD_SYS_TYPE`). In this port Geo does NOT subclass View, so the
         //   `as? View` cast matches only the view coord sys — the geo branch falls through to `1`.
         if let view = coordSys as? View {
@@ -71,7 +71,7 @@ public enum graphHelper {
     //     return ((viewInner.zoom - 1) * nodeScaleRatio + 1)
     //         / (viewInner.trans[VIEW_COORD_SYS_TRANS_OVERALL].scaleX || 1);
     // }
-    // PORT-NOTE: upstream places this in `coord/View`, where it is documented as a deferred roam
+    // upstream places this in `coord/View`, where it is documented as a deferred roam
     //   export (see the deferred-exports banner in coord/View.swift). It is inlined here — its only
     //   caller — because the compensation is purely a function of the view coord sys's zoom/overall
     //   scale plus the series' `nodeScaleRatio`; all inputs are reachable from the target file.

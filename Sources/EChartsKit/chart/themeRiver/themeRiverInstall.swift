@@ -35,7 +35,7 @@ import ZRenderKit
 //       -> sibling themeRiverLayout.swift (ported).
 
 // export function install(registers: EChartsExtensionInstallRegisters) { ... }
-// PORT-NOTE: registration boilerplate belongs to the Orchestrate/Integrate driver, not this
+// registration boilerplate belongs to the Orchestrate/Integrate driver, not this
 //   render-layer file (same convention as chart/sankey/sankeyInstall.swift). Preserved as commented
 //   source for the diffable surface:
 //

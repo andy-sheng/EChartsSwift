@@ -15,7 +15,7 @@
 //     that the `i === j ? 1 : ...` ternary short-circuits, so no random is drawn on the 8 diagonal
 //     cells. Everything else in the data loop (the i >= j filter, the value expression) is verbatim.
 //   - series.label.formatter is a JS closure: kept verbatim in the web pane, omitted in the native
-//     option (see PORT-NOTE). The native pane therefore labels the cells with echarts' default
+//     option (see note). The native pane therefore labels the cells with echarts' default
 //     (the raw value) rather than `toFixed(2)`.
 //   - NATIVE PANE IS PARTIAL — the same gap official-matrix-simple / official-matrix-covariance
 //     carry, and nothing about this option causes it. EChartsKit registers the matrix coord +
@@ -120,7 +120,7 @@ option = {
                 "top": 5.0,
                 "left": "center"
             ] as [String: Any],
-            // PORT-NOTE: draws the matrix BACKDROP ONLY today — HeatmapView.render has no matrix branch
+            // draws the matrix BACKDROP ONLY today — HeatmapView.render has no matrix branch
             // (cartesian2d / calendar / geo only), so these 36 cells render nothing on the native pane.
             // The option is complete and correct; it lights up when that branch lands. See header.
             "series": [
@@ -129,7 +129,7 @@ option = {
                 "data": matrixCorrelationHeatmapData,
                 "label": [
                     "show": true
-                    // PORT-NOTE: label.formatter omitted — `params => params.value[2].toFixed(2)`,
+                    // label.formatter omitted — `params => params.value[2].toFixed(2)`,
                     // which prints the cell's correlation (data dim 2) rounded to 2 decimals.
                 ] as [String: Any]
             ] as [String: Any]

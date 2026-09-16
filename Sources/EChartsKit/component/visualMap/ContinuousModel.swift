@@ -31,12 +31,12 @@ import ZRenderKit
 // import { inheritDefaultOption } from '../../util/component';      -> `component.inheritDefaultOption`.
 // import { ItemStyleOption } from '../../util/types';               -> (type-only; the ItemStyle bag stays `[String: Any]`).
 // import tokens from '../../visual/tokens';
-//   -> PORT-NOTE: visual/tokens.ts is ported (visual/tokens.swift). The `tokens.*` values consumed in
+//   -> note: visual/tokens.ts is ported (visual/tokens.swift). The `tokens.*` values consumed in
 //      `defaultOption` are still inlined verbatim as their resolved constants; could be re-wired.
 //        tokens.color.neutral00 = '#fff'
 //        tokens.color.shadow    = 'rgba(0,0,0,0.2)'
 //
-// PORT-NOTE (sibling-base coupling): this model `extends VisualMapModel`. The following members are
+// note (sibling-base coupling): this model `extends VisualMapModel`. The following members are
 //   declared/provided by the sibling `VisualMapModel` base (component/visualMap/VisualMapModel.swift)
 //   and are referenced here exactly as upstream:
 //     - stored `itemSize: [Double]`
@@ -63,7 +63,7 @@ private let DEFAULT_BAR_BOUND: [Double] = [20.0, 140.0]
 // type RangeWithAuto = { auto?: 0 | 1 };
 //   -> In JS the `auto` flag is attached as a property ON the `range` array object. A Swift `[Double]`
 //      can not carry an extra property, so the flag is mirrored by the private `_rangeIsAuto` stored
-//      member below (see `_resetRange`). PORT-NOTE: this deviates from upstream's array-property hack.
+//      member below (see `_resetRange`). note: this deviates from upstream's array-property hack.
 
 // type VisualState = VisualMapModel['stateList'][number];   -> String (= "inRange" | "outOfRange").
 
@@ -114,7 +114,7 @@ open class ContinuousModel: VisualMapModel {
 
         // const itemSize = this.itemSize;
         var itemSize = self.itemSize
-        // PORT-NOTE: upstream treats `itemSize[i] == null` (missing) the same as `isNaN`. The ported
+        // upstream treats `itemSize[i] == null` (missing) the same as `isNaN`. The ported
         //   base `itemSize` is a `[Double]`; a missing element is reproduced by padding with NaN so the
         //   `isNaN` branch applies uniformly.
         while itemSize.count < 2 { itemSize.append(Double.nan) }

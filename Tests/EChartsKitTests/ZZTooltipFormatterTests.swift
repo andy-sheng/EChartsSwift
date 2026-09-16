@@ -228,7 +228,7 @@ final class ZZTooltipFormatterTests: XCTestCase {
     // Upstream runs the template through `timeFormat` (this port's `time.format`) BEFORE `formatTpl`
     // when `params0.axisType` contains 'time', so `{yyyy}`/`{MM}`/`{dd}` resolve against the hovered
     // AXIS VALUE. The pre-pass is ported, and the axis path now stamps the `axisType`/`axisValue` it
-    // reads — but it is DORMANT, see the PORT-TODO on `isTimeAxis` in TooltipView.swift: the axis
+    // reads — but it is DORMANT, see the TODO on `isTimeAxis` in TooltipView.swift: the axis
     // models `ECharts.setOption` instantiates report `type == "xAxis"` instead of upstream's
     // `"xAxis.time"`. This test pins BOTH halves: the gap itself (so the day `EChartsXAxisModel.type`
     // is fixed, this fails loudly and the expectation below flips) and the formatter the branch calls.
@@ -253,7 +253,7 @@ final class ZZTooltipFormatterTests: XCTestCase {
         XCTAssertEqual(seenAxisValue as? Double, 1546387200000.0,
                        "cbParams.axisValue must carry the hovered timestamp")
         XCTAssertEqual(seenAxisType, "xAxis",
-                       "KNOWN GAP (PORT-TODO in TooltipView.swift): EChartsXAxisModel.type omits the "
+                       "KNOWN GAP (TODO in TooltipView.swift): EChartsXAxisModel.type omits the "
                        + "subType, so `axisType.indexOf('time')` never matches. When this becomes "
                        + "'xAxis.time', flip the string-formatter expectation below to 'D=2019/01/02'.")
 
@@ -261,7 +261,7 @@ final class ZZTooltipFormatterTests: XCTestCase {
         let view = makeTimeAxisView(tooltip: ["trigger": "axis", "formatter": "D={yyyy}/{MM}/{dd}"])
         hoverTimeAxisDatum1(view)
         XCTAssertEqual(view.tooltipView?.contentEl?.textStyle?.text ?? "", "D={yyyy}/{MM}/{dd}",
-                       "with the axisType gap the time template is shown verbatim (see PORT-TODO)")
+                       "with the axisType gap the time template is shown verbatim (see TODO)")
     }
 
     private func makeTimeAxisView(tooltip: [String: Any]) -> EChartsView {
@@ -296,7 +296,7 @@ final class ZZTooltipFormatterTests: XCTestCase {
     }
 
     // A non-string / non-closure `formatter` must leave the DEFAULT markup standing (this port has no
-    // `HTMLElement` arm — see the PORT-NOTE in `_showTooltipContent`).
+    // `HTMLElement` arm — see the note in `_showTooltipContent`).
     func testUnsupportedFormatterKeepsDefaultMarkup() {
         let view = makeBarView(tooltip: ["trigger": "item", "formatter": 42])
         guard let text = hoverBar(view, 0) else { return }

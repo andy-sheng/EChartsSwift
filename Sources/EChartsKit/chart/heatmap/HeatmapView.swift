@@ -23,10 +23,10 @@ import ZRenderKit
 
 // upstream imports:
 //   import * as graphic from '../../util/graphic';                    -> `Rect` is the ZRenderKit shape.
-//     PORT-NOTE: `graphic.traverseElements` not ported; `eachRendered` traverses the group directly.
+//     `graphic.traverseElements` not ported; `eachRendered` traverses the group directly.
 //   import { toggleHoverEmphasis } from '../../util/states';          -> `util/states` (util/states.swift);
 //     `toggleHoverEmphasis` is now wired at the cell (see `_renderOnGridLike`, alongside setStatesStylesFromModel).
-//   import HeatmapLayer from './HeatmapLayer';                        -> PORT-NOTE (deferred): canvas-blur
+//   import HeatmapLayer from './HeatmapLayer';                        -> TODO: canvas-blur
 //     `HeatmapLayer` NOT ported (geo/large-mode only — `_renderOnGeo`, out of the heatmap milestone scope).
 //   import * as zrUtil from 'zrender/src/core/util';                 -> stdlib / `util` (ZRenderKit).
 //   import ChartView from '../../view/Chart';                        -> `ChartView` (view/Chart.swift).
@@ -44,10 +44,10 @@ import ZRenderKit
 //     -> `labelStyle.setLabelStyle` / `labelStyle.getLabelStatesModels` (label/labelStyle.swift); the
 //        per-cell value label is wired in `_renderOnGridLike` (same pattern as BarView).
 //   import type Element from 'zrender/src/Element';                   -> `Element` (ZRenderKit).
-//   import type Matrix from '../../coord/matrix/Matrix';              -> PORT-NOTE (deferred): `Matrix` coord
+//   import type Matrix from '../../coord/matrix/Matrix';              -> TODO: `Matrix` coord
 //     (coord/matrix/Matrix.swift) is ported but NOT wired for heatmap yet.
 //   import { calcBandWidth } from '../../coord/axisBand';             -> `calcBandWidth` (coord/axisBand.swift).
-//   import { getIncrementalId } from '../../util/model';              -> PORT-NOTE (deferred): `getIncrementalId`
+//   import { getIncrementalId } from '../../util/model';              -> TODO: `getIncrementalId`
 //     is ported (util/modelUtil.swift) but heatmap's incremental-id use rides the deferred progressive pipeline.
 //
 // PORT SCOPE (per the heatmap milestone): the CARTESIAN2D colored-Rect path of `_renderOnGridLike` is the
@@ -55,7 +55,7 @@ import ZRenderKit
 //   sized to the axis band width/height + 0.5px), FILLED with the per-datum color the visualMap encoding
 //   already wrote into the item visual `style` (visual/style + component/visualMap/visualEncoding →
 //   `data.getItemVisual(idx, 'style')`). The blurred canvas `HeatmapLayer` (`_renderOnGeo`) and the
-//   large/progressive path are deferred (PORT-NOTE); the matrix/calendar coord branches are not wired for heatmap
+//   large/progressive path are deferred (note); the matrix/calendar coord branches are not wired for heatmap
 //   yet (the coord systems themselves are ported: coord/matrix/Matrix.swift, coord/calendar/Calendar.swift).
 
 // upstream: function getIsInContinuousRange(dataExtent, range) { ... }
@@ -197,7 +197,7 @@ open class HeatmapView: ChartView {
             self._renderOnMatrix(seriesModel, matrix)
         }
         else {
-            // PORT-NOTE (deferred): coord systems other than cartesian2d/calendar/geo/matrix not wired.
+            // TODO: coord systems other than cartesian2d/calendar/geo/matrix not wired.
             _ = self.group.removeAll()
             self._resetCellState()
         }
@@ -378,13 +378,13 @@ open class HeatmapView: ChartView {
             self._renderOnGridLike(seriesModel, api, Int(params.start), Int(params.end), true)
         }
         else {
-            // PORT-NOTE (deferred): geo incremental → `this.render(...)`; matrix/calendar not wired.
+            // TODO: geo incremental → `this.render(...)`; matrix/calendar not wired.
         }
     }
 
     // upstream: eachRendered(cb) { graphic.traverseElements(this._progressiveEls || this.group, cb); }
     open override func eachRendered(_ cb: (_ el: Element) -> Bool) {
-        // PORT-NOTE (deferred): `util/graphic.traverseElements` not ported. When `_progressiveEls` exists, visit each
+        // TODO: `util/graphic.traverseElements` not ported. When `_progressiveEls` exists, visit each
         //   (incremental mode); otherwise traverse the group via `Group.traverse` (children only — same
         //   note as BarView.eachRendered / view/Chart.swift).
         if let progressiveEls = self._progressiveEls {
@@ -409,7 +409,7 @@ open class HeatmapView: ChartView {
         // const coordSys = seriesModel.coordinateSystem as Cartesian2D | Calendar | Matrix;
         // const isCartesian2d = isCoordinateSystemType<Cartesian2D>(coordSys, 'cartesian2d');
         guard let coordSys = seriesModel.coordinateSystem as? Cartesian2D else {
-            // PORT-NOTE (deferred): matrix/calendar `_renderOnGridLike` branches not wired for heatmap.
+            // TODO: matrix/calendar `_renderOnGridLike` branches not wired for heatmap.
             return
         }
 
@@ -526,7 +526,7 @@ open class HeatmapView: ChartView {
             let cellY = point[1] - height / 2
 
             // el.useStyle(style) — the fill color the visualMap encoding wrote + the itemStyle border.
-            // PORT-NOTE (language diff): the item visual 'style' is a `[String: Any]` bag (visual/style.swift); ZRenderKit
+            // note (language diff): the item visual 'style' is a `[String: Any]` bag (visual/style.swift); ZRenderKit
             //   `useStyle` takes a typed `PathStyleProps`. `heatmapStyleFromDict` bridges the common paint
 //   keys (fill/stroke/lineWidth/opacity/decal/...) — same bridge as BarView.
             let cellStyle = heatmapStyleFromDict(style)
@@ -636,7 +636,7 @@ open class HeatmapView: ChartView {
 
             // upstream (HeatmapView.ts:329-333): ensureState('emphasis'|'blur'|'select').style +
             //   toggleHoverEmphasis — the cell's hover wiring (setStatesStylesFromModel covers the three
-            //   ensureState style assignments). PORT-NOTE (deferred): incremental id + hover layer.
+            //   ensureState style assignments). TODO: incremental id + hover layer.
             states.setStatesStylesFromModel(rect, stateModel)
             states.toggleHoverEmphasis(rect, focus, blurScope, emphasisDisabled)
 
@@ -854,7 +854,7 @@ private func heatmapRectRadius(_ v: Any?) -> RectRadius? {
     return nil
 }
 
-// PORT-NOTE (language diff): `util/graphic`-level `useStyle(dict)` bridge — the item visual 'style' is a `[String: Any]`
+// note (language diff): `util/graphic`-level `useStyle(dict)` bridge — the item visual 'style' is a `[String: Any]`
 //   bag (visual/style.swift, with the visualMap-encoded `fill`); ZRenderKit `Path.useStyle` takes a typed
 //   `PathStyleProps`. Maps the common paint keys so cells are actually colored. The decal visual stage
 //   stores its generated tiling Pattern in this bag; carry it onto the Path so matrix heatmaps such as

@@ -2,7 +2,7 @@
 //
 // PHASE-1 (render-only) PORT. This is the keystone of the scene graph. The parts needed
 // to build and render a STATIC scene graph are translated faithfully; the rest is STUBBED
-// with `// PORT-NOTE` (faithful signatures, deferred to later phases) so it compiles.
+// with `// note` (faithful signatures, deferred to later phases) so it compiles.
 //
 // TRANSLATED (render-only):
 //   - class Element extends Transformable (+ Eventful composed via forwarding)
@@ -15,7 +15,7 @@
 //   - isSilent; the inside/outside text-color hooks (canBeInsideText / getInside*/getOutside*)
 //   - text-content / text-guide attach plumbing (setTextContent / setTextGuideLine / ...)
 //
-// STUBBED AT FIRST PORT (PORT-NOTE: all now ported in later phases):
+// STUBBED AT FIRST PORT (note: all now ported in later phases):
 //   - the animation surface (animate / addAnimator / animateTo / animateFrom / stopAnimation /
 //     _transitionState and the module-level animateTo / animateToShallow / copyValue family)
 //     — Animator is a Phase-3 stub.
@@ -47,7 +47,7 @@ import Foundation
 // import { guid, isObject, keys, extend, indexOf, logError, mixin, isArrayLike,
 //          isTypedArray, isGradientObject, filter, reduce } from './core/util';  → util.*
 // import { calculateTextPosition, TextPositionCalculationResult, parsePercent } from './contain/text';
-//   → PORT-NOTE: contain/text.ts is ported (ZRenderKit Contain/ContainText.swift).
+//   → note: contain/text.ts is ported (ZRenderKit Contain/ContainText.swift).
 
 public struct ElementAnimateConfig {
     public var duration: Double?
@@ -74,7 +74,7 @@ public struct ElementAnimateConfig {
 }
 
 public struct ElementTextConfig {
-    // PORT-NOTE: faithful data bag for the ZRText integration (Phase 2). The union-typed
+    // faithful data bag for the ZRText integration (Phase 2). The union-typed
     // fields (`position`, `origin`) are typed `Any?` until contain/text.ts lands.
 
     /// Position relative to the element bounding rect. @default 'inside'
@@ -129,7 +129,7 @@ public struct ElementTextGuideLineConfig {
 //   dispatch loop (`Handler.dispatchToElement`) re-reads after each `el.trigger`, so stopPropagation
 //   works. (A struct would hand each listener a copy, leaving the loop's packet untouched.)
 public final class ElementEvent {
-    // PORT-NOTE: ElementEvent references ZRRawEvent and the gesture/touch fields, which belong
+    // ElementEvent references ZRRawEvent and the gesture/touch fields, which belong
     // to the native event-dispatch seam (CONVENTIONS §9), not the render-only milestone. Minimal
     // placeholder so `drift`'s optional `e` param keeps a faithful type.
     public var type: ElementEventName?
@@ -138,7 +138,7 @@ public final class ElementEvent {
     public var cancelBubble: Bool = false
     public var offsetX: Double = 0
     public var offsetY: Double = 0
-    // PORT-NOTE: `event` is the underlying ZRRawEvent (browser DOM event), modeled as Any? at
+    // `event` is the underlying ZRRawEvent (browser DOM event), modeled as Any? at
     //   the native event seam (CONVENTIONS §9). Draggable forwards it to dispatchToElement.
     public var event: Any?
     // The remaining `Handler.makeEventPacket` fields (gesture / wheel / button). Optional so an
@@ -155,12 +155,12 @@ public final class ElementEvent {
     public init() {}
 }
 
-// PORT-NOTE: ElementEventCallback / CbThis<Ctx, Impl> — `this`-bound event callback typing.
+// ElementEventCallback / CbThis<Ctx, Impl> — `this`-bound event callback typing.
 //   Collapses to the `EventCallback` defined in Core/Eventful.swift (event seam, CONVENTIONS §9).
-// PORT-NOTE: interface ElementEventHandlerProps — the `onclick`/`ondrag`/... handler-prop set.
+// interface ElementEventHandlerProps — the `onclick`/`ondrag`/... handler-prop set.
 //   These are the native event seam; not modeled in render-only Phase 1.
 
-// PORT-NOTE: interface ElementProps extends Partial<ElementEventHandlerProps> & Partial<Pick<
+// interface ElementProps extends Partial<ElementEventHandlerProps> & Partial<Pick<
 //   Transformable, TransformProp>>. For the `attr` setter machinery, the props bag is modeled
 //   as `[String: Any]` (see `attr` / `attrKV` below); the typed-interface fidelity is dropped.
 public typealias ElementProps = [String: Any]
@@ -179,7 +179,7 @@ fileprivate let DEFAULT_ANIMATABLE_MAP: [String: Bool] = {
     return obj
 }()
 
-// PORT-NOTE: ElementStatePropNames / ElementState / ElementCommonState — `Pick<ElementProps, ...>`
+// ElementStatePropNames / ElementState / ElementCommonState — `Pick<ElementProps, ...>`
 //   utility types. `ElementState` is modeled as a prop bag (`props`), carrying the overrides a named
 //   state applies (transform keys as scalars; `shape` / `style` as `[String: Any]` sub-bags — the
 //   same shape an `animateTo` target takes).
@@ -219,7 +219,7 @@ public final class ElementState {
     // the existing `textConfig: ElementTextConfig?` precedent just above (also a typed field bolted
     // onto the generic bag for the same reason). The live emphasis/blur/select state-APPLICATION path
     // for `ZRText` (reading this field back out when `useState`/`useStates` runs) is not wired yet —
-    // (the store/apply seam is noted at the `attrKV` PORT-NOTE) — so this is currently a faithful STORE
+    // (the store/apply seam is noted at the `attrKV` note) — so this is currently a faithful STORE
     // with an application seam left for the interaction-layer phase that lands it.
     public var textStyle: TextStyleProps?
 }
@@ -268,7 +268,7 @@ public typealias ElementCalculateTextPosition = (
 ) -> TextPositionCalculationResult
 
 // Module scratch buffers (upstream module-level consts).
-// PORT-NOTE: tmpTextPosCalcRes / tmpInnerTextTrans support `updateInnerText` (ported, Phase 2 text).
+// tmpTextPosCalcRes / tmpInnerTextTrans support `updateInnerText` (ported, Phase 2 text).
 fileprivate let tmpBoundingRect = BoundingRect(0, 0, 0, 0)
 fileprivate var tmpInnerTextTrans: [Double] = []
 
@@ -300,7 +300,7 @@ public enum ElementDraggable: Equatable {
 // AnimationTarget: upstream the animator reads/writes props via the dynamic `(this as any)[key]`.
 //   Swift has no dynamic member access, so `Element` conforms to `AnimationTarget` (Animator.swift)
 //   to expose the keyed get/set the animate machinery needs. The base covers Element / Transformable
-//   primary props (TRANSFORMABLE_PROPS + `ignore`). PORT-NOTE: subclasses (Displayable/Path) now
+//   primary props (TRANSFORMABLE_PROPS + `ignore`). note: subclasses (Displayable/Path) now
 //   override `animationGet`/`animationSet` to expose the value-type `style`/`shape` bags via keyed
 //   accessors, so nested-bag animation is wired.
 open class Element: Transformable, AnimationTarget {
@@ -345,7 +345,7 @@ open class Element: Transformable, AnimationTarget {
     public var driftHandler: ((Double, Double, ElementEvent?) -> Void)?
 
     // upstream: parent: Group
-    // PORT-NOTE: upstream narrows `parent` to `Group`; we inherit `Transformable.parent`
+    // upstream narrows `parent` to `Group`; we inherit `Transformable.parent`
     //   (typed `Transformable?`) and cast to `Element`/`Group` at use sites.
 
     public var animators: [Animator<Any>] = []
@@ -359,7 +359,7 @@ open class Element: Transformable, AnimationTarget {
     /// ZRender instance will be assigned when element is associated with zrender
     public var __zr: ZRenderType?
 
-    // ===== morphPath seam (PORT-NOTE: see Tool/morphPath.swift) =====
+    // ===== morphPath seam (note: see Tool/morphPath.swift) =====
     // Upstream `combineMorph` monkey-patches `addSelfToZr` / `removeSelfFromZr` with an `after` hook
     //   that adds/removes the split sub-paths. Swift can't reassign methods on a live instance, so
     //   `addSelfToZr` / `removeSelfFromZr` invoke these optional after-hooks at their tail.
@@ -504,7 +504,7 @@ open class Element: Transformable, AnimationTarget {
     /// fill+stroke into the text's default style. Storage already adds the attached text to the
     /// display list, so this is what makes `setTextContent` + `textConfig.position` actually render.
     ///
-    /// PORT-NOTE: the `autoOverflowArea` / `overflowRect` inverse-transform clamp IS ported (the
+    /// the `autoOverflowArea` / `overflowRect` inverse-transform clamp IS ported (the
     /// overflow area is computed in the text's local coord by inverse-transforming the host-space
     /// layoutRect); the downstream `parseText` overflow/ellipsis engine that consumes `overflowRect`
     /// lives in Text.swift's `calcInnerTextOverflowArea`.
@@ -760,7 +760,7 @@ open class Element: Transformable, AnimationTarget {
         }
         else {
             // upstream: (this as any)[key] = value.
-            // PORT-NOTE: Swift has no dynamic member assignment; the known Element/Transformable
+            // Swift has no dynamic member assignment; the known Element/Transformable
             //   props are switched explicitly below. Subclasses (Displayable/Group/Path) override
             //   `attrKV` to handle their own props; unknown keys fall through and are ignored.
             self._setKnownKV(key, value)
@@ -803,7 +803,7 @@ open class Element: Transformable, AnimationTarget {
         case "skewX": if let v = value as? Double { self.skewX = v }
         case "skewY": if let v = value as? Double { self.skewY = v }
         default:
-            // PORT-NOTE: unknown prop key — handled by subclass `attrKV` override or ignored.
+            // unknown prop key — handled by subclass `attrKV` override or ignored.
             break
         }
     }
@@ -814,7 +814,7 @@ open class Element: Transformable, AnimationTarget {
     //   routes keyed read/write through `AnimationTarget` (Animator.swift). The base exposes the
     //   Element / Transformable primary props; `animationSet` reuses `_setKnownKV` (plain assign,
     //   NOT markRedraw — repaint is driven by `updateDuringAnimation` in the during callback,
-    //   matching upstream `target[propName] = value`). PORT-NOTE: Displayable/Path now override
+    //   matching upstream `target[propName] = value`). note: Displayable/Path now override
     //   these to expose the value-type `style`/`shape` bags (wired — see class note).
     public func animationGet(_ key: String) -> Any? {
         if key == "extra" { return _ElementExtraAnimationAccessor(self) }
@@ -856,7 +856,7 @@ open class Element: Transformable, AnimationTarget {
         case "skewX": return self.skewX
         case "skewY": return self.skewY
         default:
-            // PORT-NOTE: unknown / sub-bag key — handled by subclass override or returns nil
+            // unknown / sub-bag key — handled by subclass override or returns nil
             //   (a nil initial value makes the animator track inert, the safe default).
             return nil
         }
@@ -1080,7 +1080,7 @@ open class Element: Transformable, AnimationTarget {
         }
     }
 
-    // PORT-NOTE: upstream splits out `_savePrimaryToNormal(toState, normalState, PRIMARY_STATES_KEYS)`
+    // upstream splits out `_savePrimaryToNormal(toState, normalState, PRIMARY_STATES_KEYS)`
     //   to copy the transformable/primary keys. This port's `_innerSaveToNormal` (above) instead
     //   iterates ALL of `toState.props` (a superset of PRIMARY_STATES_KEYS) and copies each via
     //   `self.animationGet(key)`, subsuming the primary-key case — so the separate helper is dead and
@@ -1113,7 +1113,7 @@ open class Element: Transformable, AnimationTarget {
 
     /// Use state. State is a collection of properties.
     ///
-    /// PORT-NOTE: upstream routes application through `_applyStateObj` (per-class, with a transform /
+    /// upstream routes application through `_applyStateObj` (per-class, with a transform /
     /// style / shape split + hover-layer branches). This port instead computes the full target prop
     /// bag and applies it via `animateTo` (`_stateApply`), which already drives transform / shape /
     /// style uniformly — same observable result (animated transition to the active states, restoring
@@ -1189,7 +1189,7 @@ open class Element: Transformable, AnimationTarget {
         //   that makes hover-to-highlight also recolor/resize/re-weight the attached label text
         //   (`label/labelStyle.swift` writes the per-state textStyle onto `textContent.states[name]`;
         //   `ZRText.useState`/`useStates` read it back — see the override there). Hover-layer is
-        //   dropped in this port (see the `useState` PORT-NOTE), so `forceUseHoverLayer` is `false`.
+        //   dropped in this port (see the `useState` note), so `forceUseHoverLayer` is `false`.
         if let textContent = self._textContent {
             _ = textContent.useState(stateName, keepCurrentStates, noAnimation, false)
         }
@@ -1290,7 +1290,7 @@ open class Element: Transformable, AnimationTarget {
                 el = cur.ignoreHostSilent ? nil : hostEl
             }
             else {
-                // PORT-NOTE: upstream `parent` is `Group`; we inherit `Transformable.parent`.
+                // upstream `parent` is `Group`; we inherit `Transformable.parent`.
                 el = cur.parent as? Element
             }
         }
@@ -1361,9 +1361,9 @@ open class Element: Transformable, AnimationTarget {
         return mergedState
     }
 
-    // PORT-NOTE: upstream `_applyStateObj` (per-class transform/style/shape split + hover-layer
+    // upstream `_applyStateObj` (per-class transform/style/shape split + hover-layer
     //   branches) is intentionally not the live path. This port computes the full target prop bag and
-    //   applies it via `animateTo` (`_stateApply`) — see the `useState` PORT-NOTE above — yielding the
+    //   applies it via `animateTo` (`_stateApply`) — see the `useState` note above — yielding the
     //   same observable result. The empty base is kept so `Displayable`/`Path` can override it.
     internal func _applyStateObj(  // upstream: protected
         _ stateName: String,
@@ -1379,12 +1379,12 @@ open class Element: Transformable, AnimationTarget {
     /// Like clipPath, textContent
     private func _attachComponent(_ componentEl: Element) {
         if componentEl.__zr != nil && componentEl.__hostTarget == nil {
-            // PORT-NOTE: dev-mode `throw new Error('Text element has been added to zrender.')`.
+            // dev-mode `throw new Error('Text element has been added to zrender.')`.
             return
         }
 
         if componentEl === self {
-            // PORT-NOTE: dev-mode `throw new Error('Recursive component attachment.')`.
+            // dev-mode `throw new Error('Recursive component attachment.')`.
             return
         }
 
@@ -1451,7 +1451,7 @@ open class Element: Transformable, AnimationTarget {
         if let prev = previousTextContent, prev !== textEl {
             self.removeTextContent()
         }
-        // PORT-NOTE: dev-mode guard `textEl.__zr && !textEl.__hostTarget` → throw.
+        // dev-mode guard `textEl.__zr && !textEl.__hostTarget` → throw.
 
         textEl.innerTransformable = Transformable()
 
@@ -1469,7 +1469,7 @@ open class Element: Transformable, AnimationTarget {
         if self.textConfig == nil {
             self.textConfig = ElementTextConfig()
         }
-        // PORT-NOTE: upstream `extend(this.textConfig, cfg)` field-merges, but a Swift Optional cannot
+        // upstream `extend(this.textConfig, cfg)` field-merges, but a Swift Optional cannot
         //   distinguish "field absent on cfg" from "field explicitly nil"; callers (pieLabelLayout /
         //   themeRiver) build a fresh config with position == nil to RESET the position, which a
         //   field-merge would silently keep. So we assign `cfg` wholesale, which preserves the
@@ -1611,7 +1611,7 @@ open class Element: Transformable, AnimationTarget {
     @discardableResult
     public func animate(_ key: String? = nil, _ loop: Bool? = nil, _ allowDiscreteAnimation: Bool? = nil) -> Animator<Any> {
         // upstream: let target = key ? (this as any)[key] : this;
-        // PORT-NOTE: dynamic `(this as any)[key]` fetch of a sub-bag (e.g. 'style'/'shape') is not
+        // dynamic `(this as any)[key]` fetch of a sub-bag (e.g. 'style'/'shape') is not
         //   available on `Element` base — those bags are value-type structs on Displayable/Path
         //   (no shared identity). The target is `self` (an AnimationTarget); `targetName = key`
         //   still routes keyed get/set through `self`, which Displayable/Path override to expose the
@@ -1721,7 +1721,7 @@ open class Element: Transformable, AnimationTarget {
     //   and installs the deprecated `position`/`scale`/`origin` array accessors via
     //   Object.defineProperty.
     //   Defaults are replaced by stored-property initializers above.
-    //   PORT-NOTE (deferred): the legacy `position`/`scale`/`origin` array accessors
+    //   TODO: the legacy `position`/`scale`/`origin` array accessors
     //   (createLegacyProperty / enhanceArray) are deprecated Object.defineProperty shims for
     //   backward compat; not ported.
 
@@ -1774,7 +1774,7 @@ open class Element: Transformable, AnimationTarget {
         case 2:
             self._eventful.trigger(eventType, args[0], args[1])
         default:
-            // PORT-NOTE: >2 trigger args can't be splatted into the inner variadic. zrender's
+            // >2 trigger args can't be splatted into the inner variadic. zrender's
             //   element events only ever carry a single eventPacket (Handler.dispatchToElement),
             //   so this branch is not reached; if a >2-arg element trigger is ever needed, add an
             //   array entry point on Eventful. Forwarding the first three for safety.
@@ -1796,7 +1796,7 @@ open class Element: Transformable, AnimationTarget {
         case 2:
             self._eventful.triggerWithContext(type, args[0], args[1])
         default:
-            // PORT-NOTE: see `trigger` — variadic splat limitation. Not exercised by zrender's
+            // see `trigger` — variadic splat limitation. Not exercised by zrender's
             //   element dispatch path. Forwarding the first three for safety.
             self._eventful.triggerWithContext(type, args[0], args[1], args[2])
         }
@@ -1883,7 +1883,7 @@ func animateTo(
         animator.done(doneCb)
         animator.aborted(abortedCb)
         if cfg.force ?? false {
-            // upstream: animator.duration(cfg.duration). PORT-NOTE: guarded — `duration` may be nil
+            // upstream: animator.duration(cfg.duration). note: guarded — `duration` may be nil
             //   (upstream would pass undefined). Only forced when a duration is supplied.
             if let d = cfg.duration {
                 animator.duration(d)
@@ -1923,7 +1923,7 @@ fileprivate func copyValue(_ target: Any, _ source: [String: Any], _ key: String
     let srcVal = source[key]
     if util.isArrayLike(srcVal) {
         if util.isTypedArray(srcVal) {
-            // PORT-NOTE: number[] | Float32Array typed-array branch — no typed arrays natively;
+            // number[] | Float32Array typed-array branch — no typed arrays natively;
             //   falls through to the plain value-copy below (CONVENTIONS §1).
         }
         if is2DArray(srcVal) {
@@ -2150,7 +2150,7 @@ fileprivate func animObjGet(_ obj: Any, _ key: String) -> Any? {
 /// `(obj as any)[key] = value` write — routes through `AnimationTarget` (reference identity).
 fileprivate func animObjSet(_ obj: Any, _ key: String, _ value: Any?) {
     (obj as? AnimationTarget)?.animationSet(key, value)
-    // PORT-NOTE: if `obj` is a value-type `[String: Any]` bag, the set has no shared identity and
+    // if `obj` is a value-type `[String: Any]` bag, the set has no shared identity and
     //   is dropped. The animate targets in use are reference-type AnimationTargets (Element), so
     //   this is the safe default; style/shape value-bags are handled by the Displayable/Path
     //   animationGet/animationSet overrides (see Element class note).
@@ -2169,7 +2169,7 @@ fileprivate func isTruthyAnimProp(_ v: Any?) -> Bool {
     if let b = v as? Bool {
         return b
     }
-    // PORT-NOTE: upstream values are booleans; JS truthiness treats a non-bool present value as
+    // upstream values are booleans; JS truthiness treats a non-bool present value as
     //   truthy, which `v != nil` faithfully reproduces here.
     return v != nil
 }
@@ -2191,7 +2191,7 @@ fileprivate func anyStrictEqual(_ a: Any?, _ b: Any?) -> Bool {
     if let x = a as? Bool, let y = b as? Bool {
         return x == y
     }
-    // PORT-NOTE: upstream unions that Swift models as tagged enums (e.g. `cornerRadius:
+    // upstream unions that Swift models as tagged enums (e.g. `cornerRadius:
     //   number | number[]` -> `CornerRadius`) box to a FRESH AnyObject on every bridge, so the
     //   identity fallback below would report "changed" for two identical values and defeat
     //   `animateToShallow`'s unchanged-value filter (an animator per element per update).
@@ -2234,8 +2234,8 @@ func shouldUseHoverLayer(
     _ nextState: ElementState?,
     _ forceUseHoverLayer: Bool?
 ) -> InHoverLayerKind {
-    // PORT-NOTE (deferred): the hover-layer machinery (HOVER_LAYER_CONSTRAINTS_TEXT) is
-    //   intentionally dropped in this port (see the `useState` PORT-NOTE) — emphasis/blur/select
+    // TODO: the hover-layer machinery (HOVER_LAYER_CONSTRAINTS_TEXT) is
+    //   intentionally dropped in this port (see the `useState` note) — emphasis/blur/select
     //   apply directly rather than promoting elements to a separate hover layer. This always
     //   reports "not in hover layer".
     return IN_HOVER_LAYER_KIND_NO
@@ -2245,7 +2245,7 @@ func shouldUseHoverLayer(
 
 
 // ============================================================================
-// Forward-declaration placeholders (PORT-NOTE: all removed — see the per-type NOTES below).
+// Forward-declaration placeholders (note: all removed — see the per-type NOTES below).
 //
 // These types were placeholders until later phases; they are now all ported (see NOTES below).
 // Their real locations:

@@ -34,7 +34,7 @@ import ZRenderKit
 
 // upstream: export default function installDataZoomAction(registers: EChartsExtensionInstallRegisters)
 //   registers.registerAction('dataZoom', handler)
-// PORT-NOTE: the `EChartsExtensionInstallRegisters` stub (coord/axisStatistics.swift) does not yet model
+// the `EChartsExtensionInstallRegisters` stub (coord/axisStatistics.swift) does not yet model
 //   `registerAction`, so this calls the Phase-29 module-level `registerAction(type, action)` directly.
 //   The integrator wires this from `installCommon` (like the visualMap action). `registers` is retained
 //   in the signature to mirror upstream and for when the registrar gains `registerAction`.

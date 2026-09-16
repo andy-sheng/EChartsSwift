@@ -13,13 +13,13 @@ import ZRenderKit
 // import Model from '../model/Model';                             -> Model (EChartsKit model/Model.swift)
 // import { makeInner } from '../util/model';                      -> model.makeInner (EChartsKit util/modelUtil.swift)
 
-// PORT-NOTE: no upstream alias — the mapper closure type is spelled out for Swift. It mirrors
+// no upstream alias — the mapper closure type is spelled out for Swift. It mirrors
 //   makeStyleMapper's returned closure `(model, excludes?, includes?) => Dictionary<any>`.
 //   (Swift closures cannot carry defaulted params, so callers pass `nil` for excludes/includes.)
 private typealias StyleMapper = (Model, [String]?, [String]?) -> Dictionary<Any>
 
 // upstream: const inner = makeInner<{scope: object}, SeriesModel>();
-// PORT-NOTE: upstream inner store is the anonymous bag `{scope: object}`; modeled as a
+// upstream inner store is the anonymous bag `{scope: object}`; modeled as a
 //   reference type so `makeInner`'s WeakMap can key/store it (CONVENTIONS §4).
 final class StyleInner {
     var scope: AnyObject?   // upstream: scope: object (an identity object for palette scoping)
@@ -27,7 +27,7 @@ final class StyleInner {
 }
 private let inner: (SeriesModel) -> StyleInner = model.makeInner { StyleInner() }
 
-// PORT-NOTE: upstream palette `scope` is the object literal `{}`, used only as a WeakMap
+// upstream palette `scope` is the object literal `{}`, used only as a WeakMap
 //   identity key by getColorFromPalette (see model/mixin/palette.swift). Modeled as an empty class.
 private final class PaletteScope {}
 
@@ -91,7 +91,7 @@ let seriesStyleTask: StageHandler = {
         if decalOption != nil {
             data.setVisual("decal", decalOption)
             // decalOption.dirty = true;
-            // PORT-NOTE (deferred): InnerDecalObject is a value struct; the in-place `dirty = true`
+            // TODO: InnerDecalObject is a value struct; the in-place `dirty = true`
             //   mutation does not propagate to the stored visual. Requires decal-pattern rendering (out of scope).
         }
 
@@ -180,7 +180,7 @@ let dataStyleTask: StageHandler = {
                 sharedModel.option = stylePathVal
                 let style = getStyle(sharedModel, nil, nil)
 
-                // PORT-NOTE: upstream `existsStyle` is the very object stored in the item visual and
+                // upstream `existsStyle` is the very object stored in the item visual and
                 //   `extend(existsStyle, style)` mutates it in place. Swift dictionaries are value
                 //   types, so we extend a local copy and write it back via setItemVisual (CONVENTIONS §3) — semantically equivalent.
                 var existsStyle = (data.ensureUniqueItemVisual(idx, "style") as? [String: Any]) ?? [:]
@@ -190,7 +190,7 @@ let dataStyleTask: StageHandler = {
                 if let decal = (sharedModel.option as? [String: Any])?["decal"] {
                     data.setItemVisual(idx, "decal", decal)
                     // sharedModel.option.decal.dirty = true;
-                    // PORT-NOTE (deferred): value-type option bag; `dirty = true` mutation not propagated. Requires decal-pattern rendering.
+                    // TODO: value-type option bag; `dirty = true` mutation not propagated. Requires decal-pattern rendering.
                 }
 
                 if let ck = colorKey as? String, style[ck] != nil {   // colorKey in style
@@ -268,7 +268,7 @@ let dataColorPaletteTask: StageHandler = {
                     let paletteColor = seriesModel.getColorFromPalette(name, colorScope, Double(dataCount))
                     // …but only write the item visual for a VISIBLE (unfiltered) item.
                     if let idx = idx {
-                        // PORT-NOTE: value-type writeback (CONVENTIONS §3) — upstream mutates the stored
+                        // value-type writeback (CONVENTIONS §3) — upstream mutates the stored
                         //   item-visual object in place; here we copy, set the key, and write it back — semantically equivalent.
                         var itemStyle = (data.ensureUniqueItemVisual(idx, "style") as? [String: Any]) ?? [:]
                         itemStyle[colorKey] = paletteColor

@@ -34,7 +34,7 @@ import ZRenderKit
 //   import * as layoutUtil from '../../util/layout';                      -> `layout.*` (util/layout.swift).
 //   import * as axisHelper from '../../coord/axisHelper';                 -> `axisHelper.*` (coord/axisHelper.swift).
 //   import ParallelAxis from './ParallelAxis';
-//       -> ParallelAxis (sibling ParallelAxis.swift). PORT-NOTE: lands this phase — `class ParallelAxis:
+//       -> ParallelAxis (sibling ParallelAxis.swift). note: lands this phase — `class ParallelAxis:
 //          Axis` with `axisIndex: Double`, injected `model: ParallelAxisModel`, `coordinateSystem: Parallel`.
 //   import * as graphic from '../../util/graphic';
 //       -> `graphic.applyTransform([coord,0], m)` maps to `vector.applyTransform(_ v:VectorArray, _ m:)`
@@ -43,11 +43,11 @@ import ZRenderKit
 //       -> `number.mathCeil` / `number.mathFloor` / `number.mathMax` / `number.mathMin` / `number.mathPI`
 //          / `number.round` (util/number.swift).
 //   import sliderMove from '../../component/helper/sliderMove';
-//       -> sliderMove (component/helper/sliderMove.swift). PORT-NOTE: only used by the DEFERRED
+//       -> sliderMove (component/helper/sliderMove.swift). note: only used by the DEFERRED
 //          `getSlidedAxisExpandWindow` (axis-drag interaction).
 //   import ParallelModel, { COORD_SYS_TYPE_PARALLEL, ParallelLayoutDirection } from './ParallelModel';
 //       -> ParallelModel + COORD_SYS_TYPE_PARALLEL + ParallelLayoutDirection (sibling ParallelModel.swift).
-//          PORT-NOTE: lands this phase — `class ParallelModel: ComponentModel` with `dimensions:
+//          lands this phase — `class ParallelModel: ComponentModel` with `dimensions:
 //          [DimensionName]`, `parallelAxisIndex: [Double]`, `coordinateSystem: Parallel`. Constant
 //          `COORD_SYS_TYPE_PARALLEL = "parallel"`; `typealias ParallelLayoutDirection = String`.
 //   import GlobalModel from '../../model/Global';                         -> GlobalModel.
@@ -59,7 +59,7 @@ import ZRenderKit
 //   import ParallelAxisModel, { ParallelActiveState } from './AxisModel';
 //       -> ParallelAxisModel + ParallelActiveState (sibling ParallelAxisModel.swift — named
 //          `ParallelAxisModel.swift`, NOT `AxisModel.swift`, to avoid colliding with coord/cartesian's).
-//          PORT-NOTE: lands this phase; `typealias ParallelActiveState = String` ('normal'|'active'|'inactive').
+//          lands this phase; `typealias ParallelActiveState = String` ('normal'|'active'|'inactive').
 //   import SeriesData from '../../data/SeriesData';                       -> SeriesData (data/SeriesData.swift).
 //   import { scaleCalcNice } from '../axisNiceTicks';
 //       -> scaleCalcNice + ScaleCalcNiceAxisLike (coord/axisNiceTicks.swift).
@@ -280,7 +280,7 @@ public final class Parallel: CoordinateSystemMaster {
     }
 
     // upstream: getRect(): graphic.BoundingRect { return this._rect; }
-    //   PORT-NOTE: upstream returns the concrete `BoundingRect`; a non-optional `-> LayoutRect` witness
+    //   upstream returns the concrete `BoundingRect`; a non-optional `-> LayoutRect` witness
     //   does not satisfy the optional protocol requirement `CoordinateSystemMaster.getRect(): RectLike?`,
     //   so a Parallel held as the protocol would hit the nil default (mirrors Single/Calendar getRect).
     //   Accepted: no protocol-typed caller invokes getRect on a Parallel; concrete holders get the real rect.
@@ -675,7 +675,7 @@ public final class Parallel: CoordinateSystemMaster {
     // ------------------------------------------------------------------------------------------------
     // Coordinate-system creator.
     //
-    // PORT-NOTE: Upstream lives in `echarts/src/coord/parallel/parallelCreator.ts` as the free function
+    // Upstream lives in `echarts/src/coord/parallel/parallelCreator.ts` as the free function
     //   `createParallelCoordSys(ecModel, api)` wrapped in `{create: createParallelCoordSys}`. Per the task,
     //   it is hosted here as `Parallel.create(ecModel, api)` (mirroring `Grid.create`). A thin
     //   `CoordinateSystemCreator` wrapper (`parallelCreator`) that forwards to this and registers via

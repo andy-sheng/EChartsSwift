@@ -11,7 +11,7 @@
 //     JS (`api.value` / `api.layout([x, y]).rect` / `api.style`), and a Swift `[String: Any]` option cannot
 //     carry a function — without it the `custom` series draws nothing and only the matrix backdrop plus the
 //     two graphic texts would remain. Hence nativeSupported: false. The Swift option below still mirrors
-//     every other key (see the PORT-NOTEs for the two JS closures).
+//     every other key (see the notes for the two JS closures).
 //   - GRAPHIC x: `window.innerWidth` → `myChart.getWidth()` (web pane) / a constant (native pane).
 //     `graphic` x is in CHART-CANVAS pixels, and upstream reads `window.innerWidth` only because the
 //     official preview gives the chart div the full window — there, chart width == window.innerWidth, and
@@ -240,7 +240,7 @@ option = {
                         ] as [String: Any]
                     ] as [String: Any]
                 ] as [String: Any]
-                // PORT-NOTE: renderItem omitted — JS closure drawing each datum as one `rect` filling the
+                // renderItem omitted — JS closure drawing each datum as one `rect` filling the
                 // matrix body cell at [value(0), value(1)] (`api.layout([x, y]).rect`), filled '#8f8' on the
                 // diagonal (x === y) and '#f88' off it, through api.style. Without it the `custom` series
                 // draws nothing; hence nativeSupported: false.

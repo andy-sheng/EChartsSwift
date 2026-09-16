@@ -31,7 +31,7 @@ import ZRenderKit
 // upstream imports (reused from ZRenderKit where ported):
 //   import Group from 'zrender/src/graphic/Group';                              → ZRenderKit.Group
 //   import Element, {ElementEvent, ElementTextConfig} from 'zrender/src/Element'; → ZRenderKit.Element / ElementEvent / ElementTextConfig
-//   import { createHashMap, HashMap } from 'zrender/src/core/util';             → PORT-NOTE: ported as a shim in util/modelUtil.swift
+//   import { createHashMap, HashMap } from 'zrender/src/core/util';             → note: ported as a shim in util/modelUtil.swift
 //   import { Dictionary, ElementEventName, ImageLike, TextAlign, TextVerticalAlign } from 'zrender/src/core/types'; → ZRenderKit
 //   import { PatternObject } from 'zrender/src/graphic/Pattern';                → ZRenderKit (modeled as PatternObjectBase, see below)
 //   import { AnimationEasing } from 'zrender/src/animation/easing';             → ZRenderKit.AnimationEasing
@@ -44,7 +44,7 @@ import ZRenderKit
 //   import ZRText, { TextStyleProps } from 'zrender/src/graphic/Text';          → ZRenderKit.ZRText / TextStyleProps
 
 // ============================================================================
-// PORT-NOTE: FORWARD-REFERENCE PLACEHOLDERS
+// FORWARD-REFERENCE PLACEHOLDERS
 // Upstream `types.ts` `import type`s these from sibling echarts files that are
 // NOT yet ported in this phase (handled by other agents). They are declared
 // here as minimal placeholders so this spine file compiles. The agent that
@@ -70,7 +70,7 @@ import ZRenderKit
 //   to avoid a redeclaration. Generics are dropped per CONVENTIONS (`Opt` -> the dynamic `ModelOption`
 //   = `Any` option bag). Existing uses (`[SeriesModel]`, params, closure types) continue to resolve
 //   against the class.
-//   PORT-NOTE: the placeholder protocol exposed a *non-optional* `ecModel: GlobalModel`; the real
+//   the placeholder protocol exposed a *non-optional* `ecModel: GlobalModel`; the real
 //   class inherits `Model.ecModel: GlobalModel?` (optional). Consumers that read `seriesModel.ecModel`
 //   as non-optional (e.g. data/helper/sourceHelper) must unwrap once Model.ecModel optionality is
 //   reconciled with Global.
@@ -108,7 +108,7 @@ import ZRenderKit
 //   Now ported: see `format.TooltipMarker` (enum) in util/format.swift.
 public typealias TooltipMarker = format.TooltipMarker
 // '../data/DataStore' — DataStoreDimensionType = keyof typeof dataCtors
-public enum DataStoreDimensionType: String {                               // PORT-NOTE: belongs to data/DataStore
+public enum DataStoreDimensionType: String {                               // belongs to data/DataStore
     case float
     case int
     // Ordinal data type can be string or int
@@ -117,19 +117,19 @@ public enum DataStoreDimensionType: String {                               // PO
     case time
 }
 // '../data/helper/dimensionHelper' — DimensionUserOuputEncode
-public typealias DimensionUserOuputEncode = Dictionary<[Double]>           // PORT-NOTE
+public typealias DimensionUserOuputEncode = Dictionary<[Double]>           // note
 // './time' — PrimaryTimeUnit = (typeof primaryTimeUnits)[number]
 //   Now fully ported in util/time.swift (same module); the placeholder was removed.
 // '../core/task' — TaskPlanCallbackReturn, TaskProgressParams
 //   Now fully ported in core/task.swift (same module); the placeholders were removed.
 
 // DOM lib types referenced by upstream (browser only / backend seam, CONVENTIONS §9):
-public typealias HTMLElement = Any                                         // PORT-NOTE: DOM type
-public typealias HTMLDivElement = Any                                      // PORT-NOTE: DOM type
+public typealias HTMLElement = Any                                         // DOM type
+public typealias HTMLDivElement = Any                                      // DOM type
 // lib.dom CanvasLineCap = 'butt' | 'round' | 'square'
-public typealias CanvasLineCap = String                                    // PORT-NOTE: DOM union
+public typealias CanvasLineCap = String                                    // DOM union
 // lib.dom CanvasLineJoin = 'round' | 'bevel' | 'miter'
-public typealias CanvasLineJoin = String                                   // PORT-NOTE: DOM union
+public typealias CanvasLineJoin = String                                   // DOM union
 
 
 // ---------------------------
@@ -150,7 +150,7 @@ public enum RendererType: String {
  * but a variable without `NullUndefined` may also be `null` or `undefined`,
  * which has to be determined by the implementation.
  */
-// PORT-NOTE: `NullUndefined = null | undefined` has no standalone Swift type; per
+// `NullUndefined = null | undefined` has no standalone Swift type; per
 //   CONVENTIONS §6 both collapse to `nil` (`T?`) at use sites.
 public let UNDEFINED_STR = "undefined"
 
@@ -230,9 +230,9 @@ public typealias ZRElementEventName = ElementEventName
 // See `checkClassType` check the restict definition.
 public typealias ComponentFullType = String
 // upstream: keyof ECUnitOption & string
-public typealias ComponentMainType = String                               // PORT-NOTE: keyof ECUnitOption
+public typealias ComponentMainType = String                               // keyof ECUnitOption
 // upstream: Exclude<ComponentOption['type'], undefined>
-public typealias ComponentSubType = String                                // PORT-NOTE: Exclude<...>
+public typealias ComponentSubType = String                                // Exclude<...>
 /**
  * Use `parseClassType` to parse componentType declaration to componentTypeInfo.
  * For example:
@@ -254,7 +254,7 @@ public let COMPONENT_MAIN_TYPE_SERIES = "series"
 //   optional echarts-internal props. Modeled as a protocol (Swift cannot add stored props to the
 //   `Element` class via an interface).
 //
-// PORT-NOTE (AUGMENTATION STRATEGY — SETTLED; this protocol is DECLARATION-ONLY, nothing conforms to
+// note (AUGMENTATION STRATEGY — SETTLED; this protocol is DECLARATION-ONLY, nothing conforms to
 //   it and nothing should read it). Because no concrete scene-graph type can host these props, every
 //   LIVE `ECElement` prop lives in a per-element side store keyed on `Element`, and there are exactly
 //   TWO of them, split by owner — do not invent a third:
@@ -311,7 +311,7 @@ public protocol DataHost {
 }
 
 // upstream: interface DataModel extends Model<unknown>, DataHost, DataFormatMixin { ... }
-// PORT-NOTE: `Model` is now a concrete `open class` (model/Model.swift); a Swift protocol cannot
+// `Model` is now a concrete `open class` (model/Model.swift); a Swift protocol cannot
 //   refine a class, so the `extends Model<unknown>` arm is dropped here. A `DataModel` is, in
 //   upstream, also a `Model` — conforming types are `ComponentModel`/`SeriesModel` subclasses of
 //   `Model` — but that IS-A relationship is no longer expressible through this protocol.
@@ -328,7 +328,7 @@ public struct PayloadItem {
     public var excludeSeriesId: Any? // OptionId | OptionId[]
     public var animation: PayloadAnimationPart?
     // TODO use unknown
-    public var other: Dictionary<Any> = [:]   // PORT-NOTE: upstream `[other: string]: any`
+    public var other: Dictionary<Any> = [:]   // upstream `[other: string]: any`
     public init() {}
 }
 
@@ -339,7 +339,7 @@ public struct Payload {
     // ---- inherited from PayloadItem ----
     public var excludeSeriesId: Any? // OptionId | OptionId[]
     public var animation: PayloadAnimationPart?
-    public var other: Dictionary<Any> = [:]   // PORT-NOTE: upstream `[other: string]: any`
+    public var other: Dictionary<Any> = [:]   // upstream `[other: string]: any`
     public init(type: String) { self.type = type }
 }
 
@@ -401,7 +401,7 @@ public struct SelectChangedPayload {
 }
 
 // upstream: interface ViewRootGroup extends Group { __ecComponentInfo?: {...} } — augments
-//   the `Group` instance. Modeled as a protocol (PORT-NOTE: confirm augmentation strategy).
+//   the `Group` instance. Modeled as a protocol (note: confirm augmentation strategy).
 public struct ViewRootGroupComponentInfo {
     public var mainType: String
     public var index: Double
@@ -413,7 +413,7 @@ public protocol ViewRootGroup: AnyObject {
 // ============================================================================
 // The PACKED EVENT the user's `chart.on(...)` handler receives.
 //
-// PORT-NOTE (union type → protocol): upstream hands the handler ONE flat JS object whose TS type
+// note (union type → protocol): upstream hands the handler ONE flat JS object whose TS type
 //   varies with the event FAMILY — an `ECElementEvent` for the zr mouse events (it IS the
 //   `getDataParams()` result, plus `type`/`event`), an `ECActionEvent` for the action events replayed
 //   through the `MessageCenter` (it is a copy of the action payload). Swift has no union type, so both
@@ -461,7 +461,7 @@ func ecEventNumber(_ v: Any?) -> Double? {
 //   The whole `CallbackDataParams` is also kept in `dataParams` for lossless access, and the
 //   `ECEventData` remainder in `eventData`.
 public struct ECElementEvent: ECEventParams {
-    // PORT-NOTE: upstream types this `ZRElementEventName` — a STRING-LITERAL UNION ('click' | 'mouseover'
+    // upstream types this `ZRElementEventName` — a STRING-LITERAL UNION ('click' | 'mouseover'
     //   | …), which is still just a string at runtime. Our `ZRElementEventName` is a Swift `enum`, and the
     //   packed-event protocol must expose ONE `type` type across both event families (an ACTION event's
     //   type is an arbitrary registered event name, e.g. 'legendselectchanged' — not in that enum). So the
@@ -484,8 +484,8 @@ public struct ECElementEvent: ECEventParams {
     public var value: Any?
     public var color: ZRColor?
     /// The full `getDataParams()` result, when this event was packed off a data-bearing element.
-    public var dataParams: CallbackDataParams?                            // PORT-NOTE: extends CallbackDataParams
-    public var eventData: ECEventData = [:]                               // PORT-NOTE: extends ECEventData
+    public var dataParams: CallbackDataParams?                            // extends CallbackDataParams
+    public var eventData: ECEventData = [:]                               // extends ECEventData
 
     public init(type: String) { self.type = type }
 
@@ -543,7 +543,7 @@ public struct ECActionEvent: ECEventParams {
     public var seriesIndex: Double?
     public var escapeConnect: Bool?
     public var batch: [ECEventData]?
-    public var eventData: ECEventData = [:]                               // PORT-NOTE: extends ECEventData
+    public var eventData: ECEventData = [:]                               // extends ECEventData
     public init(type: String) { self.type = type }
 
     // ---- ECEventParams: an action event is a copy of the PAYLOAD, so everything beyond the three
@@ -589,7 +589,7 @@ public struct ECActionRefinedEvent {
     }
 }
 // upstream: type ECActionRefinedEventContent<T> = Omit<T, 'type' | 'fromAction' | 'fromActionPayload'>
-public typealias ECActionRefinedEventContent = Dictionary<Any>            // PORT-NOTE: Omit<...>
+public typealias ECActionRefinedEventContent = Dictionary<Any>            // Omit<...>
 
 // upstream: interface ECEventData { [key: string]: any; }
 public typealias ECEventData = Dictionary<Any>
@@ -657,7 +657,7 @@ public typealias PostUpdater = (GlobalModel, ExtensionAPI) -> Void
 
 // upstream: (seriesModel, ecModel, api, payload?): StageHandlerProgressExecutor | [...] | void
 public typealias StageHandlerReset =
-    (SeriesModel, GlobalModel, ExtensionAPI, Payload?) -> Any?            // PORT-NOTE: return union
+    (SeriesModel, GlobalModel, ExtensionAPI, Payload?) -> Any?            // return union
 // upstream: (ecModel, api, payload?): void
 public typealias StageHandlerOverallReset = (GlobalModel, ExtensionAPI, Payload?) -> Void
 public struct StageHandler {
@@ -679,7 +679,7 @@ public struct StageHandler {
      * It is called in EC_PREPARE, before `CoordinateSystem['create']`.
      * It is available for both `reset` and `overallReset`.
      */
-    public var getTargetSeries: ((GlobalModel, ExtensionAPI) -> [String: SeriesModel])?  // PORT-NOTE: HashMap<SeriesModel>
+    public var getTargetSeries: ((GlobalModel, ExtensionAPI) -> [String: SeriesModel])?  // HashMap<SeriesModel>
     /**
      * If `true`, filtered series will also be "performed".
      */
@@ -727,7 +727,7 @@ public struct StageHandlerProgressExecutor {
 }
 public typealias StageHandlerPlanReturn = TaskPlanCallbackReturn
 // upstream: (seriesModel, ecModel, api, payload?): StageHandlerPlanReturn
-// PORT-NOTE: upstream StageHandlerPlanReturn = 'reset' | false | null | undefined; Swift's
+// upstream StageHandlerPlanReturn = 'reset' | false | null | undefined; Swift's
 //   TaskPlanCallbackReturn is a non-optional enum whose sole case is `.reset`, so the falsy half of
 //   the union lives in the Optional layer -> the faithful return type is `StageHandlerPlanReturn?`.
 public typealias StageHandlerPlan =
@@ -736,7 +736,7 @@ public typealias StageHandlerPlan =
 // upstream: (api: ExtensionAPI, cfg: object): LoadingEffect
 public typealias LoadingEffectCreator = (ExtensionAPI, Any) -> LoadingEffect
 // upstream: interface LoadingEffect extends Element { resize: () => void; }
-public protocol LoadingEffect: AnyObject {                                 // PORT-NOTE: extends Element
+public protocol LoadingEffect: AnyObject {                                 // extends Element
     var resize: () -> Void { get }
 }
 
@@ -771,7 +771,7 @@ public enum TooltipOrderMode: String {
 // keep its original string in list._storage.
 // Check `convertValue` for more details.
 // upstream: OrdinalRawValue = string | number
-public typealias OrdinalRawValue = Any                                     // PORT-NOTE: string | number
+public typealias OrdinalRawValue = Any                                     // string | number
 public typealias OrdinalNumber = Double // The number mapped from each OrdinalRawValue.
 
 /**
@@ -787,7 +787,7 @@ public struct OrdinalSortInfo {
  * (See upstream comment for the parse pipeline details.)
  */
 // upstream: ParsedValue = ParsedValueNumeric | OrdinalRawValue
-public typealias ParsedValue = Any                                         // PORT-NOTE: ParsedValueNumeric | OrdinalRawValue
+public typealias ParsedValue = Any                                         // ParsedValueNumeric | OrdinalRawValue
 // upstream: ParsedValueNumeric = number | OrdinalNumber
 public typealias ParsedValueNumeric = Double
 
@@ -796,7 +796,7 @@ public typealias ParsedValueNumeric = Double
  * (See upstream comment for the nuances vs `OptionDataValue`.)
  */
 // upstream: ParsedValueNumeric | OrdinalRawValue | Date
-public typealias ScaleDataValue = Any                                      // PORT-NOTE: number | OrdinalRawValue | Date
+public typealias ScaleDataValue = Any                                      // number | OrdinalRawValue | Date
 
 
 /**
@@ -805,7 +805,7 @@ public typealias ScaleDataValue = Any                                      // PO
  * - `(ScaleDataValue[])[]`: represents `[data_range_x, data_range_y]`.
  */
 // upstream: (ScaleDataValue | NullUndefined) | (...)[]| (...)[]
-public typealias CoordinateSystemDataCoord = Any                          // PORT-NOTE: nested union
+public typealias CoordinateSystemDataCoord = Any                          // nested union
 
 public struct AxisBreakOption {
     public var start: ScaleDataValue
@@ -925,13 +925,13 @@ public typealias DimensionIndex = Double
 // If being a number-like string but not being defined a dimension name.
 // See `List.js#getDimension` for more details.
 // upstream: DimensionIndex | string
-public typealias DimensionIndexLoose = Any                                // PORT-NOTE: number | string
+public typealias DimensionIndexLoose = Any                                // number | string
 public typealias DimensionName = String
 // upstream: DimensionName | DimensionIndexLoose
-public typealias DimensionLoose = Any                                     // PORT-NOTE: string | number
+public typealias DimensionLoose = Any                                     // string | number
 public typealias DimensionType = DataStoreDimensionType
 
-// PORT-NOTE: createHashMap/HashMap are ported (util/modelUtil.swift shim); here the visual dimensions
+// createHashMap/HashMap are ported (util/modelUtil.swift shim); here the visual dimensions
 //   are still modeled simply as the key list.
 //   upstream: createHashMap<number, keyof DataVisualDimensions>([...]).
 public let VISUAL_DIMENSIONS: [String] = [
@@ -959,7 +959,7 @@ public struct DimensionDefinition {
     public init() {}
 }
 // upstream: DimensionDefinition['name'] | DimensionDefinition
-public typealias DimensionDefinitionLoose = Any                           // PORT-NOTE: string | DimensionDefinition
+public typealias DimensionDefinitionLoose = Any                           // string | DimensionDefinition
 
 public let SOURCE_FORMAT_ORIGINAL = "original"
 public let SOURCE_FORMAT_ARRAY_ROWS = "arrayRows"
@@ -979,7 +979,7 @@ public typealias SeriesLayoutBy = String
 // null/undefined/'auto': auto detect header, see "src/data/helper/sourceHelper".
 // If number, means header lines count, or say, `startIndex`.
 // Like `sourceHeader: 2`, means line 0 and line 1 are header, data start from line 2.
-public typealias OptionSourceHeader = Any                                 // PORT-NOTE: boolean | 'auto' | number
+public typealias OptionSourceHeader = Any                                 // boolean | 'auto' | number
 
 public enum SeriesDataType: String {
     case main
@@ -1002,7 +1002,7 @@ public enum SeriesDataType: String {
  * (`[key: string]: ComponentOption | ComponentOption[] | Dictionary<unknown> | unknown`)
  * is modeled as a dynamic container per the project convention.
  */
-public typealias ECUnitOption = Dictionary<Any>                          // PORT-NOTE: typed mixin fields flattened into dynamic bag
+public typealias ECUnitOption = Dictionary<Any>                          // typed mixin fields flattened into dynamic bag
 
 /**
  * [ECOption]:
@@ -1022,9 +1022,9 @@ public struct ECBasicOption {
 
 // series.data or dataset.source
 // upstream: union of original/objectRows/arrayRows/keyedColumns/typedArray source shapes.
-public typealias OptionSourceData = Any                                   // PORT-NOTE: source-shape union
+public typealias OptionSourceData = Any                                   // source-shape union
 // upstream: VAL | VAL[] | OptionDataItemObject<VAL>
-public typealias OptionDataItemOriginal = Any                            // PORT-NOTE: union
+public typealias OptionDataItemOriginal = Any                            // union
 public typealias OptionSourceDataOriginal = [OptionDataItemOriginal]      // ArrayLike<ORIITEM>
 public typealias OptionSourceDataObjectRows = [Dictionary<OptionDataValue>]
 public typealias OptionSourceDataArrayRows = [[OptionDataValue]]
@@ -1033,7 +1033,7 @@ public typealias OptionSourceDataTypedArray = [Double]                    // Arr
 
 // See also `model.js#getDataItemValue`.
 // upstream: OptionDataValue | Dictionary<OptionDataValue> | OptionDataValue[] | OptionDataItemObject<OptionDataValue>
-public typealias OptionDataItem = Any                                     // PORT-NOTE: union
+public typealias OptionDataItem = Any                                     // union
 // Only for `SOURCE_FORMAT_KEYED_ORIGINAL`
 public struct OptionDataItemObject<T> {
     public var id: OptionId?
@@ -1046,9 +1046,9 @@ public struct OptionDataItemObject<T> {
 }
 // Compat number because it is usually used and not easy to restrict it in practise.
 // upstream: string | number
-public typealias OptionId = Any                                           // PORT-NOTE: string | number
+public typealias OptionId = Any                                           // string | number
 // upstream: string | number
-public typealias OptionName = Any                                         // PORT-NOTE: string | number
+public typealias OptionName = Any                                         // string | number
 public struct GraphEdgeItemObject<VAL> {
     // ---- inherited from OptionDataItemObject<VAL> ----
     public var id: OptionId?
@@ -1068,13 +1068,13 @@ public struct GraphEdgeItemObject<VAL> {
     public init() {}
 }
 // upstream: string | number | Date | null | undefined
-public typealias OptionDataValue = Any?                                   // PORT-NOTE: string | number | Date | null
+public typealias OptionDataValue = Any?                                   // string | number | Date | null
 
 // upstream: number | '-'
-public typealias OptionDataValueNumeric = Any                            // PORT-NOTE: number | '-'
+public typealias OptionDataValueNumeric = Any                            // number | '-'
 public typealias OptionDataValueCategory = String
 // upstream: Date | string | number
-public typealias OptionDataValueDate = Any                                // PORT-NOTE: Date | string | number
+public typealias OptionDataValueDate = Any                                // Date | string | number
 
 // export type ModelOption = Dictionary<any> | any[] | string | number | boolean | ((...args: any) => any);
 public typealias ModelOption = Any
@@ -1087,10 +1087,10 @@ public enum DisplayState: String {
     case select
 }
 // upstream: Exclude<DisplayState, 'normal'>
-public typealias DisplayStateNonNormal = DisplayState                     // PORT-NOTE: Exclude<'normal'>
+public typealias DisplayStateNonNormal = DisplayState                     // Exclude<'normal'>
 public struct DisplayStateHostOption {
     public var emphasis: Dictionary<Any>?
-    public var other: Dictionary<Any> = [:]                              // PORT-NOTE: upstream `[key: string]: any`
+    public var other: Dictionary<Any> = [:]                              // upstream `[key: string]: any`
     public init() {}
 }
 
@@ -1109,9 +1109,9 @@ public struct OptionEncodeVisualDimensions {
     public init() {}
 }
 // upstream: interface OptionEncode extends OptionEncodeVisualDimensions { [coordDim: string]: OptionEncodeValue | undefined }
-public typealias OptionEncode = Dictionary<OptionEncodeValue>            // PORT-NOTE: extends OptionEncodeVisualDimensions
+public typealias OptionEncode = Dictionary<OptionEncodeValue>            // extends OptionEncodeVisualDimensions
 // upstream: DimensionLoose | DimensionLoose[]
-public typealias OptionEncodeValue = Any                                  // PORT-NOTE: DimensionLoose | DimensionLoose[]
+public typealias OptionEncodeValue = Any                                  // DimensionLoose | DimensionLoose[]
 public typealias EncodeDefaulter = (Source, Double) -> OptionEncode
 
 // TODO: TYPE Different callback param for different series
@@ -1144,7 +1144,7 @@ public struct CallbackDataParams {
     // Param name list for mapping `a`, `b`, `c`, `d`, `e`
     public var vars: [String]   // upstream: `$vars` ('$' prefix is reserved in Swift)
 
-    // PORT-NOTE: upstream declares these on the per-chart interfaces that EXTEND `CallbackDataParams`:
+    // upstream declares these on the per-chart interfaces that EXTEND `CallbackDataParams`:
     //   `TreeSeriesCallbackDataParams` { collapsed, treeAncestors? }   — chart/tree/TreeSeries.ts:126
     //   `TreemapSeriesCallbackDataParams` { treePathInfo?, treeAncestors? } — chart/treemap/TreemapSeries.ts:81
     //   `SunburstDataParams` { treePathInfo }                          — chart/sunburst/SunburstSeries.ts:62
@@ -1159,7 +1159,7 @@ public struct CallbackDataParams {
     public var treeAncestors: [treeHelper.TreePathInfoItem]? = nil
     public var collapsed: Bool? = nil
 
-    // PORT-NOTE: upstream declares these on `TooltipCallbackDataParams`
+    // upstream declares these on `TooltipCallbackDataParams`
     //   (`CallbackDataParams & { axisDim?, axisIndex?, axisType?, axisId?, axisValue?, axisValueLabel?,
     //   marker? }` — component/tooltip/TooltipView.ts:127), the params object handed to a
     //   `tooltip.formatter` callback on the trigger:'axis' path. Same reason as the tree/treemap/
@@ -1177,12 +1177,12 @@ public struct CallbackDataParams {
     public var axisValueLabel: String? = nil
 }
 // upstream: ParsedValue | ParsedValue[]
-public typealias InterpolatableValue = Any                                // PORT-NOTE: ParsedValue | ParsedValue[]
+public typealias InterpolatableValue = Any                                // ParsedValue | ParsedValue[]
 
 // upstream: number | (number | number[])[]
-public typealias DecalDashArrayX = Any                                    // PORT-NOTE: number | (number | number[])[]
+public typealias DecalDashArrayX = Any                                    // number | (number | number[])[]
 // upstream: number | number[]
-public typealias DecalDashArrayY = Any                                    // PORT-NOTE: number | number[]
+public typealias DecalDashArrayY = Any                                    // number | number[]
 public struct DecalObject {
     // 'image', 'triangle', 'diamond', 'pin', 'arrow', 'line', 'rect', 'roundRect', 'square', 'circle'
     public var symbol: Any? // string | string[]
@@ -1268,9 +1268,9 @@ public struct BoxLayoutOptionMixin {
  * If null/undefined or invalid, return NaN.
  */
 // upstream: number | string
-public typealias PositionSizeOption = Any                                 // PORT-NOTE: number | string
+public typealias PositionSizeOption = Any                                 // number | string
 
-public struct CircleLayoutOptionMixin {                                   // PORT-NOTE: generic <TNuance>
+public struct CircleLayoutOptionMixin {                                   // generic <TNuance>
     // Can be percent
     public var center: Any? // (number | string)[] | TNuance['centerExtra']
     // Can specify [innerRadius, outerRadius]
@@ -1411,16 +1411,16 @@ public struct PreserveAspectMixin {
 
 // TODO: TYPE value type?
 // upstream: (rawValue: any, params: T) => number | number[]
-public typealias SymbolSizeCallback<T> = (Any, T) -> Any                  // PORT-NOTE: return number | number[]
+public typealias SymbolSizeCallback<T> = (Any, T) -> Any                  // return number | number[]
 public typealias SymbolCallback<T> = (Any, T) -> String
 public typealias SymbolRotateCallback<T> = (Any, T) -> Double
 // upstream: (rawValue: any, params: T) => string | number | (string | number)[]
-public typealias SymbolOffsetCallback<T> = (Any, T) -> Any               // PORT-NOTE: return union
+public typealias SymbolOffsetCallback<T> = (Any, T) -> Any               // return union
 /**
  * Mixin of option set to control the element symbol.
  * Include type of symbol, and size of symbol.
  */
-public struct SymbolOptionMixin {                                         // PORT-NOTE: generic <T = never> callback arms
+public struct SymbolOptionMixin {                                         // generic <T = never> callback arms
     /**
      * type of symbol, like `cirlce`, `rect`, or custom path and image.
      */
@@ -1442,7 +1442,7 @@ public struct SymbolOptionMixin {                                         // POR
  * ItemStyleOption is a most common used set to config element styles.
  * It includes both fill and stroke style.
  */
-public struct ItemStyleOption {                                           // PORT-NOTE: generic <TCbParams = never>
+public struct ItemStyleOption {                                           // generic <TCbParams = never>
     // ---- inherited from ShadowOptionMixin, BorderOptionMixin ----
     public var shadow = ShadowOptionMixin()
     public var border = BorderOptionMixin()
@@ -1457,7 +1457,7 @@ public struct ItemStyleOption {                                           // POR
  * ItemStyleOption is a option set to control styles on lines.
  * Used in the components or series like `line`, `axis`. It includes stroke style.
  */
-public struct LineStyleOption {                                           // PORT-NOTE: generic <Clr = ZRColor>
+public struct LineStyleOption {                                           // generic <Clr = ZRColor>
     // ---- inherited from ShadowOptionMixin ----
     public var shadow = ShadowOptionMixin()
     public var width: Double?
@@ -1475,7 +1475,7 @@ public struct LineStyleOption {                                           // POR
  * ItemStyleOption is a option set to control styles on an area, like polygon, rectangle.
  * It only include fill style.
  */
-public struct AreaStyleOption {                                           // PORT-NOTE: generic <Clr = ZRColor>
+public struct AreaStyleOption {                                           // generic <Clr = ZRColor>
     // ---- inherited from ShadowOptionMixin ----
     public var shadow = ShadowOptionMixin()
     public var color: ZRColor? // upstream: Clr (defaults to ZRColor)
@@ -1485,7 +1485,7 @@ public struct AreaStyleOption {                                           // POR
 
 // upstream: type Arrayable<T> = { [key in keyof T]: T[key] | T[key][] };
 // upstream: type Dictionaryable<T> = { [key in keyof T]: T[key] | Dictionary<T[key]> };
-// PORT-NOTE: TS homomorphic mapped types; modeled below where used as the VisualOption* aliases.
+// TS homomorphic mapped types; modeled below where used as the VisualOption* aliases.
 
 public struct VisualOptionUnit {
     public var symbol: String?
@@ -1512,27 +1512,27 @@ public typealias VisualOptionPiecewise = VisualOptionUnit
  * Option about visual properties used in linear mapping
  */
 // upstream: Arrayable<VisualOptionUnit>
-public typealias VisualOptionLinear = Dictionary<Any>                    // PORT-NOTE: Arrayable<VisualOptionUnit>
+public typealias VisualOptionLinear = Dictionary<Any>                    // Arrayable<VisualOptionUnit>
 
 /**
  * Option about visual properties can be encoded from ordinal categories.
  * (See upstream comment for the per-property dictionary/array lookup semantics.)
  */
 // upstream: Arrayable<VisualOptionUnit> | Dictionaryable<VisualOptionUnit>
-public typealias VisualOptionCategory = Dictionary<Any>                  // PORT-NOTE: Arrayable | Dictionaryable
+public typealias VisualOptionCategory = Dictionary<Any>                  // Arrayable | Dictionaryable
 
 /**
  * All visual properties can be encoded.
  */
 // upstream: keyof VisualOptionUnit
-public typealias BuiltinVisualProperty = String                          // PORT-NOTE: keyof VisualOptionUnit
+public typealias BuiltinVisualProperty = String                          // keyof VisualOptionUnit
 
 public typealias TextCommonOptionNuanceBase = Dictionary<Any>           // Record<string, unknown>
 public typealias TextCommonOptionNuanceDefault = Dictionary<Any>        // {}
 // 'auto' has been deprecated.
 // upstream: ColorString | 'inherit' | 'auto'
 public typealias LabelStyleColorString = String                         // Nominal as a comment.
-public struct TextCommonOption {                                         // PORT-NOTE: generic <TNuance>
+public struct TextCommonOption {                                         // generic <TNuance>
     // ---- inherited from ShadowOptionMixin ----
     public var shadow = ShadowOptionMixin()
     public var color: Any? // LabelStyleColorString (+ optional TNuance['color'])
@@ -1577,7 +1577,7 @@ public struct TextCommonOption {                                         // PORT
 }
 
 // upstream: Pick<TextCommonOption, 'color' | 'opacity' | 'fontStyle' | ...>
-public typealias GlobalTextStyleOption = TextCommonOption                // PORT-NOTE: Pick<...>
+public typealias GlobalTextStyleOption = TextCommonOption                // Pick<...>
 
 // upstream: interface RichTextOption extends Dictionary<TextCommonOption> {}
 public typealias RichTextOption = Dictionary<TextCommonOption>
@@ -1588,7 +1588,7 @@ public typealias LabelFormatterCallback<T> = (T) -> String
  * LabelOption is an option set to control the style of labels.
  * Include color, background, shadow, truncate, rotation, distance, etc..
  */
-public struct LabelOption {                                              // PORT-NOTE: generic <TNuance>
+public struct LabelOption {                                              // generic <TNuance>
     // ---- inherited from LabelCommonOption ----
     public var common = LabelCommonOption()
     /**
@@ -1615,7 +1615,7 @@ public struct LabelOption {                                              // PORT
  * Common options for both `axis.axisLabel`, `axis.nameTextStyle and other `label`s.
  * Historically, they have had some nuances in options.
  */
-public struct LabelCommonOption {                                        // PORT-NOTE: generic <TNuanceOption>
+public struct LabelCommonOption {                                        // generic <TNuanceOption>
     // ---- inherited from TextCommonOption ----
     public var textCommon = TextCommonOption()
 
@@ -1637,7 +1637,7 @@ public struct LabelCommonOption {                                        // PORT
     public init() {}
 }
 
-public struct SeriesLabelOption {                                        // PORT-NOTE: generic <TCallbackDataParams, TNuance>
+public struct SeriesLabelOption {                                        // generic <TCallbackDataParams, TNuance>
     // ---- inherited from LabelOption ----
     public var label = LabelOption()
     public var formatter: Any? // string | LabelFormatterCallback<TCallbackDataParams>
@@ -1772,10 +1772,10 @@ public typealias LabelLayoutOptionCallback = (LabelLayoutOptionCallbackParams) -
 // upstream leaves this callback anonymous, inside `TooltipFormatterCallback<T>` (util/types.ts):
 //   `callback: (cbTicket: string, html: string | HTMLElement | HTMLElement[]) => void`.
 //
-//   PORT-NOTE: the `HTMLElement`/`HTMLElement[]` arms of the html union have no analogue in this
+//   the `HTMLElement`/`HTMLElement[]` arms of the html union have no analogue in this
 //     native port (renderMode is FORCED 'richText'; the content host is a `ZRText`, not a DOM node),
 //     so the content is a `String` — richText markup, i.e. `{styleName|text}` tokens.
-//   PORT-NOTE: modeled as a nominal CALLABLE struct rather than the bare function type
+//   modeled as a nominal CALLABLE struct rather than the bare function type
 //     `(String, String) -> Void`, because a function-typed PARAMETER is non-escaping by default in
 //     Swift — a user formatter could not store the callback to invoke it LATER, which is the entire
 //     point of the async path. `callAsFunction` keeps the upstream call spelling verbatim:
@@ -1793,15 +1793,15 @@ public struct TooltipFormatterAsyncCallback {
 // upstream: interface TooltipFormatterCallback<T> with sync + async overloads returning
 //   string | HTMLElement | HTMLElement[]:
 //     (params: T, asyncTicket: string, callback: (cbTicket, html) => void) => string | ...
-//   PORT-NOTE: the two TS call signatures collapse to ONE Swift function type (a Swift type alias
+//   the two TS call signatures collapse to ONE Swift function type (a Swift type alias
 //     cannot carry overloads) and the return union collapses to `String` (see the renderMode
-//     PORT-NOTE above). This is the ONE spelling of the `formatter` option's callable contract:
+//     note above). This is the ONE spelling of the `formatter` option's callable contract:
 //     `TooltipView._callFunctionFormatter` casts the option value to exactly this type, so a
 //     formatter written against this alias IS invoked. Do NOT respell the closure type at call sites.
 public typealias TooltipFormatterCallback<T> = (T, String, TooltipFormatterAsyncCallback) -> String
 
 // upstream: 'inside' | 'top' | 'left' | 'right' | 'bottom'
-public typealias TooltipBuiltinPosition = String                         // PORT-NOTE: literal union
+public typealias TooltipBuiltinPosition = String                         // literal union
 // upstream: Pick<BoxLayoutOptionMixin, 'top' | 'left' | 'right' | 'bottom'>
 public struct TooltipBoxLayoutOption {
     public var top: PositionSizeOption?
@@ -1811,14 +1811,14 @@ public struct TooltipBoxLayoutOption {
 }
 
 // upstream: CallbackDataParams | CallbackDataParams[]
-public typealias TooltipPositionCallbackParams = Any                     // PORT-NOTE: single | array
+public typealias TooltipPositionCallbackParams = Any                     // single | array
 
 /**
  * Position relative to the hoverred element. Only available when trigger is item.
  */
 // upstream: (point, params, el, rect, size) => Array<number | string> | TooltipBuiltinPosition | TooltipBoxLayoutOption
 public typealias TooltipPositionCallback =
-    ((Double, Double), TooltipPositionCallbackParams, Any?, RectLike?, TooltipPositionCallbackSize) -> Any  // PORT-NOTE: return union
+    ((Double, Double), TooltipPositionCallbackParams, Any?, RectLike?, TooltipPositionCallbackSize) -> Any  // return union
 public struct TooltipPositionCallbackSize {
     /**
      * Size of popup content
@@ -1846,11 +1846,11 @@ public struct CommonTooltipOption<FormatterParams> {
      */
     public var alwaysShowContent: Bool?
 
-    // PORT-NOTE: the dynamic option slot. A closure value here must be spelled
+    // the dynamic option slot. A closure value here must be spelled
     //   `TooltipFormatterCallback<FormatterParams>` (above) — that is the type
     //   `TooltipView._callFunctionFormatter` casts to. (It additionally accepts the 1-arg
     //   `(FormatterParams) -> String` spelling, because a JS function is arity-tolerant and a Swift
-    //   closure type is not; see the PORT-NOTE there.)
+    //   closure type is not; see the note there.)
     public var formatter: Any? // string | TooltipFormatterCallback<FormatterParams>
 
     /**
@@ -1862,7 +1862,7 @@ public struct CommonTooltipOption<FormatterParams> {
      * If trigger is 'item'. position can be set to 'inside'/'top'/'left'/'right'/'bottom'.
      * Support to be a callback
      */
-    // PORT-NOTE (Swift constraint, no upstream analogue): the CALLBACK arm must be stored ANNOTATED as
+    // note (Swift constraint, no upstream analogue): the CALLBACK arm must be stored ANNOTATED as
     //   `TooltipPositionCallback` — e.g. `["position": (cb as TooltipPositionCallback)]`. `TooltipView.
     //   _updatePosition` reads it back with `as? TooltipPositionCallback`, and a Swift dynamic cast
     //   between function types is EXACT: a closure spelled with a structurally-similar but different
@@ -1921,7 +1921,7 @@ public struct CommonTooltipOption<FormatterParams> {
     public var extraCssText: String?
 
     // upstream: Pick<LabelOption, 'color' | 'fontStyle' | ...> & { decoration?: string }
-    public var textStyle: Dictionary<Any>?                              // PORT-NOTE: Pick<LabelOption, ...> & { decoration }
+    public var textStyle: Dictionary<Any>?                              // Pick<LabelOption, ...> & { decoration }
     public init() {}
 }
 
@@ -1942,7 +1942,7 @@ public struct ComponentItemTooltipLabelFormatterParams {
     // properties key array like ['name']
     public var vars: [String]   // upstream: `$vars` ('$' prefix is reserved in Swift)
     // Other properties
-    public var other: Dictionary<Any> = [:]                             // PORT-NOTE: upstream `[key in string]: unknown`
+    public var other: Dictionary<Any> = [:]                             // upstream `[key in string]: unknown`
 }
 
 
@@ -2098,7 +2098,7 @@ public enum BlurScope: String {
  * Or may be an dictionary if have different types of data like in graph.
  */
 // upstream: DefaultEmphasisFocus | ArrayLike<number> | Dictionary<ArrayLike<number>>
-public typealias InnerFocus = Any                                        // PORT-NOTE: union
+public typealias InnerFocus = Any                                        // union
 
 public struct DefaultStatesMixin {
     // FIXME
@@ -2130,7 +2130,7 @@ public struct StatesMixinBase {
     public init() {}
 }
 
-public struct StatesOptionMixin<StateOption, StatesMixin> {              // PORT-NOTE: TS intersection arms dropped
+public struct StatesOptionMixin<StateOption, StatesMixin> {              // TS intersection arms dropped
     /**
      * Emphasis states. (upstream intersects StateOption & StatesMixin['emphasis'] & { blurScope, disabled })
      */
@@ -2166,7 +2166,7 @@ public struct UniversalTransitionOption {
     public init() {}
 }
 
-public struct SeriesOption<StateOption, StatesMixin> {                   // PORT-NOTE: TS mixins flattened
+public struct SeriesOption<StateOption, StatesMixin> {                   // TS mixins flattened
     // ---- inherited from ComponentOption, AnimationOptionMixin, ColorPaletteOptionMixin, StatesOptionMixin ----
     public var component = ComponentOption()
     public var animationMixin = AnimationOptionMixin()
@@ -2311,7 +2311,7 @@ public struct SeriesEncodeOptionMixin {
 }
 
 // upstream: SeriesModel<SeriesOption & SeriesEncodeOptionMixin>
-public typealias SeriesEncodableModel = SeriesModel                      // PORT-NOTE: generic option arg dropped
+public typealias SeriesEncodableModel = SeriesModel                      // generic option arg dropped
 
 
 // TODO Move to aria component
@@ -2424,7 +2424,7 @@ public protocol RoamHostModel {
     var __ownRoamView: () -> View? { get }
 }
 // upstream: ComponentModel<ComponentOption & RoamOptionMixin> & RoamHostModel
-public typealias RoamHostComponentOrSeries = ComponentModel & RoamHostModel  // PORT-NOTE: generic option arg dropped
+public typealias RoamHostComponentOrSeries = ComponentModel & RoamHostModel  // generic option arg dropped
 
 public protocol RoamHostView {
     /**
@@ -2434,4 +2434,4 @@ public protocol RoamHostView {
     func __updateOnOwnRoam(_ payload: RoamPayload, _ componentOrSeries: ComponentModel, _ api: ExtensionAPI)
 }
 // upstream: (ChartView | ComponentView) & RoamHostView
-public typealias ChartComponentRoamHostView = RoamHostView               // PORT-NOTE: (ChartView | ComponentView) & RoamHostView
+public typealias ChartComponentRoamHostView = RoamHostView               // (ChartView | ComponentView) & RoamHostView

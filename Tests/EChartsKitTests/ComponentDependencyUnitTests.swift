@@ -9,7 +9,7 @@
 //     The upstream sequential type-name strings are irrelevant (only uniqueness matters); we use
 //     stable descriptive names and compare against those same constants.
 //   * The callback ORDER produced by `topologicalTravel` depends on `getAllClassMainTypes()`,
-//     which returns Swift `Dictionary` keys in UNSPECIFIED order (documented PORT-NOTE in
+//     which returns Swift `Dictionary` keys in UNSPECIFIED order (documented note in
 //     clazz.swift). Upstream relies on JS insertion-order iteration. We therefore assert the
 //     (componentType -> dependencies) MAPPING rather than the emission order. The dependency
 //     list per type is still asserted exactly (for single-class main types it is deterministic:

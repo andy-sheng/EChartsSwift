@@ -18,7 +18,7 @@
 //
 // nativeSupported: true — geo + pie are both registered in EChartsKit. NOTE the gap this demo exists to
 // surface: pie's geo-anchored `center` needs the `point` branch of `layout.createBoxLayoutReference`
-// (`enableLayoutOnlyByCenter` + `boxCoordSys.dataToPoint`), which is still PORT-NOTE(deferred) — the
+// (`enableLayoutOnlyByCenter` + `boxCoordSys.dataToPoint`), which is still TODO: — the
 // port always returns the `rect` kind — so the native pane currently lays the pies out in box space
 // (treating the lng/lat as pixel offsets) rather than at their map coordinates.
 import Foundation

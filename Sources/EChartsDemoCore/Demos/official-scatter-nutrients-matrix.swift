@@ -391,11 +391,11 @@ const groupCategories = [];
 const groupColors = [];
 let data;
 
-// PORT-NOTE: upstream `myChart.getZr().configLayer(1, { motionBlur: true })` dropped — the gallery
+// note: upstream `myChart.getZr().configLayer(1, { motionBlur: true })` dropped — the gallery
 // page evaluates this script BEFORE echarts.init, and the trail effect only shows during the 2s
 // update animation the (removed) app.config onChange triggers.
 
-// PORT-NOTE: upstream `app.config` (the official editor's live axis-field pickers) replaced by its
+// note: upstream `app.config` (the official editor's live axis-field pickers) replaced by its
 // initial value; `app.configParameters` / `onChange` removed (the gallery renders one static frame).
 const config = {
   xAxisLeft: 'carbohydrate',
@@ -734,7 +734,7 @@ function getOption(data) {
   };
 }
 
-// PORT-NOTE: `$.get(ROOT_PATH + '/data/asset/data/nutrients.json', ...)` -> the asset (mirrored at
+// note: `$.get(ROOT_PATH + '/data/asset/data/nutrients.json', ...)` -> the asset (mirrored at
 // assets/data/nutrients.json) is spliced in verbatim; the callback body is kept as-is.
 const originData = \#(nutrientsRawJSON);
 

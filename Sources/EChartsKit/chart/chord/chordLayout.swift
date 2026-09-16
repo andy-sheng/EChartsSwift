@@ -63,7 +63,7 @@ public func chordCircularLayout(
 
 private func chordLayout(_ seriesModel: ChordSeriesModel, _ api: ExtensionAPI) {
     let nodeData = seriesModel.getData()
-    // PORT-NOTE: SeriesData.graph is typed `Graph?`; force-unwrap to the ported Graph. Faithful to
+    // SeriesData.graph is typed `Graph?`; force-unwrap to the ported Graph. Faithful to
     //   upstream's non-optional typing — createGraphFromNodeEdge guarantees it for chord, like sankey/graph.
     let nodeGraph: Graph = nodeData.graph!
     let edgeData = seriesModel.getEdgeData()

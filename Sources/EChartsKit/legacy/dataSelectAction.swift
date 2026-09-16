@@ -43,13 +43,13 @@ import ZRenderKit
 // Legacy data selection action.
 // Includes: pieSelect, pieUnSelect, pieToggleSelect, mapSelect, mapUnSelect, mapToggleSelect
 //
-// PORT-NOTE (§3): a TS module of free functions → a caseless `enum` named after the file, so the shared
+// note (§3): a TS module of free functions → a caseless `enum` named after the file, so the shared
 //   exports (`createLegacyDataSelectAction`, `handleLegacySelectEvents`) live under one namespace.
 public enum dataSelectAction {
 
     // export function createLegacyDataSelectAction(seriesType, ecRegisterAction: typeof registerAction)
     //   `ecRegisterAction` is the two-arg `registerAction(type, handler)` arm (the only one used here).
-    // PORT-NOTE (registration site): upstream calls this from the map and pie installs
+    // note (registration site): upstream calls this from the map and pie installs
     //   (`createLegacyDataSelectAction('map'/'pie', registers.registerAction)` — chart/map/install.ts:37,
     //   chart/pie/install.ts:33). In this port the `*Install.swift` files are commented-only diffable
     //   surface; the ACTUAL install() bodies are inlined in `ECharts.installOnce()` (the geo/heatmap
@@ -122,7 +122,7 @@ public enum dataSelectAction {
             //   dev-only deprecation log skipped (see the import note above).
 
             // ecModel.eachComponent({ mainType: 'series', subType: 'pie' }, cb)
-            //   PORT-NOTE (upstream quirk, faithful — do NOT "fix"): `subType` is hardcoded 'pie' even when
+            //   note (upstream quirk, faithful — do NOT "fix"): `subType` is hardcoded 'pie' even when
             //   `type` == 'map' (dataSelectAction.ts:77), while `legacyEventName` above is built from
             //   `type`. Net effect upstream AND here: the 'mapselectchanged' / 'mapselected' /
             //   'mapunselected' legacy events can never match a map series, because this loop only ever
@@ -144,14 +144,14 @@ public enum dataSelectAction {
                         // const data = seriesModel.getData();
                         let data = seriesModel.getData()
                         // const dataIndex = queryDataIndex(data, payload.fromActionPayload);
-                        //   PORT-NOTE (divergence, intentional): the `?? Payload(type: "")` fallback and the
+                        //   note (divergence, intentional): the `?? Payload(type: "")` fallback and the
                         //   `arr.isEmpty` guard below are safety hardening not present upstream (which
                         //   passes a possibly-undefined payload and unconditionally reads `dataIndex[0]`).
                         //   Both are non-crashing; kept for defensiveness.
                         let dataIndex = model.queryDataIndex(data, payload.fromActionPayload ?? Payload(type: ""))
                         // name: isArray(dataIndex) ? data.getName(dataIndex[0]) : data.getName(dataIndex)
                         //   `queryDataIndex` yields an `Int` (or `[Int]`); `ecEventNumber` coerces the boxing.
-                        //   PORT-NOTE (divergence, intentional): `Int(Double)` TRAPS on NaN/infinity, and
+                        //   note (divergence, intentional): `Int(Double)` TRAPS on NaN/infinity, and
                         //   `queryDataIndex`'s first branch (modelUtil.swift:1114) returns the RAW
                         //   user-supplied `payload.other["dataIndexInside"]` un-coerced — so a hostile/blank
                         //   payload could otherwise reach `Int(Double.nan)` and SIGTRAP. Non-finite values
@@ -204,7 +204,7 @@ public enum dataSelectAction {
     ) {
         // messageCenter.on('selectchanged', function (params: SelectChangedEvent) { ... });
         //
-        // PORT-NOTE (real gap — read this before "fixing" the cast): 'selectchanged' IS published on the
+        // note (real gap — read this before "fixing" the cast): 'selectchanged' IS published on the
         //   bus TODAY and this handler DOES run on every select/unselect/toggleSelect. It is not dormant.
         //   actionRegister.swift:48 registers those three actions with `event = SELECT_CHANGED_EVENT_TYPE`
         //   and `refineEvent == nil`, so action.swift's `nonRefinedEventType` resolves to 'selectchanged'

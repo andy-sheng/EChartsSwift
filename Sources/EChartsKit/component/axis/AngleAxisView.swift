@@ -30,7 +30,7 @@ import ZRenderKit
 //       `graphic.mergePath` → ZRenderKit `mergePath` (Tool/ToolPath). `graphic.setTooltipConfig` →
 //       the file-scope `setTooltipConfig` (util/graphic.swift) — wired at the axisLabel builder.
 //   import {createTextStyle} from '../../label/labelStyle';
-//     → PORT-NOTE: `label/labelStyle` is ported (createTextStyle); this view uses the module-internal `createTextStyle(_ textStyleModel,
+//     → note: `label/labelStyle` is ported (createTextStyle); this view uses the module-internal `createTextStyle(_ textStyleModel,
 //       text:, font:, overflow:, width:, ellipsis:, fill:, align:, verticalAlign:)` reproduction that lives
 //       in AxisBuilder.swift (same module) — enough for the axis label (text/font/fill/align). Its `<T>`
 //       nuance generic and the object-literal `x`/`y` fields are handled by assigning `style.x`/`style.y`
@@ -39,18 +39,18 @@ import ZRenderKit
 //   import AxisView from './AxisView';                         → `AxisView` (component/axis/AxisView.swift).
 //   import AxisBuilder from './AxisBuilder';                   → `AxisBuilder` (component/axis/AxisBuilder.swift).
 //   import { AngleAxisModel } from '../../coord/polar/AxisModel';
-//     → PORT-NOTE: `AngleAxisModel` is ported (coord/polar/PolarAxisModel.swift; polar is a full coord system).
+//     → note: `AngleAxisModel` is ported (coord/polar/PolarAxisModel.swift; polar is a full coord system).
 //       API: `open class AngleAxisModel: AxisBaseModel` (so `.axis: Any`, `.get`, `.getModel`,
 //       `.getCategories`, `.getTextColor` Model surface). Registered component view `type` is 'angleAxis'.
 //   import GlobalModel from '../../model/Global';              → `GlobalModel`.
 //   import Polar from '../../coord/polar/Polar';
-//     → PORT-NOTE: `Polar` (coord/polar/Polar.swift). API (mirrors upstream Polar):
+//     → note: `Polar` (coord/polar/Polar.swift). API (mirrors upstream Polar):
 //         var cx: Double ; var cy: Double
 //         func getRadiusAxis() -> RadiusAxis      // (open class RadiusAxis: Axis)
 //         func getAngleAxis() -> AngleAxis
 //         func coordToPoint(_ coord: [Double]) -> [Double]   // upstream: coordToPoint([radius, angle]) -> number[]
 //   import AngleAxis from '../../coord/polar/AngleAxis';
-//     → PORT-NOTE: `AngleAxis` (coord/polar/AngleAxis.swift). API (open class AngleAxis: Axis):
+//     → note: `AngleAxis` (coord/polar/AngleAxis.swift). API (open class AngleAxis: Axis):
 //         var polar: Polar
 //         inherits `scale`/`inverse`/`getExtent()`/`dataToCoord()`/`getTicksCoords()`/
 //                  `getMinorTicksCoords()`/`getViewLabels()` from `Axis`.
@@ -400,7 +400,7 @@ private let angelAxisElementsBuilders: [String: AngleAxisElementBuilder] = [
             // upstream: graphic.setTooltipConfig({ el: textEl, componentModel: angleAxisModel,
             //   itemName: labelItem.formattedLabel, formatterParamsExtra: {
             //     isTruncated: () => textEl.isTruncated, value: labelItem.rawLabel, tickIndex: idx } });
-            // PORT-NOTE: `formatterParamsExtra` is typed `KeyValuePairs<String, Any>` (not a Swift
+            // `formatterParamsExtra` is typed `KeyValuePairs<String, Any>` (not a Swift
             //   `Dictionary`) so this literal's key order — isTruncated, value, tickIndex — reaches
             //   `formatterParams.$vars` exactly as upstream's object literal does. `format.formatTpl`
             //   aliases `$vars` POSITIONALLY onto `a`/`b`/`c`/..., so an unordered (hash-seeded) walk
@@ -570,7 +570,7 @@ private let angelAxisElementsBuilders: [String: AngleAxisElementBuilder] = [
 
 
 // ============================================================================
-// PORT-NOTE helpers — NOT part of AngleAxisView.ts upstream. These reproduce the
+// note helpers — NOT part of AngleAxisView.ts upstream. These reproduce the
 // dynamic-option coercion + the `util/graphic` style-bag bridge referenced above.
 // Delete each when its real sibling lands and call the sibling directly.
 // ============================================================================
@@ -598,7 +598,7 @@ private func jsTruthy(_ v: Any?) -> Bool {
     return true
 }
 
-/// PORT-NOTE: `util/graphic` style-bag bridge. `Model.getLineStyle()` / `getAreaStyle()` return the
+/// `util/graphic` style-bag bridge. `Model.getLineStyle()` / `getAreaStyle()` return the
 ///   dynamic `[String: Any]` paint bag (makeStyleMapper output, keyed by PathStyleProps field names);
 ///   ZRenderKit `Path`'s `style` prop is a typed `PathStyleProps`. This maps the common line/area paint
 ///   keys (stroke + fill) so the axis-line / ticks / split-lines / split-areas are actually drawn.

@@ -33,7 +33,7 @@ import ZRenderKit
 //   import DataDiffer from '../../data/DataDiffer';            -> DROPPED: the feature DIFF is reduced to a
 //     rebuild-each-render (no view reuse across setOption — same reduction as the other ported views).
 //   import * as listComponentHelper from '../helper/listComponent'; -> `makeBackground` reproduced below
-//     (component/helper/listComponent not ported — same PORT-NOTE as LegendView).
+//     (component/helper/listComponent not ported — same note as LegendView).
 //   import ComponentView from '../../view/Component';          -> `ComponentView`.
 //   import ToolboxModel from './ToolboxModel';                 -> `ToolboxModel`.
 //   import { getFeature, ToolboxFeature, ... } from './featureManager'; -> `getFeature` / `ToolboxFeature`
@@ -118,7 +118,7 @@ open class ToolboxView: ComponentView {
             let feature: ToolboxFeature
             if isUserFeatureName(featureName) {
                 // UserDefinedToolboxFeature { onclick: featureModel.option.onclick, featureName }.
-                // PORT-NOTE (deferred): the user `my*` feature's `onclick` closure carried on the
+                // TODO: the user `my*` feature's `onclick` closure carried on the
                 //   option bag is not modeled (no on-canvas dispatch target — requires interaction dispatch). Skip.
                 continue
             }
@@ -340,11 +340,11 @@ open class ToolboxView: ComponentView {
 
             // upstream: graphic.setTooltipConfig({ el: path, componentModel: toolboxModel,
             //   itemName: iconName, formatterParamsExtra: { title: titlesMap[iconName] } });
-            // PORT-NOTE: `formatterParamsExtra` is typed `KeyValuePairs<String, Any>` (not a Swift
+            // `formatterParamsExtra` is typed `KeyValuePairs<String, Any>` (not a Swift
             //   `Dictionary`) so this literal's key order reaches `formatterParams.$vars` exactly as
             //   upstream's object literal does (`format.formatTpl` aliases `$vars` POSITIONALLY onto
             //   `a`/`b`/`c`/...).
-            // PORT-NOTE: `titlesMap[iconName]` is `String?` here (upstream's lookup may be `undefined`).
+            // `titlesMap[iconName]` is `String?` here (upstream's lookup may be `undefined`).
             //   It is coalesced to `""` rather than boxed into `Any`, because an `Any`-boxed
             //   `Optional<String>.none` would fail the downstream `as? String` casts (Any-boxing
             //   unwraps `.some`, so only `.none` survives as a boxed Optional) and interpolate as
@@ -379,7 +379,7 @@ open class ToolboxView: ComponentView {
 
             // Title default position. Upstream sets `path.setTextConfig({position})` on mouseover; the
             //   default is bottom (horizontal) / right (vertical) unless the toolbox is anchored there.
-            //   PORT-NOTE (deferred): the emphasis title-overflow reposition (the `emphasisState
+            //   TODO: the emphasis title-overflow reposition (the `emphasisState
             //   .textConfig` block in render()) reads api.getWidth/Height; the default position is used.
             let defaultTextPosition: String = isVertical
                 ? ((toolboxModel.get("right") == nil && (toolboxModel.get("left") as? String) != "right")
@@ -455,7 +455,7 @@ private func isUserFeatureName(_ featureName: String) -> Bool {
 // export default ToolboxView;  -> `open class ToolboxView` above.
 
 // ════════════════════════════════════════════════════════════════════════════════════════════
-// PORT-NOTE helpers — NOT part of toolbox/ToolboxView.ts upstream. They reproduce out-of-phase
+// note helpers — NOT part of toolbox/ToolboxView.ts upstream. They reproduce out-of-phase
 // sibling APIs / JS idioms so the static toolbox render compiles. Delete each when its real sibling
 // lands and call the sibling directly.
 // ════════════════════════════════════════════════════════════════════════════════════════════
@@ -463,7 +463,7 @@ private func isUserFeatureName(_ featureName: String) -> Bool {
 /// Reproduce `graphic.createIcon`'s `path://` / direct-svg branch: `makePath(str.replace('path://',''),
 ///   {rectHover:true, style:{strokeNoScale:true}}, rect, 'center')`. (The `image://` branch is DEFERRED.)
 private func toolboxCreateIcon(_ iconStr: String, _ rect: BoundingRect) -> SVGPath {
-    // PORT-NOTE (deferred): `image://` icons (a ZRImage) — requires the ZRImage icon branch; only path/svg reproduced.
+    // TODO: `image://` icons (a ZRImage) — requires the ZRImage icon branch; only path/svg reproduced.
     let pathData = iconStr.hasPrefix("path://") ? String(iconStr.dropFirst("path://".count)) : iconStr
     let path = ZRenderKit.makePath(pathData, nil, rect, "center")
     path.pathStyle.strokeNoScale = true
@@ -499,7 +499,7 @@ func toolboxNum(_ v: Any?) -> Double? {
     return nil
 }
 
-/// Faithful minimal reproduction of `component/helper/listComponent.makeBackground` (same PORT-NOTE as
+/// Faithful minimal reproduction of `component/helper/listComponent.makeBackground` (same note as
 ///   LegendView.makeBackground). Delete when component/helper/listComponent.swift lands.
 private func toolboxMakeBackground(_ rect: BoundingRect, _ componentModel: ComponentModel) -> Rect {
     let padding = toolboxNormalizeCssArray(componentModel.get("padding"))

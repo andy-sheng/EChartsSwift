@@ -24,34 +24,34 @@ import ZRenderKit
 // FIXME Where to create the simple view coordinate system
 // upstream imports:
 //   import View from '../../coord/View';
-//       -> PORT-NOTE: coord/View.swift is ported. This file still uses a stand-in view coord sys and
+//       -> note: coord/View.swift is ported. This file still uses a stand-in view coord sys and
 //          ports the *pure box/scale computation* only (see `GraphViewBox`).
 //   import {createBoxLayoutReference, getLayoutRect, applyPreserveAspect} from '../../util/layout';
 //       -> `layout.createBoxLayoutReference` / `layout.getLayoutRect` / `layout.applyPreserveAspect`
 //          (all ported in util/layout.swift; wired in `getViewRect` below).
 //   import * as bbox from 'zrender/src/core/bbox';                   -> `bbox` (ZRenderKit Core/bbox.swift).
 //   import GraphSeriesModel, { GraphNodeItemOption } from './GraphSeries';
-//       -> PORT-NOTE: GraphSeries.swift is ported; `GraphSeriesModel` referenced as sibling.
+//       -> note: GraphSeries.swift is ported; `GraphSeriesModel` referenced as sibling.
 //          `GraphNodeItemOption` is a type-only generic — dropped.
 //   import ExtensionAPI from '../../core/ExtensionAPI';              -> ExtensionAPI (core/ExtensionAPI.swift).
 //   import GlobalModel from '../../model/Global';                    -> GlobalModel (model/Global.swift).
 //   import { extend } from 'zrender/src/core/util';
-//       -> PORT-NOTE: not realized as `util.extend`. `aspect` is not a field of `BoxLayoutOptionMixin`,
+//       -> note: not realized as `util.extend`. `aspect` is not a field of `BoxLayoutOptionMixin`,
 //          so upstream's `extend(getBoxLayoutParams(), {aspect})` is realized by the inline
 //          `[String: Any]` bag construction in `getViewRect` below (same idiom as geoCreator.swift).
 //   import { injectCoordSysByOption } from '../../core/CoordinateSystem';
 //       -> `injectCoordSysByOption` (core/CoordinateSystemManager.swift). Wiring deferred (needs View).
 //   import { createViewCoordSysSimply } from '../../component/helper/roamHelper';
-//       -> PORT-NOTE: roamHelper is ported (component/helper/roamHelper*.swift); createViewCoordSysSimply is not used here (stand-in instead).
+//       -> note: roamHelper is ported (component/helper/roamHelper*.swift); createViewCoordSysSimply is not used here (stand-in instead).
 
-// PORT-NOTE: `View` (coord/View.swift) is ported. Upstream `createViewCoordSys` returns `View[]` and
+// `View` (coord/View.swift) is ported. Upstream `createViewCoordSys` returns `View[]` and
 //   registers each `View` via `injectCoordSysByOption` + `createViewCoordSysSimply`. Those are the
 //   roam-view controller (parent scope: deferred this phase). This port captures the *pure box/scale
 //   computation* — `getViewRect` and the min/max/aspect/bbWidth/bbHeight derivation — in `GraphViewBox`.
 //   The `createViewCoordSysSimply(seriesModel, api, min[0], min[1], bbWidth, bbHeight, viewRect)` call
 //   consumes exactly these fields; wiring them into a real `View` + `viewList: View[]` +
 //   `injectCoordSysByOption` is not used here (the stand-in is set directly); coord/View + roamHelper are ported.
-// PORT-NOTE(coord/View.swift is ported; this file keeps a stand-in): minimal stand-in for the roam `View` coordinate system that a
+// note(coord/View.swift is ported; this file keeps a stand-in): minimal stand-in for the roam `View` coordinate system that a
 //   graph series carries. Upstream `createViewCoordSysSimply` builds a real `View` (with a data-rect ->
 //   view-rect roam transform, `dataToPoint`/`pointToData`, `setRoamTransform`, etc.) and registers it via
 //   `injectCoordSysByOption`. That full port is deferred this phase (roam interaction is deferred, §5).
@@ -245,7 +245,7 @@ private func getViewRect(_ seriesModel: GraphSeriesModel, _ api: ExtensionAPI, _
 }
 
 // export default function createViewCoordSys(ecModel, api)
-//   Returns the computed box/scale for each graph series. PORT-NOTE: upstream returns `View[]` and
+//   Returns the computed box/scale for each graph series. note: upstream returns `View[]` and
 //   registers each view via `injectCoordSysByOption`; that wiring is deferred (needs coord/View +
 //   roamHelper). Here we compute `GraphViewBox[]` — the pure inputs `createViewCoordSysSimply` needs.
 @discardableResult
@@ -263,7 +263,7 @@ public func createViewCoordSys(_ ecModel: GlobalModel, _ api: ExtensionAPI) -> [
             return
         }
 
-        // PORT-NOTE: injectCoordSysByOption({ targetModel: seriesModel, coordSysType: 'view',
+        // injectCoordSysByOption({ targetModel: seriesModel, coordSysType: 'view',
         //   coordSysProvider: createViewCoordSys (inner), isDefaultDataCoordSys: true }). Both
         //   injectCoordSysByOption and the `View` provider are ported; this file inlines the pure
         //   computation and sets the stand-in coord sys directly instead of registering through the
@@ -315,7 +315,7 @@ public func createViewCoordSys(_ ecModel: GlobalModel, _ api: ExtensionAPI) -> [
         let bbWidth = max[0] - min[0]
         let bbHeight = max[1] - min[1]
 
-        // PORT-NOTE: const viewCoordSys = createViewCoordSysSimply(
+        // const viewCoordSys = createViewCoordSysSimply(
         //     seriesModel, api, min[0], min[1], bbWidth, bbHeight, viewRect);
         //   createViewCoordSysSimply (roamHelper) is ported but not used here; the captured box below
         //   carries exactly these arguments.
@@ -323,7 +323,7 @@ public func createViewCoordSys(_ ecModel: GlobalModel, _ api: ExtensionAPI) -> [
             x: min[0], y: min[1], width: bbWidth, height: bbHeight, viewRect: viewRect
         )
 
-        // PORT-NOTE(injectCoordSysByOption + real View are ported; stand-in used here): assign the stand-in view coord sys onto
+        // note(injectCoordSysByOption + real View are ported; stand-in used here): assign the stand-in view coord sys onto
         //   the series so the layout stages (circular/simple) can read `type`/`getBoundingRect()`. Upstream
         //   assigns the coord sys through the CoordinateSystemManager pipeline; here we set it directly.
         let graphCoordSys = GraphViewCoordSys(viewRect, min[0], min[1], bbWidth, bbHeight)
@@ -345,7 +345,7 @@ public func createViewCoordSys(_ ecModel: GlobalModel, _ api: ExtensionAPI) -> [
 //   `number.jsNumber` ("Infinity"/"+Infinity"/"-Infinity", 0x/0o/0b radix literals, "" -> 0).
 // NOTE: the sibling `toNumber` in categoryFilter.swift / categoryVisual.swift is a DIFFERENT
 //   coercion (category-index parsing, not unary-plus) — same name, different semantics; do not unify.
-// PORT-NOTE(deviates from PORTING §8 null/undefined collapse): this file DOES depend on the
+// note(deviates from PORTING §8 null/undefined collapse): this file DOES depend on the
 //   distinction — `+undefined` is NaN but `+null` is 0. Reachable only when the option carries
 //   `NSNull()` (the codebase's explicit JS-null spelling); an omitted key arrives via
 //   `Model.getShallow` as `nil` and correctly stays NaN.

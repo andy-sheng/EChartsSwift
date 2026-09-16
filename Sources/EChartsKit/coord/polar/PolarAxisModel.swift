@@ -27,8 +27,8 @@ import ZRenderKit
 // import ComponentModel from '../../model/Component';                 -> ComponentModel (model/Component.swift)
 // import { AxisModelExtendedInCreator } from '../axisModelCreator';   -> AxisModelExtendedInCreator (coord/axisModelCreator.swift)
 // import {AxisModelCommonMixin} from '../axisModelCommonMixin';       -> AxisModelCommonMixin (coord/axisModelCommonMixin.swift, protocol)
-// import { AxisBaseOption } from '../axisCommonTypes';                -> AxisBaseOption (dynamic option bag, see axisModelCreator.swift; PORT-NOTE)
-// import AngleAxis from './AngleAxis';                                -> AngleAxis (coord/polar/AngleAxis.swift; sibling this phase — PORT-NOTE: `axis` slot typed `Any` via AxisBaseModel)
+// import { AxisBaseOption } from '../axisCommonTypes';                -> AxisBaseOption (dynamic option bag, see axisModelCreator.swift; note)
+// import AngleAxis from './AngleAxis';                                -> AngleAxis (coord/polar/AngleAxis.swift; sibling this phase — note: `axis` slot typed `Any` via AxisBaseModel)
 // import RadiusAxis from './RadiusAxis';                              -> RadiusAxis (coord/polar/RadiusAxis.swift; sibling this phase — same)
 // import { AxisBaseModel } from '../AxisBaseModel';                   -> AxisBaseModel (coord/AxisBaseModel.swift)
 // import { SINGLE_REFERRING } from '../../util/model';                -> model.SINGLE_REFERRING (util/modelUtil.swift)
@@ -43,7 +43,7 @@ import ZRenderKit
 //     clockwise?: boolean;
 //     axisLabel?: AxisBaseOption['axisLabel']
 // };
-//   PORT-NOTE: option interfaces modeled as the dynamic option bag ([String: Any]); the extra fields
+//   option interfaces modeled as the dynamic option bag ([String: Any]); the extra fields
 //   (polarIndex/polarId/startAngle/endAngle/clockwise/axisLabel) are keyed accesses on the bag.
 public typealias AngleAxisOption = AxisBaseOption
 
@@ -65,7 +65,7 @@ public typealias PolarAxisOption = AxisBaseOption
 // interface PolarAxisModel<T> extends AxisModelCommonMixin<T>, AxisModelExtendedInCreator {}
 // zrUtil.mixin(PolarAxisModel, AxisModelCommonMixin);
 //
-// PORT-NOTE: mirrors the CartesianAxisModel port (coord/cartesian/AxisModel.swift). Upstream `extends
+// mirrors the CartesianAxisModel port (coord/cartesian/AxisModel.swift). Upstream `extends
 //   ComponentModel implements AxisBaseModel<T>` where `AxisBaseModel` is a TS interface merging
 //   ComponentModel + AxisModelCommonMixin + AxisModelExtendedInCreator + the `axis` slot. Per CONVENTIONS
 //   §2 the Swift port models `AxisBaseModel` as a real `open class AxisBaseModel: ComponentModel,
@@ -85,7 +85,7 @@ open class PolarAxisModel: AxisBaseModel, AxisModelExtendedInCreator {
     // getCoordSysModel(): ComponentModel {
     //     return this.getReferringComponents('polar', SINGLE_REFERRING).models[0];
     // }
-    //   PORT-NOTE: upstream returns the concrete host `ComponentModel` (a PolarModel). The
+    //   upstream returns the concrete host `ComponentModel` (a PolarModel). The
     //   `AxisModelCommonMixin.getCoordSysModel()` protocol requirement returns `Any?`, so the return is
     //   left as the raw `models[0]` (a `ComponentModel`), narrowed to `PolarModel` at the call site
     //   (mirrors CartesianAxisModel.getCoordSysModel → GridModel).
@@ -233,12 +233,12 @@ public let radiusAxisExtraOption: RadiusAxisOption = [
 //   axisModelCreator(registers, 'angle', AngleAxisModel, angleAxisExtraOption);
 //   axisModelCreator(registers, 'radius', RadiusAxisModel, radiusAxisExtraOption);
 //
-// PORT-NOTE: the real registration belongs in the ported component/polar/install.swift (not this phase).
+// the real registration belongs in the ported component/polar/install.swift (not this phase).
 //   This helper mirrors that call pair so the angle/radius component models get the polar extra defaults
 //   merged over `axisDefault[axisType]` (see coord/axisModelCreator.swift). Call it from the polar
 //   install once the extension registrar wiring lands (Phase 6b).
 //   NOTE: `axisModelCreator` currently ignores `BaseAxisModelClass` (it cannot subclass a runtime metatype
-//   — see axisModelCreator.swift PORT-NOTE), so the generated axis models are the file-scope `AxisModel`
+//   — see axisModelCreator.swift note), so the generated axis models are the file-scope `AxisModel`
 //   rather than AngleAxisModel/RadiusAxisModel; `AngleAxisModel.self` / `RadiusAxisModel.self` are passed
 //   for API fidelity and to reconcile once that wiring lands.
 public func installPolarAxisModels(_ registers: EChartsExtensionInstallRegisters) {

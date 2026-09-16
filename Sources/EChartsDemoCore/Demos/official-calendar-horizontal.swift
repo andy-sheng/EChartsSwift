@@ -15,7 +15,7 @@
 //     aware) and the SAME arrays are inlined into BOTH panes — spliced into webOptionJS as JSON literals
 //     and used verbatim as the native `series[].data`. Follows official-calendar-simple. Everything else
 //     (tooltip, visualMap, all three calendars, all three series) is verbatim.
-//   - no PORT-NOTE below: the option has NO function-valued key (no formatter / label callback), so the
+//   - no note below: the option has NO function-valued key (no formatter / label callback), so the
 //     Swift `option` mirrors the JS one key-for-key with NOTHING dropped. `visualMap.type` is left
 //     unspelled because the official leaves it unspelled — visualMap's typeDefaulter resolves min/max to
 //     `continuous`, and writing it out would be an embellishment.

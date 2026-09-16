@@ -22,7 +22,7 @@ import Foundation
 import ZRenderKit
 
 // upstream imports:
-//   import ECLinePath from './LinePath';   -> PORT-NOTE: upstream's ECLinePath is ONE custom Path whose
+//   import ECLinePath from './LinePath';   -> note: upstream's ECLinePath is ONE custom Path whose
 //       `buildPath` draws a straight segment OR a quadratic curve depending on whether `cpx1`/`cpy1`
 //       are finite. This port models it with the two DISTINCT ZRenderKit shapes the golden tests
 //       assert: a straight `Line` (no control point) or a `BezierCurve` (control point present), each
@@ -32,7 +32,7 @@ import ZRenderKit
 //   import {getLabelStatesModels, setLabelStyle} from '../../label/labelStyle';
 //   import {round} from '../../util/number';   -> `number.round`.
 //
-// PORT-NOTE (beforeUpdate): upstream places the from/to symbols + label along the line EVERY frame in
+// note (beforeUpdate): upstream places the from/to symbols + label along the line EVERY frame in
 //   `Element#beforeUpdate`. `beforeUpdate` is `public` (not `open`) in ZRenderKit and cannot be
 //   overridden from this module, so `_positionEndsAndLabel` is driven from the `initProps`/`updateProps`
 //   `during` callbacks instead. This preserves the enter GROW effect and keeps symbols/labels attached
@@ -42,7 +42,7 @@ import ZRenderKit
 //   (getItemVisual(idx, 'fromSymbol' / 'fromSymbolSize' / …), matching upstream + the markLine visuals).
 private let SYMBOL_CATEGORIES = ["fromSymbol", "toSymbol"]
 
-// PORT-NOTE (deviation): upstream names each end symbol 'fromSymbol' / 'toSymbol'; this port names them
+// note (deviation): upstream names each end symbol 'fromSymbol' / 'toSymbol'; this port names them
 //   'from' / 'to' (the convention MarkLineView's former stand-in used, asserted by ZZMarkerTests). Only
 //   the child NAME differs; the visual reads still use the full 'fromSymbol' prefix.
 private func shortSymbolName(_ category: String) -> String {

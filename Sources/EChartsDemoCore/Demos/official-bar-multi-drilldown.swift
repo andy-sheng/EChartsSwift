@@ -221,7 +221,7 @@ option = allOptions['things']; // The initial option is the root data option
                         "fontSize": 18.0,
                         "fill": "grey"
                     ] as [String: Any]
-                    // PORT-NOTE: onclick omitted — the JS closure called goBack(), which popped the
+                    // onclick omitted — the JS closure called goBack(), which popped the
                     // option stack and re-setOption'd the parent level. Click-driven, so it is inert
                     // in the gallery's single static frame anyway.
                 ] as [String: Any]

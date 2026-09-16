@@ -27,14 +27,14 @@ import ZRenderKit
 // import * as axisPointerModelHelper from './modelHelper';         -> modelHelper.swift (getAxisInfo)
 // import * as eventTool from 'zrender/src/core/event';             -> ZRenderKit `eventTool.stop` (handle onmousemove)
 // import * as throttleUtil from '../../util/throttle';             -> util/throttle.swift (createOrUpdate / clear)
-// import {makeInner} from '../../util/model';                      -> see PORT-NOTE (inner store) below
+// import {makeInner} from '../../util/model';                      -> see note (inner store) below
 // import { AxisPointer } from './AxisPointer';                     -> AxisPointer.swift (same module)
 // import { AxisBaseModel } from '../../coord/AxisBaseModel';       -> coord/AxisBaseModel.swift
 // import ExtensionAPI from '../../core/ExtensionAPI';              -> core/ExtensionAPI.swift
 // import Displayable, Element, Model, ...                          -> ZRenderKit / model/Model.swift
 // import { calcBandWidth } from '../../coord/axisBand';            -> coord/axisBand.swift
 
-// PORT-NOTE (makeInner): upstream stashes the built `pointerEl` / `labelEl` on the GROUP instance via
+// note (makeInner): upstream stashes the built `pointerEl` / `labelEl` on the GROUP instance via
 //   `makeInner<{ lastProp, labelEl, pointerEl }, Element>()`. Each `BaseAxisPointer` owns EXACTLY ONE
 //   group, so those slots are held as plain instance members (`_pointerEl` / `_labelEl`) here — the
 //   group identity is 1:1 with `self`, so this is behaviourally identical and avoids porting the
@@ -70,7 +70,7 @@ public struct AxisPointerElementOptions {
 
 /// upstream: `pointer: PathProps & { type: 'Line' | 'Rect' | 'Circle' | 'Sector' }`.
 public struct PointerElementOption {
-    /// The ZRenderKit shape class name — 'Line' / 'Rect' (Circle / Sector are PORT-NOTE, unused by
+    /// The ZRenderKit shape class name — 'Line' / 'Rect' (Circle / Sector are note, unused by
     /// `CartesianAxisPointer`). Selects `graphic[type]` in `createPointerEl`.
     public var type: String
     /// The typed path shape (`LineShape` / `RectShape`) built by `viewHelper.makeLineShape` / `makeRectShape`.
@@ -147,7 +147,7 @@ open class BaseAxisPointer: AxisPointer {
     // upstream stamps a throttled wrapper over `this._doDispatchAxisPointer` via
     //   `throttleUtil.createOrUpdate(this, '_doDispatchAxisPointer', ...)`. Swift can't swap a method on
     //   a live instance, so the wrapper lives in this slot (see util/throttle.swift createOrUpdate
-    //   PORT-NOTE). `nil` means "call `_doDispatchAxisPointer` directly".
+    //   note). `nil` means "call `_doDispatchAxisPointer` directly".
     private var _doDispatchThrottled: ThrottledFunction?
 
     /// If have transition animation.
@@ -166,7 +166,7 @@ open class BaseAxisPointer: AxisPointer {
     private var _axisPointerModel: Model?
     private var _api: ExtensionAPI?
 
-    // 1:1 group children (see makeInner PORT-NOTE).
+    // 1:1 group children (see makeInner note).
     private var _pointerEl: Path?
     private var _labelEl: ZRText?
 
@@ -259,7 +259,7 @@ open class BaseAxisPointer: AxisPointer {
             // upstream: `const doUpdateProps = zrUtil.curry(updateProps, axisPointerModel, moveAnimation)`.
             //   The curried captures are modeled by the `BaseAxisPointer.updateProps(_:_:_:_:)`
             //   extension method, which the `updatePointerEl` / `updateLabelEl` overrides call with
-            //   `self._axisPointerModel` / `self._moveAnimation` (see the `updateProps` PORT-NOTE).
+            //   `self._axisPointerModel` / `self._moveAnimation` (see the `updateProps` note).
             self.updatePointerEl(self.group!, elOption)
             self.updateLabelEl(self.group!, elOption, axisPointerModel)
         }
@@ -390,7 +390,7 @@ open class BaseAxisPointer: AxisPointer {
         // upstream: `pointerEl.setStyle(elOption.pointer.style)` (MERGE). There is no
         //   `Path.setStyle(PathStyleProps)` overload in the port; `elOption.pointer.style` is the FULL
         //   style rebuilt every render by `viewHelper.buildElStyle`, so replacing == merging here.
-        //   PORT-NOTE: replace == merge here because the style is fully rebuilt every render; a true
+        //   replace == merge here because the style is fully rebuilt every render; a true
         //   partial-merge would only matter if a caller ever supplied a partial style (none do).
         if let style = pointer.style { pointerEl.useStyle(style) }
         // PORTING.md §12: no force-unwraps of render()-bound state — `updatePointerEl` is `open`, so a
@@ -404,9 +404,9 @@ open class BaseAxisPointer: AxisPointer {
             //   `shape.animationProps()` (NOT the `PathShape` struct itself): upstream's `{shape}` is a
             //   plain object that `animateToShallow` recurses into per key; a struct existential is not
             //   `util.isObject`, so it would be treated as ONE discrete leaf and SNAP instead of tween
-            //   (see the `PathShape.animationProps` PORT-NOTE in Path.swift). The non-animated branch is
+            //   (see the `PathShape.animationProps` note in Path.swift). The non-animated branch is
             //   unaffected: `Path.attrKV("shape", partialDict)` merges the keys into the existing shape.
-            //   PORT-NOTE (coverage): because this is a per-key MERGE, shape fields NOT exposed by the
+            //   note (coverage): because this is a per-key MERGE, shape fields NOT exposed by the
             //   shape's `animationGet`/`animationSet` pair are never updated here — a stale value would
             //   survive a re-render. Safe for the shipped pointers (LineShape x1/y1/x2/y2/percent and
             //   RectShape x/y/width/height cover everything CartesianAxisPointer builds), but
@@ -505,7 +505,7 @@ open class BaseAxisPointer: AxisPointer {
             self._lastProps[ObjectIdentifier(h)] = nil
 
             // upstream passes the event handlers inside the createIcon opt; here they are wired onto the
-            //   element after construction (event seam — see createIcon PORT-NOTE):
+            //   element after construction (event seam — see createIcon note):
             //     onmousemove(e) { eventTool.stop(e.event); }  — prevent screen slide on mobile.
             _ = h.on("mousemove", { _, args in
                 if let e = args.first as? ElementEvent, let raw = e.event as? ZRRawEvent {
@@ -882,7 +882,7 @@ private func updateLabelShowHide(_ labelEl: Element, _ axisPointerModel: Model) 
 //     group && group.traverse(function (el) { if (el.type !== 'group') {
 //         z != null && (el.z = z); zlevel != null && (el.zlevel = zlevel); el.silent = silent; } });
 // }
-//   PORT-NOTE: upstream types `group: Element` and relies on dynamic dispatch — `Group.traverse`
+//   upstream types `group: Element` and relies on dynamic dispatch — `Group.traverse`
 //   visits children, while the base `Element.traverse` is EMPTY (a no-op). This is called with BOTH the
 //   crosshair `Group` AND the draggable `handle` (a non-group Displayable). Swift's `Element.traverse`
 //   and `Group.traverse` are not an override pair (different return types), so we branch explicitly:

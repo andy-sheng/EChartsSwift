@@ -31,7 +31,7 @@ public typealias GraphicElementEventCallback = @MainActor (Element, ElementEvent
 //   import Displayable from 'zrender/src/graphic/Displayable';       -> ZRenderKit `Displayable`.
 //   import Element from 'zrender/src/Element';                       -> ZRenderKit `Element`.
 //   import * as modelUtil from '../../util/model';                   -> `model.*` (util/modelUtil.swift).
-//   import * as graphicUtil from '../../util/graphic';               -> PORT-NOTE: `util/graphic.ts` NOT
+//   import * as graphicUtil from '../../util/graphic';               -> note: `util/graphic.ts` NOT
 //     ported as a namespace. `graphicUtil.Group`/`Image`/`Text` are the ZRenderKit `Group`/`ZRImage`/
 //     `ZRText`. `graphicUtil.setTooltipConfig` is the file-scope `setTooltipConfig` (util/graphic.swift);
 //     `graphicUtil.getShapeClass` (shape registry) is DEFERRED (see `newEl`).
@@ -92,7 +92,7 @@ open class GraphicComponentView: ComponentView {
     // type = GraphicComponentView.type; — ComponentView has no `type` stored prop; kept as a static.
 
     // upstream: private _elMap: ElementMap;
-    // PORT-NOTE: defaulted to a fresh HashMap at declaration (and re-set in `init`) so `render` never
+    // defaulted to a fresh HashMap at declaration (and re-set in `init`) so `render` never
     //   sees a nil map even if the framework skips the `init()` lifecycle hook. Base ComponentView
     //   forbids declaration-place init only for the legacy `extend` hazard, which is N/A in Swift.
     private var _elMap: ElementMap = createHashMap()
@@ -178,7 +178,7 @@ open class GraphicComponentView: ComponentView {
             //       if (!textConfig && convertResult.textConfig) { textConfig = elOption.textConfig = convertResult.textConfig; }
             //       if (!textContentOption && convertResult.textContent) { textContentOption = convertResult.textContent; }
             //   }
-            // PORT-NOTE (deferred): requires `util/styleCompat` (isEC4CompatibleStyle /
+            // TODO: requires `util/styleCompat` (isEC4CompatibleStyle /
             //   convertFromEC4CompatibleStyle), NOT ported (EC4 back-compat). Modern (EC5+) style options
             //   do not hit this branch; `textConfig`/`textContentOption` keep their option values.
 
@@ -234,7 +234,7 @@ open class GraphicComponentView: ComponentView {
             }
             else if action == "remove" {
                 // upstream: updateLeaveTo(elExisting, elOption);
-                //   PORT-NOTE: upstream force-derefs `elExisting` (which may be undefined); guarded here.
+                //   upstream force-derefs `elExisting` (which may be undefined); guarded here.
                 if let elExisting = elExisting {
                     updateLeaveTo(elExisting, elOption.option)
                 }
@@ -301,14 +301,14 @@ open class GraphicComponentView: ComponentView {
 
                 // upstream: graphicUtil.setTooltipConfig({ el, componentModel: graphicModel,
                 //   itemName: el.name, itemTooltipOption: elOption.tooltip });
-                // PORT-NOTE: `elOption["tooltip"]` is the raw `[String: Any]` option-bag form
+                // `elOption["tooltip"]` is the raw `[String: Any]` option-bag form
                 //   (`tooltip: { formatter: ... }`) — or the `String` shorthand. The provider
                 //   (`setTooltipConfig`, util/graphic.swift) accepts BOTH: its `[String: Any]` arm
                 //   bridges the bag through `commonTooltipOptionFromOptionBag`, so `formatter`,
                 //   `backgroundColor`, `position`, ... reach `ecData.tooltipConfig.option.common` and
                 //   from there `TooltipView._showComponentItemTooltip`'s cascade. (This used to say the
                 //   bag was DROPPED wholesale — that stopped being true when the provider grew the bag arm.)
-                // PORT-TODO: the bridge is a WHITELIST, not a pass-through —
+                // TODO: the bridge is a WHITELIST, not a pass-through —
                 //   `commonTooltipOptionFromOptionBag` copies only the declared `CommonTooltipOption`
                 //   fields, so any other key in the user's bag is still dropped: `showContent` (read by
                 //   `TooltipView._showTooltipContent` — upstream would suppress the box entirely),
@@ -397,7 +397,7 @@ open class GraphicComponentView: ComponentView {
             //       el, elOption, containerInfo, null,
             //       { hv: elOption.hv, boundingMode: elOption.bounding }, layoutPos);
             //
-            // PORT-NOTE: `layout.positionElement` (util/layout.swift) is ported and called below.
+            // `layout.positionElement` (util/layout.swift) is ported and called below.
             //   Per CONVENTIONS §3 the `out` param is dropped: it returns
             //   `(layouted: Bool, out: [String: Double])` (out carries the computed x/y).
             let posResult = layout.positionElement(
@@ -522,7 +522,7 @@ private func removeEl(
     if let existElParent = existElParent {
         _ = existElParent
         // upstream: elExisting.type === 'group' && elExisting.traverse(el => removeEl(el, ...));
-        //   PORT-NOTE: `Group.traverse` is an OVERLOAD of `Element.traverse` (its closure returns
+        //   `Group.traverse` is an OVERLOAD of `Element.traverse` (its closure returns
         //   `Bool`), so a `Void` closure on a statically-`Element` receiver would bind the empty
         //   `Element.traverse` base and silently skip the children. Dispatch to `Group` explicitly
         //   and iterate `children()` (a copy — `applyLeaveTransition` detaches synchronously when
@@ -534,7 +534,7 @@ private func removeEl(
             }
         }
         // upstream: applyLeaveTransition(elExisting, elOption, graphicModel);
-        //   PORT-NOTE: upstream force-derefs `graphicModel`; here it is optional (`_clear` passes
+        //   upstream force-derefs `graphicModel`; here it is optional (`_clear` passes
         //   `_lastGraphicModel`, which may be nil), so fall back to an immediate detach in that case.
         if let graphicModel = graphicModel {
             applyLeaveTransition(elExisting!, elOption?.option ?? [:], graphicModel)
@@ -543,7 +543,7 @@ private func removeEl(
             _ = p.remove(elExisting!)
         }
         // elMap.removeKey(inner(elExisting).id);
-        // PORT-NOTE: `HashMap.removeKey` is present on the ported HashMap shim (util/modelUtil.swift)
+        // `HashMap.removeKey` is present on the ported HashMap shim (util/modelUtil.swift)
         //   and called below.
         elMap.removeKey(inner(elExisting!).id)
     }
@@ -576,7 +576,7 @@ private func updateCommonAttrs(
             }
             else {
                 // else if ((el as any)[prop] == null) { (el as any)[prop] = item[1]; }
-                // PORT-NOTE: Swift cannot read arbitrary `el[prop]` back generically; set the default
+                // Swift cannot read arbitrary `el[prop]` back generically; set the default
                 //   unconditionally when the option does not specify it (matches the common case where
                 //   a freshly created element has no explicit z/z2/cursor).
                 _ = el.attr(prop, item.1)
@@ -612,7 +612,7 @@ private func updateCommonAttrs(
         el.name = model.convertOptionIdName(elOption.name, "") ?? ""
     }
     if elOption.id != nil {     // elOption.id != null && ((el as any).id = elOption.id)
-        // PORT-NOTE: upstream sets a dynamic `el.id`; Element has no `id` slot in ZRenderKit, so this
+        // upstream sets a dynamic `el.id`; Element has no `id` slot in ZRenderKit, so this
         //   is tracked via `inner(el).id` (set in createEl). No-op here.
     }
 }
@@ -626,7 +626,7 @@ private func getCleanedElOption(_ elOption: GraphicComponentElementOption) -> Gr
     let cleaned = GraphicComponentElementOption(bag)
     // zrUtil.each(['id', 'parentId', '$action', 'hv', 'bounding', 'textContent', 'clipPath']
     //     .concat(layoutUtil.LOCATION_PARAMS), function (name) { delete elOption[name]; });
-    // PORT-NOTE: `layout.LOCATION_PARAMS` (util/layout.swift) is ported and used below.
+    // `layout.LOCATION_PARAMS` (util/layout.swift) is ported and used below.
     let names = ["id", "parentId", "$action", "hv", "bounding", "textContent", "clipPath"]
         + layout.LOCATION_PARAMS
     util.each(names) { name, _ in
@@ -698,7 +698,7 @@ private func transitionIndexOf(_ transition: Any?, _ key: String) -> Double {
 }
 
 // Bridge a raw `textConfig` option bag into the typed `ElementTextConfig` struct. Minimal faithful
-// mapping of the common keys; PORT-NOTE: `rich`/union-typed fields not fully bridged.
+// mapping of the common keys; note: `rich`/union-typed fields not fully bridged.
 private func bridgeElementTextConfig(_ bag: [String: Any]?) -> ElementTextConfig? {
     guard let bag = bag else {
         return nil

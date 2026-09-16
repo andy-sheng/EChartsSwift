@@ -24,7 +24,7 @@ import ZRenderKit
 // upstream imports:
 //   import * as zrUtil from 'zrender/src/core/util';                        -> `util.each` (ZRenderKit).
 //   import VisualMapping from '../../visual/VisualMapping';
-//       -> PORT-NOTE: visual/VisualMapping.swift is ported. This file still uses a local stand-in,
+//       -> note: visual/VisualMapping.swift is ported. This file still uses a local stand-in,
 //          `sankeyMapValueToColor`, for the per-node linear color mapping
 //          (`new VisualMapping({ type:'color', mappingMethod:'linear', dataExtent:[min,max], visual:… })`
 //          + `mapping.mapValueToVisual(value)`); the stand-in does the linear palette interpolation
@@ -74,7 +74,7 @@ func sankeyVisual(_ ecModel: GlobalModel) {
                 //     dataExtent: [minValue, maxValue], visual: seriesModel.get('color')
                 // });
                 // const mapValueToColor = mapping.mapValueToVisual(node.getLayout().value);
-                // PORT-NOTE: uses the local `sankeyMapValueToColor` stand-in (see the top-of-file import
+                // uses the local `sankeyMapValueToColor` stand-in (see the top-of-file import
                 //   note); `dataExtent` [minValue, maxValue] and the series `color` palette are passed
                 //   through. Could be re-wired to the real (ported) VisualMapping.
                 let mapValueToColor = sankeyMapValueToColor(
@@ -126,7 +126,7 @@ private func sankeyLayoutValue(_ layout: Any?) -> Double {
     }
 }
 
-// PORT-NOTE: local stand-in for `new VisualMapping({type:'color', mappingMethod:'linear', dataExtent, visual})
+// local stand-in for `new VisualMapping({type:'color', mappingMethod:'linear', dataExtent, visual})
 //   .mapValueToVisual(value)`. visual/VisualMapping.swift is ported; this local implementation does the
 //   linear palette interpolation itself and could be re-wired to the real VisualMapping.
 //   The signature carries the exact upstream inputs.

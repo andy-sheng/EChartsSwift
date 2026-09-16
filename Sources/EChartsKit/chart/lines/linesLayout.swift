@@ -40,7 +40,7 @@ public let linesLayout: StageHandler = {
     handler.seriesType = "lines"
 
     // plan: createRenderPlanner(),
-    // PORT-NOTE: `createRenderPlanner()` yields the upstream 1-arg planner `(SeriesModel) ->
+    // `createRenderPlanner()` yields the upstream 1-arg planner `(SeriesModel) ->
     //   StageHandlerPlanReturn?` (nil-for-no-reset), while `StageHandlerPlan` is the 4-arg
     //   `(SeriesModel, GlobalModel, ExtensionAPI, Payload?) -> StageHandlerPlanReturn?`; the planner is
     //   created ONCE here (as upstream, so its `makeInner` large/progressive state persists across calls)
@@ -96,7 +96,7 @@ public let linesLayout: StageHandler = {
                 //   FIXED-SIZE (as upstream's Float32Array) — that is the LAYOUT INVARIANT
                 //   LargeLinesPath.buildPath / findDataIndex rely on (a Swift out-of-bounds read TRAPS where
                 //   upstream's typed array merely yields NaN), so do NOT switch this to appending.
-                //   PORT-NOTE (load-bearing bound guards below): the buffer is sized from `segCount` on the
+                //   note (load-bearing bound guards below): the buffer is sized from `segCount` on the
                 //   assumption of 2 coords per non-polyline item, but `getLineCoords` does NOT clamp `len`,
                 //   so a data item with 3+ coords writes past the end. Upstream's Float32Array SILENTLY
                 //   DROPS an out-of-range write; a Swift `[Double]` subscript TRAPS. The
@@ -134,7 +134,7 @@ public let linesLayout: StageHandler = {
                     let len = seriesModel.getLineCoords(i, &lineCoords)
                     // if (isPolyline) { points[offset++] = len; }
                     if isPolyline {
-                        // PORT-NOTE: upstream writes into a `Float32Array`, where an out-of-range store is
+                        // upstream writes into a `Float32Array`, where an out-of-range store is
                         //   SILENTLY DROPPED; `[Double]` traps instead. The non-polyline buffer is sized for
                         //   exactly 2 points per segment (`segCount * 4`), but `getLineCoords` returns the
                         //   ACTUAL coord count, which is >= 3 for a data item declaring 3+ `coords` with
@@ -179,7 +179,7 @@ public let linesLayout: StageHandler = {
                     }
                     // else {
                     else {
-                        // PORT-NOTE: upstream indexes `lineCoords[0]` / `lineCoords[1]` unconditionally; for
+                        // upstream indexes `lineCoords[0]` / `lineCoords[1]` unconditionally; for
                         //   a malformed 1-coord datum JS yields `undefined` -> NaN points, while Swift would
                         //   trap (the scratch is only grown to `len` entries by `getLineCoords`, and starts
                         //   empty on the first datum). Bail out to the (possibly empty) layout instead.

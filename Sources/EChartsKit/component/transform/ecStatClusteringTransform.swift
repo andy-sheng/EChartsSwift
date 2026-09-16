@@ -328,7 +328,7 @@ public final class EcStatHierarchicalKMeansStepper {
             }
         }
 
-        // PORT-NOTE (defensive, not in upstream): `centSplit` only stays -1 if every candidate's SSE sum
+        // note (defensive, not in upstream): `centSplit` only stays -1 if every candidate's SSE sum
         // is NaN, which requires every current cluster to be simultaneously empty — unreachable while
         // `dataSet` is non-empty (pigeonhole: some cluster owns every point). Guards a Swift crash (JS's
         // `centList[-1] = ...` would just silently no-op) rather than mirroring a literally unreachable path.

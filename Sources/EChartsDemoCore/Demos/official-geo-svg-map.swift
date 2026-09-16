@@ -251,7 +251,7 @@ option = {
             // `echarts.registerMap('sicily', { svg: svg })` inside the $.get callback.
             ECharts.registerMap("sicily", ["svg": sicilySVG] as [String: Any])
             return [
-                // PORT-NOTE: tooltip.formatter omitted — the JS closure console.log'd params and returned
+                // tooltip.formatter omitted — the JS closure console.log'd params and returned
                 // `params.name + ':'` followed by three 'xxxxxxxxxxxxxxxx' lines joined by <br>.
                 "tooltip": [:] as [String: Any],
                 "geo": [
@@ -261,7 +261,7 @@ option = {
                         "layoutCenter": ["50%", "50%"],
                         "layoutSize": "100%",
                         "selectedMode": "single",
-                        // PORT-NOTE: geo[0].tooltip.formatter omitted — the JS closure returned a fixed
+                        // geo[0].tooltip.formatter omitted — the JS closure returned a fixed
                         // 11-line 'This is the introduction:' / 'xxxxxxxxxxxxxxxxxxxxx' block joined by <br>.
                         "tooltip": [
                             "show": true,

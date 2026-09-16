@@ -331,7 +331,7 @@ public func clone(_ path: Path, _ count: Double) -> [Path] {
 
 private func copyPathProps(_ source: Path, _ target: Path) {
     // upstream: target.setStyle(source.style);
-    // PORT-NOTE: our rich style is `pathStyle` (PathStyleProps); mirror clonePath's approach
+    // our rich style is `pathStyle` (PathStyleProps); mirror clonePath's approach
     //   (useStyle round-trips the magic style by value). Merge-vs-replace edge cases deferred.
     target.useStyle(source.pathStyle)
     target.z = source.z
@@ -384,7 +384,7 @@ public func split(
         ) { poly, _ in polygonConvert(poly) }
         let polygonCount = polygons.count
         if polygonCount == 0 {
-            // PORT-NOTE: upstream indexes `polygons[0]` here even though polygonCount === 0 (a latent
+            // upstream indexes `polygons[0]` here even though polygonCount === 0 (a latent
             //   upstream bug — `polygons[0]` is `undefined` in JS). Guarded to avoid a Swift bounds
             //   trap; the empty-polygon path yields an empty point set.
             binaryDivideRecursive(binaryDividePolygon, makePolygonShape(polygons.first ?? []), count, &outShapes)

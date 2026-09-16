@@ -25,7 +25,7 @@
 //     parenthesised zone name on the native one ("Sat Oct 04 1997 00:00:00 GMT+0800" vs
 //     "… GMT+0800 (China Standard Time)") — DateFormatter has no format for that suffix. Its only reader is
 //     the tooltip formatter, which is omitted natively; nothing renders from it.
-//   - `tooltip.formatter` is a JS closure — omitted on the native pane (PORT-NOTE at the key), verbatim on
+//   - `tooltip.formatter` is a JS closure — omitted on the native pane (note at the key), verbatim on
 //     the web pane. Everything else in the option is carried.
 //   - webOptionJS drops only what a classic script cannot parse: the `interface DataItem` block and the type
 //     annotations (`(): DataItem`, `: DataItem[]`, `params: any`, `setOption<echarts.EChartsOption>`), plus
@@ -218,7 +218,7 @@ private let dynamicData2Option: [String: Any] = [
     ] as [String: Any],
     "tooltip": [
         "trigger": "axis",
-        // PORT-NOTE: tooltip.formatter omitted — a JS closure. It took the axis trigger's first param,
+        // tooltip.formatter omitted — a JS closure. It took the axis trigger's first param,
         // re-parsed `params.name` (the JS Date string) into a Date, and rendered the row as
         // `D/M/YYYY : <value>` (e.g. '4/10/1997 : 46'). A Swift [String: Any] cannot carry a closure, so
         // the native pane falls back to the default axis tooltip (series name + raw value).

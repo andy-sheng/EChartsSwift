@@ -13,7 +13,7 @@
 // PHASE-2 (host facade) PORT. This is the `ZRender` host facade that ties `Storage` + `Painter`
 // + the `Element` tree together. The build/render lifecycle (add / remove / refresh / resize /
 // dispose) and the still-frame / flush bookkeeping are translated faithfully. The pieces that
-// belong to deferred seams are STUBBED with `// PORT-NOTE` (faithful signatures):
+// belong to deferred seams are STUBBED with `// note` (faithful signatures):
 //
 // TRANSLATED (host lifecycle):
 //   - class ZRender; constructor wiring of storage + painter (+ the real Animation clock:
@@ -26,7 +26,7 @@
 //   - module-level: instances registry, init / dispose / disposeAll / getInstance,
 //     registerPainter / painterCtors, SSR-data getter hooks, version
 //
-// PARTIALLY-STUBBED seams (PORT-NOTE — some have since landed; see the per-line notes below):
+// PARTIALLY-STUBBED seams (note — some have since landed; see the per-line notes below):
 //   - Handler / HandlerProxy (the input / hit-dispatch seam, CONVENTIONS §9) — not ported.
 //     `handler.*` calls (resize / setCursorStyle / findHover / on / off / trigger / dispose) are
 //     stubbed; ZRender events are routed through a local `Eventful` (Handler extends Eventful
@@ -37,7 +37,7 @@
 //     Existing explicit painter injection remains a compatibility overload.
 //   - configLayer (forwarded to painter), useCoarsePointer / pointerSize (honored) are wired;
 //     useDirtyRect is stored on opts but the dirty-rect render optimization itself is a
-//     canvas-layer feature — PORT-NOTE (deferred): requires the CanvasLayer dirty-rect painter.
+//     canvas-layer feature — TODO: requires the CanvasLayer dirty-rect painter.
 
 import Foundation
 
@@ -48,7 +48,7 @@ import Foundation
 // import Storage from './Storage';                               → Storage
 // import {PainterBase} from './PainterBase';                     → PainterBase protocol (below)
 // import Animation, {getTime} from './animation/Animation';      → Animation/Animation.swift
-// import HandlerProxy from './dom/HandlerProxy';                 → PORT-NOTE: DOM seam, not ported
+// import HandlerProxy from './dom/HandlerProxy';                 → note: DOM seam, not ported
 // import Element, { ElementEventCallback } from './Element';     → Element
 // import { Dictionary, ElementEventName, RenderedEvent, WithThisType } from './core/types';
 // import { LayerConfig } from './canvas/Layer';                  → `LayerConfig` (ported below in this file)
@@ -61,7 +61,7 @@ import Foundation
 // import Group from './graphic/Group';                           → Group
 // import { CanvasPainterRefreshOpt } from './canvas/Painter';    → CanvasPainterRefreshOpt (below)
 
-// PORT-NOTE: Swift closures replace upstream constructor types; parameters preserve dom,
+// Swift closures replace upstream constructor types; parameters preserve dom,
 // storage, opts and id. Native ZRenderHost implementations replace HTMLElement containers.
 public typealias PainterBaseCtor = (Any?, Storage, ZRenderInitOpt?, Double) -> PainterBase
 
@@ -129,7 +129,7 @@ fileprivate func isDarkMode(_ backgroundColor: Any?) -> Bool {
 //   (declared at the bottom of this file); `Element.__zr` is the real `ZRender`.
 public final class ZRender {
     /// Not necessary if using SSR painter like svg-ssr
-    // upstream: dom?: HTMLElement → no DOM natively (PORT-NOTE: input/host seam).
+    // upstream: dom?: HTMLElement → no DOM natively (note: input/host seam).
     public var dom: Any?
 
     public var id: Double
@@ -167,7 +167,7 @@ public final class ZRender {
     private var _backgroundColor: Any?   // upstream: string | GradientObject | PatternObject
 
     // upstream: constructor(id: number, dom?: HTMLElement, opts?: ZRenderInitOpt).
-    // PORT-NOTE: explicit painter injection is retained as a compatibility overload.
+    // explicit painter injection is retained as a compatibility overload.
     //   The `proxy` (HandlerProxyInterface) is likewise INJECTED — natively it is the hand-written
     //   UIKit bridge (`NativeHandlerProxy`); nil ⇒ Handler falls back to `EmptyProxy` (headless).
     public convenience init(_ id: Double, _ dom: Any? = nil, _ opts: ZRenderInitOpt? = nil,
@@ -622,10 +622,10 @@ public final class ZRender {
 public struct ZRenderInitOpt {
     public var renderer: String?    // 'canvas' or 'svg
     public var devicePixelRatio: Double?
-    public var width: Double?       // upstream: number | string (10, 10px, 'auto') — PORT-NOTE string
+    public var width: Double?       // upstream: number | string (10, 10px, 'auto') — note string
     public var height: Double?      // upstream: number | string
     public var useDirtyRect: Bool?
-    public var useCoarsePointer: Bool?  // upstream: 'auto' | boolean — PORT-NOTE 'auto'
+    public var useCoarsePointer: Bool?  // upstream: 'auto' | boolean — note 'auto'
     public var pointerSize: Double?
     public var ssr: Bool?   // If enable ssr mode.
 
@@ -634,7 +634,7 @@ public struct ZRenderInitOpt {
 
 // upstream: resize(opts?: { width?, height?, devicePixelRatio? }). Modeled as a struct.
 public struct ZRenderResizeOpt {
-    public var width: Double?    // upstream: number | string — PORT-NOTE string
+    public var width: Double?    // upstream: number | string — note string
     public var height: Double?   // upstream: number | string
     public var devicePixelRatio: Double?
 
@@ -643,7 +643,7 @@ public struct ZRenderResizeOpt {
 
 /// Initializing a zrender instance
 /// - dom: Not necessary if using SSR painter like svg-ssr
-// PORT-NOTE (deviation): the painter is injected (no DOM ctor natively). `init` is a Swift keyword;
+// note (deviation): the painter is injected (no DOM ctor natively). `init` is a Swift keyword;
 //   the free function is named with backticks to keep the upstream name.
 @discardableResult
 public func `init`(_ dom: Any? = nil, _ opts: ZRenderInitOpt? = nil, painter: PainterBase, proxy: HandlerProxyInterface? = nil) -> ZRender {
@@ -684,7 +684,7 @@ public func registerPainter(_ name: String, _ ctor: @escaping PainterBaseCtor) {
     painterCtors[name] = ctor
 }
 
-// PORT-NOTE: ElementSSRData / ElementSSRDataGetter — `zrUtil.HashMap<unknown>` SSR-data hooks.
+// ElementSSRData / ElementSSRDataGetter — `zrUtil.HashMap<unknown>` SSR-data hooks.
 //   HashMap is not ported; modeled with `[String: Any]`.
 public typealias ElementSSRData = [String: Any]
 public typealias ElementSSRDataGetter = (_ el: Element) -> [String: Any]
@@ -750,7 +750,7 @@ public protocol PainterBase: AnyObject {
     /// Repaint the (already flattened + z-sorted) display list. See the DEVIATION note above.
     func refresh(_ displayList: [Displayable])
 
-    /// Resize the drawing surface. upstream width/height are `number | string` (PORT-NOTE string).
+    /// Resize the drawing surface. upstream width/height are `number | string` (note string).
     func resize(_ width: Double?, _ height: Double?, _ dpr: Double?)
 
     /// Clear the surface.

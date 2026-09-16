@@ -5,7 +5,7 @@ import ZRenderKit
 
 // import { modifyHSL } from 'zrender/src/tool/color';  → color.modifyHSL (ZRenderKit)
 // import tokens from '../visual/tokens';
-// PORT-NOTE: the theme palette is inlined below to match `tokens.color.theme` (visual/tokens.swift is
+// the theme palette is inlined below to match `tokens.color.theme` (visual/tokens.swift is
 // ported; the values are kept inlined here verbatim).
 
 // upstream:
@@ -14,13 +14,13 @@ import ZRenderKit
 //   if (typeof navigator !== 'undefined') {
 //       platform = navigator.platform || '';
 //   }
-// PORT-NOTE (platform): no `navigator` on Apple platforms; platform stays '' (never matches /^Win/), so
+// note (platform): no `navigator` on Apple platforms; platform stays '' (never matches /^Win/), so
 // `textStyle.fontFamily` resolves to 'sans-serif' below — same as the node branch upstream.
 private let platform = ""
 
 private let decalColor = "rgba(0, 0, 0, 0.2)"
 
-// PORT-NOTE: upstream is `tokens.color.theme` (from ../visual/tokens). Inlined verbatim here.
+// upstream is `tokens.color.theme` (from ../visual/tokens). Inlined verbatim here.
 private let themeColorTheme: [String] = [
     "#5070dd",
     "#b6d634",
@@ -116,7 +116,7 @@ public enum globalDefault {
         // http://blogs.adobe.com/webplatform/2014/02/24/using-blend-modes-in-html-canvas/
         // https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/globalCompositeOperation
         // Default is source-over
-        // PORT-NOTE: upstream value is `null`; represented as NSNull() to retain the key in
+        // upstream value is `null`; represented as NSNull() to retain the key in
         // the [String: Any] bag (merge guards null/undefined when consuming).
         "blendMode": NSNull(),
 

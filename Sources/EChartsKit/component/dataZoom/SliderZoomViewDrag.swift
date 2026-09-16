@@ -225,7 +225,7 @@ extension SliderZoomView {
 
     // upstream: _onClickPanel(e) — a click on the slider panel recenters the window on the click point.
     //   `sliderGroup.transformCoordToLocal` maps the global click into slider-local coords.
-    // PORT-NOTE: `transformCoordToLocal` (invert-transform of the global point) is a ported Group helper
+    // `transformCoordToLocal` (invert-transform of the global point) is a ported Group helper
     //   (ZRenderKit Transformable). The caller (the panel click seam) supplies the already-localized
     //   point, so `_onClickPanel` recenters the window on the click point (the drag handles remain the
     //   primary interaction; the click-panel is a convenience).
@@ -251,7 +251,7 @@ extension SliderZoomView {
     // upstream: _dispatchZoomAction(realtime) — dispatch the Phase-32 `dataZoom` action with the new
     //   start/end percents. This re-filters + re-renders (the action handler calls `setRawRange`).
     //   NOTE (throttle): upstream comments "This action will be throttled." The throttle wrapper
-    //   (`throttle`/`createOrUpdate` on `_dispatchZoomAction`) is a PORT-NOTE (deferred): requires
+    //   (`throttle`/`createOrUpdate` on `_dispatchZoomAction`) is a TODO: requires
     //   `throttleUtil.createOrUpdate` (not ported) — here we dispatch directly. Faithful semantics
     //   otherwise; only the frame-coalescing is deferred.
     public func _dispatchZoomAction(_ realtime: Bool) {

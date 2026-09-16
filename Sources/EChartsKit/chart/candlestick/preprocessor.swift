@@ -28,7 +28,7 @@ import ZRenderKit
 
 // upstream: export default function candlestickPreprocessor(option: ECUnitOption)
 //
-// PORT-NOTE: `option.series` items are objects that upstream mutates IN PLACE (`seriesItem.type = ...`).
+// `option.series` items are objects that upstream mutates IN PLACE (`seriesItem.type = ...`).
 //   Swift `[String: Any]` is a value type, so the port takes `inout` and writes the mutated item back
 //   into the array (mirrors marker/installMarkPoint.swift's `markPointPreprocessor(_:)` precedent).
 //   The `OptionPreprocessor` typealias registration is owned by the Integrate stage.

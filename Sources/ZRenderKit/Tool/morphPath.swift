@@ -19,7 +19,7 @@
 //   into the typed hook being non-nil.
 //
 // ANIMATION HOOKUP: `morphPath` / `combineMorph` drive the morph via `toPath.animateTo({ __morphT: 1 })`
-//   (Element.animateTo). PORT-NOTE: the Animator/animateTo path is now ported (Phase 3 — animateTo
+//   (Element.animateTo). note: the Animator/animateTo path is now ported (Phase 3 — animateTo
 //   wires the real Animator system, see Element.swift), so tweening `__morphT` 0→1 drives the
 //   buildPath interpolation below, which is the real bar→pie geometry.
 
@@ -748,7 +748,7 @@ public func combineMorph(
 
     var toSubPathList = dividePath(DividePathParams(path: toPath, count: Double(separateCount)))
     if toSubPathList.count != separateCount {
-        // PORT-NOTE: console.error('Invalid morphing: unmatched splitted path')
+        // console.error('Invalid morphing: unmatched splitted path')
         return createEmptyReturn()
     }
 
@@ -935,7 +935,7 @@ public func separateMorph(
             fromPathList[i].setLocalTransform(fromPathTransform)
         }
         if fromPathList.count != toLen {
-            // PORT-NOTE: console.error('Invalid morphing: unmatched splitted path')
+            // console.error('Invalid morphing: unmatched splitted path')
             return createEmptyReturn()
         }
     }

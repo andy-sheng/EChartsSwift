@@ -1,7 +1,7 @@
 // Ported from zrender/src/core/platform.ts — keep in sync with upstream
 import Foundation
 
-// PORT-NOTE: upstream uses DOM `HTMLCanvasElement` / `HTMLImageElement`. There is no DOM
+// upstream uses DOM `HTMLCanvasElement` / `HTMLImageElement`. There is no DOM
 // in Phase 0; we keep opaque placeholder types so the seam compiles. createCanvas/loadImage
 // are stubs (see below) — only the ASCII-width-table measureText fallback is functional.
 public typealias CanvasLike = Any
@@ -17,7 +17,7 @@ public struct TextMetrics {
 
 public let DEFAULT_FONT_SIZE: Double = 12
 public let DEFAULT_FONT_FAMILY: String = "sans-serif"
-// PORT-NOTE: upstream interpolates the numeric `${DEFAULT_FONT_SIZE}` ("12px sans-serif").
+// upstream interpolates the numeric `${DEFAULT_FONT_SIZE}` ("12px sans-serif").
 // DEFAULT_FONT_SIZE is a Double per CONVENTIONS §1; cast to Int for the px string so the
 // value stays byte-identical to upstream ("12px", not "12.0px").
 public let DEFAULT_FONT: String = "\(Int(DEFAULT_FONT_SIZE))px \(DEFAULT_FONT_FAMILY)"
@@ -64,7 +64,7 @@ private let defaultWidthMapStr: String = "007LLmW'55;N0500LLLLLLLLLL00NNNLzWW\\\
 
 private func getTextWidthMap(_ mapStr: String) -> [String: Double] {
     var map: [String: Double] = [:]
-    // PORT-NOTE: upstream guards `typeof JSON === 'undefined'` (a legacy/no-JSON runtime
+    // upstream guards `typeof JSON === 'undefined'` (a legacy/no-JSON runtime
     // bailout). JSON is always present in Swift; we take the available branch and drop the
     // early return.
     let codeUnits = Array(mapStr.utf16)
@@ -91,7 +91,7 @@ public final class DefaultPlatformAPI: PlatformAPI {
 
     // Export methods
     public func createCanvas() -> CanvasLike? {
-        // PORT-NOTE (platform): stub. Upstream: `typeof document !== 'undefined' && document.createElement('canvas')`.
+        // note (platform): stub. Upstream: `typeof document !== 'undefined' && document.createElement('canvas')`.
         // No DOM in this target; there is no HTMLCanvasElement equivalent, so this always returns nil
         // and measureText falls back to the ASCII width table.
         return nil
@@ -100,13 +100,13 @@ public final class DefaultPlatformAPI: PlatformAPI {
     public func measureText(_ text: String, _ font: String?) -> TextMetrics {
         if _ctx == nil {
             let canvas = platformApi.createCanvas()
-            // PORT-NOTE: upstream `_ctx = canvas && canvas.getContext('2d')`. createCanvas is a
+            // upstream `_ctx = canvas && canvas.getContext('2d')`. createCanvas is a
             // stub returning nil, so `_ctx` stays nil and we always take the fallback below.
             _ = canvas
             _ctx = nil
         }
         if _ctx != nil {
-            // PORT-NOTE: real 2d-context measurement (upstream caches `_cachedFont = _ctx.font`
+            // real 2d-context measurement (upstream caches `_cachedFont = _ctx.font`
             // then `return _ctx.measureText(text)`). Unreachable in Phase 0 since `_ctx` is nil.
             _ = _cachedFont
             return TextMetrics(width: 0)
@@ -149,7 +149,7 @@ public final class DefaultPlatformAPI: PlatformAPI {
         _ onload: @escaping () -> Void,
         _ onerror: @escaping () -> Void
     ) -> ImageLike? {
-        // PORT-NOTE (platform): stub. Upstream creates a DOM `new Image()`, assigns onload/onerror/src and
+        // note (platform): stub. Upstream creates a DOM `new Image()`, assigns onload/onerror/src and
         // returns it. No DOM Image loader in this target; return nil.
         _ = (src, onload, onerror)
         return nil
@@ -162,7 +162,7 @@ public final class DefaultPlatformAPI: PlatformAPI {
     }
 
     // Helper mirroring the inline regex extraction in measureText.
-    // PORT-NOTE: NSRegularExpression replaces JS RegExp.exec; returns capture group 1 if matched.
+    // NSRegularExpression replaces JS RegExp.exec; returns capture group 1 if matched.
     private func firstCaptureGroup1(pattern: String, in string: String) -> String? {
         guard let regex = try? NSRegularExpression(pattern: pattern) else {
             return nil

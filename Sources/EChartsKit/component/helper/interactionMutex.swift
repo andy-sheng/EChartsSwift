@@ -23,7 +23,7 @@ import ZRenderKit
 
 // upstream imports:
 //   import { ZRenderType } from 'zrender/src/zrender';   -> ZRenderKit `ZRender`.
-//   import * as echarts from '../../core/echarts';       -> registerAction (see PORT-NOTE below).
+//   import * as echarts from '../../core/echarts';       -> registerAction (see note below).
 //   import { noop } from 'zrender/src/core/util';         -> unused (only fed to the deferred action).
 //   import { makeInner } from '../../util/model';         -> `model.makeInner` (util/modelUtil.swift).
 
@@ -63,7 +63,7 @@ public enum interactionMutex {
     }
 }
 
-// PORT-NOTE: upstream self-registers a `takeGlobalCursor` action (`echarts.registerAction(
+// upstream self-registers a `takeGlobalCursor` action (`echarts.registerAction(
 //   {type: 'takeGlobalCursor', event: 'globalCursorTaken', update: 'update'}, noop)`) at module load.
 //   The graph-roam path does not take the global cursor; the action is now registered by the ported
 //   toolbox DataZoom consumer (`component/toolbox/toolboxAction.swift`, `installToolboxActions`), which

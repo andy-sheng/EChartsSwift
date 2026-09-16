@@ -19,7 +19,7 @@
 */
 
 import ZRenderKit
-// import env from 'zrender/src/core/env';                      -> ZRenderKit `env` (module-internal; see isAnimationEnabled PORT-NOTE)
+// import env from 'zrender/src/core/env';                      -> ZRenderKit `env` (module-internal; see isAnimationEnabled note)
 // import {
 //     enableClassExtend, ExtendableConstructor,
 //     enableClassCheck, CheckableConstructor
@@ -41,7 +41,7 @@ import ZRenderKit
 //     ? (R extends keyof Opt ? Opt[R] : ModelOption)
 //     : ModelOption;
 
-// PORT-NOTE: upstream is generic `Model<Opt = ModelOption>` and uses declaration merging
+// upstream is generic `Model<Opt = ModelOption>` and uses declaration merging
 //   (`interface Model extends LineStyleMixin, ItemStyleMixin, TextStyleMixin, AreaStyleMixin {}`)
 //   plus runtime `mixin(Model, ...)` to graft the four style mixins onto the class. Per
 //   CONVENTIONS §2 the generic is dropped (`Opt` -> the dynamic `ModelOption` = `Any` bag) and
@@ -78,12 +78,12 @@ open class Model: ItemStyleMixin, TextStyleMixin, AreaStyleMixin {    // TODO: T
     public weak var ecModel: GlobalModel?
 
     // TODO Opt should only be object.
-    // PORT-NOTE: upstream `option: Opt` (Opt = ModelOption = Dictionary<any> | any[] | string |
+    // upstream `option: Opt` (Opt = ModelOption = Dictionary<any> | any[] | string |
     //   number | boolean | function). The dynamic option tree is modeled as the `Any?` bag
     //   (CONVENTIONS): keyed access casts to `[String: Any]` in `getShallow`/`_doGet`.
     public var option: ModelOption?
 
-    // PORT-NOTE: upstream `type ItemModel = Model<...> & { getAnimationDelayParams?(path): {...} }`
+    // upstream `type ItemModel = Model<...> & { getAnimationDelayParams?(path): {...} }`
     //   (PictorialBarView.ts): a per-instance method monkeypatched onto the item model in
     //   `getItemModel` and read structurally in basicTransition's `animateOrSetProps`
     //   (`animatableModel.getAnimationDelayParams(el, dataIndex)`). Ported as an OPTIONAL STORED
@@ -95,7 +95,7 @@ open class Model: ItemStyleMixin, TextStyleMixin, AreaStyleMixin {    // TODO: T
     /// animation settings because its own option is not a dictionary.
     public var isAnimationEnabledOverride: (() -> Bool?)?
 
-    // PORT-NOTE: marked `required` so `clone()` can reconstruct the dynamic subclass via
+    // marked `required` so `clone()` can reconstruct the dynamic subclass via
     //   `type(of: self).init(...)` (a Swift metatype can only call a `required` initializer),
     //   faithfully mirroring upstream's `new (this.constructor as any)(...)`. Subclasses that
     //   declare their own designated init already override this as `required` (e.g. ComponentModel);
@@ -116,7 +116,7 @@ open class Model: ItemStyleMixin, TextStyleMixin, AreaStyleMixin {    // TODO: T
         // }
     }
 
-    // PORT-NOTE: upstream has an overridable lifecycle method literally named `init` (distinct
+    // upstream has an overridable lifecycle method literally named `init` (distinct
     //   from the JS constructor above), which subclasses (ComponentModel/SeriesModel) override.
     //   Swift reserves `init` for initializers, so the method keeps the upstream name via a
     //   backtick-escaped identifier; subclasses override `` `init` ``.
@@ -127,7 +127,7 @@ open class Model: ItemStyleMixin, TextStyleMixin, AreaStyleMixin {    // TODO: T
      */
     open func mergeOption(_ option: ModelOption?, _ ecModel: GlobalModel? = nil) {
         // upstream: merge(this.option, option, true);
-        // PORT-NOTE: `util.merge` requires both target & source to be `[String: Any]` dicts; the
+        // `util.merge` requires both target & source to be `[String: Any]` dicts; the
         //   dynamic option bag is `Any?`. Both are cast; when either is not a dict the merge is a
         //   no-op — semantically equivalent to upstream, whose `merge(target, null)` is likewise a
         //   no-op (post-init `self.option` is always a dict). The null/undefined-guard nuance lives
@@ -144,7 +144,7 @@ open class Model: ItemStyleMixin, TextStyleMixin, AreaStyleMixin {    // TODO: T
     // return type have to be ModelOption or can be Option<R>?
     // (Is there any chance that parentModel value type is different?)
     //
-    // PORT-NOTE: the upstream `get<R extends keyof Opt>(...)` overload chain (1–3 level keyed
+    // the upstream `get<R extends keyof Opt>(...)` overload chain (1–3 level keyed
     //   type-narrowing) collapses, with the generic, to the `path: string | readonly string[]`
     //   signature returning `ModelOption`. Modeled as two overloads (String / [String]) plus a
     //   no-arg form for the `path == null` branch, so call sites stay byte-identical.
@@ -186,7 +186,7 @@ open class Model: ItemStyleMixin, TextStyleMixin, AreaStyleMixin {    // TODO: T
 
     // TODO At most 3 depth?
     //
-    // PORT-NOTE: the upstream `getModel<R extends keyof Opt>(...)` overload chain collapses, with
+    // the upstream `getModel<R extends keyof Opt>(...)` overload chain collapses, with
     //   the generic dropped, to `getModel(path?: string | readonly string[], parentModel?: Model)`.
     //   Modeled as a String convenience + the `[String]?` core (the latter also covers the
     //   `path == null` form).
@@ -225,7 +225,7 @@ open class Model: ItemStyleMixin, TextStyleMixin, AreaStyleMixin {    // TODO: T
     // Pending
     public func clone() -> Self {
         // upstream: const Ctor = this.constructor; return new (Ctor as any)(clone(this.option));
-        // PORT-NOTE: `type(of: self)` is the dynamic metatype (upstream's `this.constructor`) and the
+        // `type(of: self)` is the dynamic metatype (upstream's `this.constructor`) and the
         //   `required` designated init lets us call it on that metatype, so a `clone()` of a subclass
         //   preserves its concrete type. The `-> Self` return type surfaces that to callers.
         return type(of: self).init(util.clone(self.option))
@@ -258,7 +258,7 @@ open class Model: ItemStyleMixin, TextStyleMixin, AreaStyleMixin {    // TODO: T
     open func isAnimationEnabled() -> Bool? {
         if let override = isAnimationEnabledOverride { return override() }
         // upstream: if (!env.node && this.option) { ... }
-        // PORT-NOTE: `env` is module-internal to ZRenderKit (not importable here), and the
+        // `env` is module-internal to ZRenderKit (not importable here), and the
         //   ZRenderKit port hardcodes `env.node = true` (windowless branch) — which would
         //   disable animation on an interactive native client. We treat the native client as
         //   browser-like (`!env.node` == true) so animation can be enabled; revisit once a public
@@ -339,7 +339,7 @@ private func modelOptionTruthy(_ value: ModelOption?) -> Bool {
 // mixin(Model, AreaStyleMixin);
 // mixin(Model, TextStyleMixin);
 //
-// PORT-NOTE: the module-level `enableClassExtend`/`enableClassCheck`/`mixin` calls run at TS
+// the module-level `enableClassExtend`/`enableClassCheck`/`mixin` calls run at TS
 //   module-load time. Swift library modules have no load-time execution, and:
 //     - `clazz.enableClassExtend`/`clazz.enableClassCheck` are no-ops (native subclassing +
 //       `is`/`as?` replace the prototype `extend`/`isInstance` machinery — see util/clazz.swift);

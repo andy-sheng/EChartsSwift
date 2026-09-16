@@ -2,7 +2,7 @@
 //
 // Proves, headlessly (no TooltipView / pointer host), that:
 //   (1) `SeriesModel.formatTooltip(dataIndex, ...)` -> `defaultSeriesFormatTooltip` produces a real
-//       `TooltipMarkupSection` fragment (NOT the old nil PORT-NOTE stub), and
+//       `TooltipMarkupSection` fragment (NOT the old nil note stub), and
 //   (2) `normalizeTooltipFormatResult` unwraps it to a `TooltipMarkupBlockFragment`, and
 //   (3) `buildTooltipMarkup(frag, ...)` renders that fragment to an actual content STRING that
 //       carries BOTH the category name ("A") and the datum value ("10"), in BOTH `renderMode`
@@ -47,7 +47,7 @@ final class ZZTooltipContentTests: XCTestCase {
         let ec = makeBarChart()
         let series = ec.getModel()!.getSeriesByIndex(0)!
         let result = series.formatTooltip(0)
-        XCTAssertNotNil(result, "formatTooltip must produce content (not the old nil PORT-NOTE stub)")
+        XCTAssertNotNil(result, "formatTooltip must produce content (not the old nil note stub)")
 
         let normalized = normalizeTooltipFormatResult(result)
         XCTAssertNotNil(normalized.frag, "the result must normalize to a TooltipMarkupBlockFragment")

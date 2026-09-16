@@ -45,7 +45,7 @@ import ZRenderKit
 //             : Math.abs(axis.dataToCoord(val - halfSize) - axis.dataToCoord(val + halfSize));
 //     });
 // }
-// PORT-NOTE: pinned upstream (echarts 6.1.0) uses `calcBandWidth(axis).w` here (breaks/statistics-aware),
+// pinned upstream (echarts 6.1.0) uses `calcBandWidth(axis).w` here (breaks/statistics-aware),
 //   not the deprecated `axis.getBandWidth()`. Mirrors the polar/single prepareCustom siblings.
 private func dataToCoordSize(_ coordSys: Cartesian2D, _ dataSize: [Double], _ dataItem: [Double]?) -> [Double] {
     let item = dataItem ?? [0, 0]

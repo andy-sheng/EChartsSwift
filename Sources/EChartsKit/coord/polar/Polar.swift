@@ -25,7 +25,7 @@ import ZRenderKit
 //   import RadiusAxis from './RadiusAxis';                             -> RadiusAxis (sibling, this phase).
 //   import AngleAxis from './AngleAxis';                               -> AngleAxis (sibling, this phase).
 //   import PolarModel, { COORD_SYS_TYPE_POLAR } from './PolarModel';   -> PolarModel + COORD_SYS_TYPE_POLAR.
-//       PORT-NOTE: coord/polar/PolarModel.swift is ported. This file references its
+//       coord/polar/PolarModel.swift is ported. This file references its
 //       conventional public API: the constant `COORD_SYS_TYPE_POLAR = "polar"` and the class
 //       `PolarModel` (a `ComponentModel` conforming to `CoordinateSystemHostModel`, so
 //       `.coordinateSystem: CoordinateSystemMaster?`).
@@ -399,7 +399,7 @@ public final class Polar: CoordinateSystemMaster {
 //     return polarModel && polarModel.coordinateSystem
 //         || seriesModel && seriesModel.coordinateSystem as Polar;
 // }
-//   `finder` is `[String: Any]` → field access via subscript. PORT-NOTE: references sibling `PolarModel`.
+//   `finder` is `[String: Any]` → field access via subscript. note: references sibling `PolarModel`.
 private func getCoordSys(_ finder: ParsedModelFinderKnown) -> Polar? {
     let seriesModel = finder["seriesModel"] as? SeriesModel
     let polarModel = finder["polarModel"] as? PolarModel

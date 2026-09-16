@@ -25,7 +25,7 @@ import ZRenderKit
 
 // import type Matrix from './Matrix';                                  -> Matrix (coord/matrix/Matrix.swift; coord-sys master)
 //
-// PORT-NOTE: `Matrix` (coord/matrix/Matrix.swift) is the coordinate-system master (registered via
+// `Matrix` (coord/matrix/Matrix.swift) is the coordinate-system master (registered via
 //   CoordinateSystemManager.register("matrix", ...)) and is ported. The surface referenced below
 //   (getRect(), dataToPoint(_ , _), dataToLayout(_ , _)) mirrors upstream Matrix.ts.
 

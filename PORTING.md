@@ -1,6 +1,6 @@
 # PORTING.md — Hard rulebook for TS → Swift ports (zrender/echarts)
 
-> This page is the **mechanical checklist** you run for every symbol you translate. Overriding goal: **structural fidelity** — a ported `.swift` must diff cleanly against its `.ts` original. When fidelity fights elegance, pick fidelity. Every file starts with `// Ported from <upstream/path>.ts — keep in sync with upstream` and marks gaps with `// PORT-TODO:`.
+> This page is the **mechanical checklist** you run for every symbol you translate. Overriding goal: **structural fidelity** — a ported `.swift` must diff cleanly against its `.ts` original. When fidelity fights elegance, pick fidelity. Every file starts with `// Ported from <upstream/path>.ts — keep in sync with upstream` and marks gaps with `// TODO:`.
 
 ---
 
@@ -74,7 +74,7 @@ extension SeriesData {
 }
 ```
 
-Mixins (`util.inherits` / `applyMixin`) → protocol + protocol-extension replicating the exact upstream method set; leave a `// PORT-TODO:` noting the mixin.
+Mixins (`util.inherits` / `applyMixin`) → protocol + protocol-extension replicating the exact upstream method set; leave a `// TODO:` noting the mixin.
 
 ---
 
@@ -89,7 +89,7 @@ override func buildPath(_ ctx: PathProxy, _ shape: PathShape, _ inBatch: Bool) {
 }
 ```
 
-Do **not** invent `CGContext`/`CGPath` calls inside `ZRenderKit`. Leave `// PORT-TODO: backend wiring` at the paint seam; the native backend (`NativePainter`) is hand-written, not ported.
+Do **not** invent `CGContext`/`CGPath` calls inside `ZRenderKit`. Leave `// TODO: backend wiring` at the paint seam; the native backend (`NativePainter`) is hand-written, not ported.
 
 ---
 
@@ -97,7 +97,7 @@ Do **not** invent `CGContext`/`CGPath` calls inside `ZRenderKit`. Leave `// PORT
 
 - `number` → `Double` **always** (indices too; cast to `Int` only at the genuine subscript, math in `Double` first).
 - `Float32Array`→`ContiguousArray<Float>`, `Float64Array`→`ContiguousArray<Double>`, `Int32Array`→`ContiguousArray<Int32>`, etc. Plain `T[]`→`[T]`.
-- `number[] | Float32Array` buffer → `ContiguousArray<Double>` (+ `// PORT-TODO` if the typed/dynamic split is load-bearing).
+- `number[] | Float32Array` buffer → `ContiguousArray<Double>` (+ `// TODO` if the typed/dynamic split is load-bearing).
 
 > ⚠️ **O(n²) trap:** never write `concreteArray as? [Any?]` inside a per-datum loop — it copies all n elements each call. Bridge once. (See MEMORY: O(n²) data-init trap.)
 
@@ -105,7 +105,7 @@ Do **not** invent `CGContext`/`CGPath` calls inside `ZRenderKit`. Leave `// PORT
 
 ## 8. `null` / `undefined` → `Optional`
 
-`T | null` / `T | undefined` / `x?: T` → `T?`. `x == null` → `x == nil`; `x != null` → `x != nil`. Optional chaining `a?.b?.c()` ports verbatim. Collapse null and undefined to `nil` (they almost never differ; `// PORT-TODO` if a file truly depends on the distinction). Object truthy guard `if (x)` → `if let`/`!= nil`; numeric/string truthiness replicated explicitly (`x != 0 && !x.isNaN`, `!s.isEmpty`).
+`T | null` / `T | undefined` / `x?: T` → `T?`. `x == null` → `x == nil`; `x != null` → `x != nil`. Optional chaining `a?.b?.c()` ports verbatim. Collapse null and undefined to `nil` (they almost never differ; `// TODO` if a file truly depends on the distinction). Object truthy guard `if (x)` → `if let`/`!= nil`; numeric/string truthiness replicated explicitly (`x != 0 && !x.isNaN`, `!s.isEmpty`).
 
 > ⚠️ **Int-vs-Double read trap:** `get(...) as? Double` returns nil on an Int-boxed option → value silently dropped. Use an Int/Double coercion helper. (See MEMORY.)
 
@@ -142,7 +142,7 @@ vec2.add(this._pos, this._pos, delta);   // in-place upstream
 self._pos = vector.add(self._pos, delta)  // out = f(a, b)
 ```
 
-Store vectors/matrices as `var` value-type properties and mutate by **reassignment** — never expect a hidden-pointer mutation. If value-return genuinely can't reproduce upstream (perf hot buffer), stub `// PORT-TODO: out-param hazard, needs review`.
+Store vectors/matrices as `var` value-type properties and mutate by **reassignment** — never expect a hidden-pointer mutation. If value-return genuinely can't reproduce upstream (perf hot buffer), stub `// TODO: out-param hazard, needs review`.
 
 ---
 
@@ -154,7 +154,7 @@ Store vectors/matrices as `var` value-type properties and mutate by **reassignme
 
 ## 12. The one liability to hunt before debugging
 
-A `// PORT-TODO: deferred` sitting where upstream calls 2–5 real lines is the #1 source of user-visible bugs (killed hover, drag, brush). The infra is almost always already ported — **grep the file for `PORT-TODO` first**, then wire the dormant call, before writing new code. Force-unwraps that "mirror upstream optimistic typing" are latent `SIGTRAP`s — port them as optionals with a guard, not `!`.
+A `// TODO: deferred` sitting where upstream calls 2–5 real lines is the #1 source of user-visible bugs (killed hover, drag, brush). The infra is almost always already ported — **grep the file for `TODO` first**, then wire the dormant call, before writing new code. Force-unwraps that "mirror upstream optimistic typing" are latent `SIGTRAP`s — port them as optionals with a guard, not `!`.
 
 ---
 
@@ -169,7 +169,7 @@ A `// PORT-TODO: deferred` sitting where upstream calls 2–5 real lines is the 
   `truncatingRemainder(dividingBy:)`.
 - JS logical operators can return operands; reproduce that behavior with branches instead of Swift
   Boolean operators. String-to-number conversion and null/undefined distinctions need explicit
-  handling where observable, with `PORT-TODO` for unsupported behavior.
+  handling where observable, with `TODO` for unsupported behavior.
 - Use precise types where possible; mark unavoidable dynamic/stubbed behavior. Property bags can be
   value types only when shared mutable identity is irrelevant; otherwise use reference semantics.
 - Runtime feature checks use the applicable native branch with a note about omitted browser behavior.
@@ -197,4 +197,4 @@ Historical workflow snapshots describe the original migration and are not the cu
 | 9: renderer boundary | 6 |
 | 10: submit checklist | Submit checklist below |
 
-**Submit checklist:** header line 1 · names = upstream · order = upstream · Chinese comments preserved · `number`→`Double`, typed arrays→`ContiguousArray` · no math out-params (all value-return) · `Element`-types are `final class` · grepped-before-creating · every gap has `// PORT-TODO:`.
+**Submit checklist:** header line 1 · names = upstream · order = upstream · Chinese comments preserved · `number`→`Double`, typed arrays→`ContiguousArray` · no math out-params (all value-return) · `Element`-types are `final class` · grepped-before-creating · every gap has `// TODO:`.

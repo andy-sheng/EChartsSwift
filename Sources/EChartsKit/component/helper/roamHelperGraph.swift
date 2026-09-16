@@ -28,7 +28,7 @@ import ZRenderKit
 //     - `registerRoamActionSimply('series','graph')` → `registerGraphRoamAction` (the `graphRoam` action
 //        that applies the pan/zoom payload to the graph's view coord sys, via `applyRoamPayload`).
 //     - `createIsInSelfByPointerCheckerEl` → `createIsInSelfByGraphRect` (the view-rect pointer checker).
-//   The `View` sync-back-to-model / roaming-animation machinery stays DEFERRED (PORT-NOTE (deferred):
+//   The `View` sync-back-to-model / roaming-animation machinery stays DEFERRED (TODO:
 //   coord/View sync-back requires View.swift's model sync-back path); the roam state instead persists in a
 //   per-series inner store (below) that survives the full-`update()` rebuild `graphRoam` triggers.
 

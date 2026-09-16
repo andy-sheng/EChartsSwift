@@ -26,13 +26,13 @@ import ZRenderKit
 //   import * as graphic from '../../util/graphic';
 //     → `Sector` / `Arc` / `Line` / `Circle` / `Text`(==ZRText) / `Group` are the ZRenderKit scene-graph
 //       shapes (used directly — the sanctioned DRAWING deviation; cf. PieView / AngleAxisView).
-//       PORT-NOTE: `graphic.initProps` / `graphic.updateProps` are ported (animation/basicTransition.swift) and
+//       `graphic.initProps` / `graphic.updateProps` are ported (animation/basicTransition.swift) and
 //       ARE now wired: `_renderPointer` diffs `_data` and enter-animates (initProps) the pointer rotation /
 //       progress endAngle on first appearance, then TWEENS (updateProps) them from their current value to the
 //       new value on refresh — the pointer/progress reset-on-update fix. The static parts (axisLine/ticks/
 //       splitLines/labels) are retained + reused across renders (see `_staticGroup`) rather than rebuilt.
 //   import { setStatesStylesFromModel, toggleHoverEmphasis } from '../../util/states';
-//     → PORT-NOTE: util/states.swift is ported; emphasis/blur/focus states just aren't wired here yet.
+//     → note: util/states.swift is ported; emphasis/blur/focus states just aren't wired here yet.
 //   import {createTextStyle, setLabelValueAnimation, animateLabelValue} from '../../label/labelStyle';
 //     → createTextStyle / setLabelValueAnimation / animateLabelValue are PORTED
 //       (label/labelStyle.swift:416 / :819 / :858) and now WIRED: the local `gaugeTextStyle` adapter below
@@ -55,7 +55,7 @@ import ZRenderKit
 //       selection is wired at both sites here (axisLine bands, progress arcs).
 //   import {createSymbol} from '../../util/symbol';                   → `symbol.createSymbol`.
 //   import ZRImage from 'zrender/src/graphic/Image';
-//     → PORT-NOTE (deferred): ZRImage IS ported (ZRenderKit Graphic/Image.swift); only the
+//     → TODO: ZRImage IS ported (ZRenderKit Graphic/Image.swift); only the
 //       `pointer instanceof ZRImage` styling branch (image:// pointer icon) is deferred.
 //   import { extend, isFunction, isString, isNumber, each } from 'zrender/src/core/util';
 //     → `util.*` (ZRenderKit). `isString`/`isFunction`/`isNumber` used via the local helpers below.
@@ -133,7 +133,7 @@ open class GaugeView: ChartView {
     // upstream: private _detailEls: graphic.Text[];
     private var _detailEls: [ZRText] = []
 
-    // PORT-NOTE (reuse machinery — NOT in upstream 1:1): upstream rebuilds the static parts
+    // note (reuse machinery — NOT in upstream 1:1): upstream rebuilds the static parts
     //   (axisLine sectors + ticks/splitLines/labels) from scratch on every render after a
     //   `this.group.removeAll()`. That is fine for echarts.js (those parts carry no animation), but
     //   here it (a) destroyed the pointer/progress element identities on every `setOption` refresh so
@@ -204,7 +204,7 @@ open class GaugeView: ChartView {
         endAngle = angles[1]
         let angleRangeSpan = endAngle - startAngle
 
-        // PORT-NOTE (faithful, non-obvious upstream behaviour): the axisLine loop below REASSIGNS the
+        // note (faithful, non-obvious upstream behaviour): the axisLine loop below REASSIGNS the
         //   OUTER `endAngle` on every iteration (`endAngle = startAngle + angleRangeSpan * percent;`,
         //   GaugeView.ts:134), so after the loop `endAngle` holds the LAST color stop's angle — and that
         //   mutated value is what upstream hands to `_renderTicks` (TS:184) and `_renderPointer` (TS:195).
@@ -269,7 +269,7 @@ open class GaugeView: ChartView {
                 // Clamp
                 let percent = Swift.min(Swift.max(colorList[i].0, 0), 1)
                 // upstream: `endAngle = startAngle + angleRangeSpan * percent;` — the outer `endAngle` is
-                //   mutated here; its post-loop value is pre-computed above (see the PORT-NOTE), so this
+                //   mutated here; its post-loop value is pre-computed above (see the note), so this
                 //   loop keeps a local alias with the identical per-iteration value.
                 let sectorEnd = startAngle + angleRangeSpan * percent
                 // new MainPath({ shape: {...}, silent: true }) — MainPath is Sausage (roundCap) or Sector.
@@ -340,7 +340,7 @@ open class GaugeView: ChartView {
         )
     }
 
-    // PORT-NOTE (reuse machinery — NOT in upstream): a cheap change-detector for the STATIC parts. The
+    // note (reuse machinery — NOT in upstream): a cheap change-detector for the STATIC parts. The
     //   gauge demos refresh with a MERGE `setOption` that supplies only `series[].data`; the static
     //   geometry (axisLine/ticks/splitLines/labels) reads everything EXCEPT the data values, so a
     //   signature over the series option minus `data` (plus the canvas size, which feeds posInfo) is
@@ -394,7 +394,7 @@ open class GaugeView: ChartView {
     }
 
     // upstream: _renderTicks(seriesModel, ecModel, api, getColor, posInfo, startAngle, endAngle, clockwise, axisLineWidth)
-    //   PORT-NOTE (reuse): takes the target `group` explicitly — the ticks/splitLines/labels are built
+    //   note (reuse): takes the target `group` explicitly — the ticks/splitLines/labels are built
     //   into the retained static sub-group, not directly into `self.group` (see _renderMain).
     private func _renderTicks(
         _ group: Group,
@@ -754,7 +754,7 @@ open class GaugeView: ChartView {
                     let pointer = data.getItemGraphicEl(idx) as? Path
                     let symbolStyle = data.getItemVisual(idx, "style")
                     let visualColor = gaugeVisualFill(symbolStyle)
-                    // PORT-NOTE (deferred): the `pointer instanceof ZRImage` branch (image:// icon) is deferred.
+                    // TODO: the `pointer instanceof ZRImage` branch (image:// icon) is deferred.
                     //   pointer.useStyle(symbolStyle); then `pointer.type !== 'pointer' && pointer.setColor(visualColor)`;
                     //   then setStyle(itemModel.getModel(['pointer','itemStyle']).getItemStyle()); then 'auto' fill.
                     //   Static: merge the visual style + pointer itemStyle into one bag, resolve 'auto', useStyle.
@@ -802,7 +802,7 @@ open class GaugeView: ChartView {
     }
 
     // upstream: _renderAnchor(seriesModel, posInfo)
-    //   PORT-NOTE (reuse): the anchor is static (its geometry depends only on the configuration, not on
+    //   note (reuse): the anchor is static (its geometry depends only on the configuration, not on
     //   the data value), so it is retained and rebuilt only when the static signature changed this
     //   render. `staticChanged` is threaded in from _renderMain.
     private func _renderAnchor(
@@ -855,7 +855,7 @@ open class GaugeView: ChartView {
         let minVal = gaugeNum(seriesModel.get("min")) ?? 0
         let maxVal = gaugeNum(seriesModel.get("max")) ?? 0
 
-        // PORT-NOTE (reuse): upstream builds a fresh contentGroup each render (added to the just-wiped
+        // note (reuse): upstream builds a fresh contentGroup each render (added to the just-wiped
         //   view group). Here the view group is NOT wiped, so the contentGroup is retained (identity
         //   persists) and only its per-datum item-groups are rebuilt.
         let contentGroup: Group
@@ -986,7 +986,7 @@ open class GaugeView: ChartView {
 
 
 // ============================================================================
-// PORT-NOTE: local helpers — NOT part of GaugeView.ts upstream. These reproduce the dynamic-option coercion,
+// local helpers — NOT part of GaugeView.ts upstream. These reproduce the dynamic-option coercion,
 // the JS truthiness/number-stringification, the color-stop parsing, and a minimal `createTextStyle`.
 // Delete each when its real sibling (label/labelStyle, util/graphic style bridge) lands.
 // ============================================================================
@@ -1042,7 +1042,7 @@ private func isNumber(_ v: Any?) -> Bool {
 }
 
 /// JS `value + ''` for a number. Integers render without a decimal point (`20` → "20"); non-integers
-/// keep their shortest decimal form. PORT-NOTE: not a full ECMAScript Number→String (no exponent form).
+/// keep their shortest decimal form. note: not a full ECMAScript Number→String (no exponent form).
 private func jsNumberToString(_ v: Double) -> String {
     if v.isNaN { return "NaN" }
     if v == v.rounded() && Swift.abs(v) < 1e15 {
@@ -1053,7 +1053,7 @@ private func jsNumberToString(_ v: Double) -> String {
 
 /// Parse the `axisLine.lineStyle.color` color-stop list (`[[percent, color], ...]`) into `[(Double, String)]`.
 ///   `percent` may be a bare Int literal (`1`) → coerced via gaugeNum; `color` is a solid string (or a
-///   ZRColor.color). PORT-NOTE (deferred): gradient/pattern color values are not modeled (solid strings only).
+///   ZRColor.color). TODO: gradient/pattern color values are not modeled (solid strings only).
 private func gaugeColorList(_ v: Any?) -> [(Double, String)] {
     guard let arr = v as? [Any] else { return [] }
     var out: [(Double, String)] = []
@@ -1107,7 +1107,7 @@ private func gaugeTextStyle(
     )
 }
 
-/// PORT-NOTE: `util/graphic` style-bag bridge for LINE styles (splitline/tick). `Model.getLineStyle()`
+/// `util/graphic` style-bag bridge for LINE styles (splitline/tick). `Model.getLineStyle()`
 ///   returns the dynamic `[String: Any]` paint bag; ZRenderKit `Path.style` is a typed `PathStyleProps`.
 ///   Maps the common stroke/line keys (stroke resolved elsewhere for the 'auto' sentinel). Mirrors
 ///   AngleAxisView.pathStyleFromDict. `lineDash` is not bridged yet.
@@ -1120,7 +1120,7 @@ private func gaugeStyleNum(_ v: Any?) -> Double? {
 
 private func pathStyleFromDict(_ dict: [String: Any]) -> PathStyleProps {
     var s = PathStyleProps()
-    // PORT-NOTE (deferred): `fill`/`stroke` may be a gradient/pattern object; only the String form (incl. 'none'/'auto')
+    // TODO: `fill`/`stroke` may be a gradient/pattern object; only the String form (incl. 'none'/'auto')
     //   is mapped here. The 'auto' stroke sentinel is overridden by getColor at the call site.
     if let fill = dict["fill"] as? String { s.fill = .string(fill) }
     if let stroke = dict["stroke"] as? String { s.stroke = .string(stroke) }

@@ -18,7 +18,7 @@
 //   - ANIMATION. `animationEasing: 'elasticOut'` plus the per-datum `animationDelay` closure make the
 //     bars spring up in sequence on load. The gallery renders ONE static frame with animation forced
 //     off, so only the settled end state is visible; `animationDelay` (a JS function) is kept in
-//     webOptionJS and omitted from the Swift option (see PORT-NOTE).
+//     webOptionJS and omitted from the Swift option (see note).
 //   - Everything else — including the stray top-level `markLine: { z: -1 }` in the official source
 //     (a no-op outside a series) — is carried over as-is.
 //

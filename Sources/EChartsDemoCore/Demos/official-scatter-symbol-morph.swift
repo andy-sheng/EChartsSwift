@@ -32,7 +32,7 @@
 //     file-scope `private let`s (Swift's type-checker times out on large inline literals); they are
 //     built by the same loops and carry the same values as the JS. `xData`/`yData` stay NUMERIC
 //     category data (0…9 as numbers), exactly as upstream pushes them.
-//   - No PORT-NOTE omissions: the option carries no JS function values.
+//   - No note omissions: the option carries no JS function values.
 import Foundation
 
 extension EChartsDemoRegistry {

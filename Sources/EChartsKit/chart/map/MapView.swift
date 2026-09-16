@@ -29,7 +29,7 @@ import ZRenderKit
 //       geoSVG builds, the visualMap-encoded region fill + decal, the emphasis/select/blur states, and
 //       the event/tooltip/state triggers — with TWO documented gaps: the `GeoProjection.stream`
 //       clip/resample path (`projectionStream` is nil, `projectPolys` dormant) and the name-keyed geo
-//       `labelFetcher` (replaced by an eager `getFormattedLabel`); see the PORT-TODOs in MapDraw.swift.
+//       `labelFetcher` (replaced by an eager `getFormattedLabel`); see the TODOs in MapDraw.swift.
 //     → SWITCHOVER DONE: `MapView.render` now owns a persistent `_mapDraw` and delegates the whole
 //       region backdrop to `MapDraw.draw` (upstream lifecycle: `resetForLabelLayout` on `geoRoam`, the
 //       self-roam short-circuit, `_clearMapDraw` on remove/dispose, `__updateOnOwnRoam`). The previously
@@ -108,7 +108,7 @@ open class MapView: ChartView {
 
         // upstream: Not render if it is a toggleSelect action from self.
         //   if (payload && payload.type === 'mapToggleSelect' && payload.from === this.uid) { return; }
-        // PORT-NOTE (deferred — select states/actions): `mapToggleSelect` is a select action. The guard
+        // note (deferred — select states/actions): `mapToggleSelect` is a select action. The guard
         //   itself IS ported faithfully below; it only fires once select-action dispatch lands (select
         //   actions are not yet dispatched, so `payload.type` is never 'mapToggleSelect' in practice).
         if payload.type == "mapToggleSelect",
@@ -139,7 +139,7 @@ open class MapView: ChartView {
         // upstream: Not update map if it is a roam action from self.
         //   if (!(payload && payload.type === 'geoRoam' && payload.componentType === 'series'
         //         && payload.seriesId === mapModel.id)) { ... } else { mapDraw && group.add(mapDraw.group); }
-        //   PORT-NOTE: the port's `Payload` is a non-Optional struct; the driver passes `Payload(type: "")`
+        //   the port's `Payload` is a non-Optional struct; the driver passes `Payload(type: "")`
         //   as the "no payload" sentinel, and dynamic payload fields live in `payload.other`.
         //   roamHelperGeo now emits these exact upstream fields and invokes `__updateOnOwnRoam` before the
         //   transform-only series pass, so a self-roam keeps the persistent MapDraw instead of rebuilding it.
@@ -230,7 +230,7 @@ open class MapView: ChartView {
 
             circle.silent = true
             // upstream: z2: 8 + (!offset ? Z2_EMPHASIS_LIFT + 1 : 0)  (Z2_EMPHASIS_LIFT == 10)
-            let z2EmphasisLift = 10.0   // PORT-NOTE: mirrors util/states.Z2_EMPHASIS_LIFT (== 10), inlined here.
+            let z2EmphasisLift = 10.0   // mirrors util/states.Z2_EMPHASIS_LIFT (== 10), inlined here.
             circle.z2 = 8 + (offset == 0 ? z2EmphasisLift + 1 : 0)
 
             // upstream: only the series holding the FIRST value on a region (offset 0) renders the label.
@@ -254,7 +254,7 @@ open class MapView: ChartView {
         // upstream: const fullData = getMainMapSeries(mapModel.seriesGroup).getData();
         //           const name = originalData.getName(originalDataIndex);
         //           const fullIndex = fullData.indexOfName(name);
-        // PORT-NOTE (PORTING §12): upstream's optimistic typing assumes `mapModel.seriesGroup.f` is
+        // note (PORTING §12): upstream's optimistic typing assumes `mapModel.seriesGroup.f` is
         //   non-empty here; mirror the assumption with a `guard` rather than a force-unwrap pair, which
         //   would be a latent SIGTRAP on every `showLegendSymbol` render with a legend present.
         guard let seriesGroup = mapModel.seriesGroup,
@@ -360,7 +360,7 @@ extension MapView: RoamHostView {}
 
 
 // ============================================================================
-// PORT-NOTE helpers — NOT part of MapView.ts upstream: the dynamic-option
+// note helpers — NOT part of MapView.ts upstream: the dynamic-option
 // coercions (`if (x)` truthiness / Int-vs-Double reads) this view still needs.
 // The style-bag → PathStyleProps bridge + `getFixedItemStyle` moved out with the
 // region build (they now live in MapDraw.swift, the real upstream home).

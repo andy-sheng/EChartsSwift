@@ -4,7 +4,7 @@
 //
 // The port carries the callback as a Swift closure (`LabelLayoutOptionCallback`) stored on the series
 //   `labelLayout` option; here we seed the manager's `_labelList` directly (see the `internal`
-//   PORT-NOTE on `_labelList`) so the callback → params → applied-option path is exercised without a
+//   note on `_labelList`) so the callback → params → applied-option path is exercised without a
 //   full SeriesModel/data pipeline.
 import XCTest
 import ZRenderKit

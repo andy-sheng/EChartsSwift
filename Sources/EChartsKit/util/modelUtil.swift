@@ -28,7 +28,7 @@ import ZRenderKit
 //   import { each, isObject, isArray, createHashMap, HashMap, map, assert, isString,
 //            indexOf, isStringSafe, isNumber, hasOwn, retrieve2 } from 'zrender/src/core/util';
 //       -> ZRenderKit.util  (createHashMap/HashMap are intentionally NOT ported in ZRenderKit — see
-//          ZRenderKit/Core/util.swift PORT-NOTE "use Swift Dictionary directly". A local public shim
+//          ZRenderKit/Core/util.swift note "use Swift Dictionary directly". A local public shim
 //          `HashMap`/`createHashMap` is provided below for the JS-key-coerced ordered map model.ts needs.)
 //   import env from 'zrender/src/core/env';
 //       -> ZRenderKit `env` singleton is module-internal (not exposed); see getTooltipRenderMode.
@@ -50,7 +50,7 @@ import ZRenderKit
 //   import { TaskProgressParams } from '../core/task';     -> util/types.swift
 
 // ============================================================================
-// PORT-NOTE: FORWARD-REFERENCE PLACEHOLDERS
+// FORWARD-REFERENCE PLACEHOLDERS
 // These types are imported by upstream `model.ts` from sibling echarts files that
 // are NOT yet ported in this phase. They are declared here as minimal placeholders
 // so this file compiles. The agent that ports the corresponding source file MUST
@@ -65,13 +65,13 @@ import ZRenderKit
 // '../model/Component' — ComponentModelConstructor (the constructor/metatype with static
 //   `determineSubType`). Modeled as a protocol whose metatype is passed where upstream passes
 //   the class object.
-public protocol ComponentModelConstructor: AnyObject {                       // PORT-NOTE: belongs to model/Component
+public protocol ComponentModelConstructor: AnyObject {                       // belongs to model/Component
     static func determineSubType(_ mainType: ComponentMainType, _ option: ComponentOption) -> ComponentSubType
 }
 
 // '../core/Scheduler' — Pipeline (Pick<Pipeline, 'progressiveEnabled' | 'threshold'>) and
 //   PipelineContext, used by preparePipelineContext.
-public struct PipelinePick {                                                 // PORT-NOTE: belongs to core/Scheduler
+public struct PipelinePick {                                                 // belongs to core/Scheduler
     public var progressiveEnabled: Bool
     public var threshold: Double
     public init(progressiveEnabled: Bool, threshold: Double) {
@@ -79,7 +79,7 @@ public struct PipelinePick {                                                 // 
         self.threshold = threshold
     }
 }
-public struct PipelineContext {                                              // PORT-NOTE: belongs to core/Scheduler
+public struct PipelineContext {                                              // belongs to core/Scheduler
     public var progressiveRender: Bool
     public var large: Bool
     public var modDataCount: Double?
@@ -91,19 +91,19 @@ public struct PipelineContext {                                              // 
 }
 
 // `subType`-bearing existing component (upstream inline `{ subType?: ComponentSubType }`).
-public protocol HasSubType: AnyObject {                                      // PORT-NOTE: provided by ComponentModel
+public protocol HasSubType: AnyObject {                                      // provided by ComponentModel
     var subType: ComponentSubType? { get }
 }
 
 // ============================================================================
-// PORT-NOTE (deferred): HashMap / createHashMap shim.
+// TODO: HashMap / createHashMap shim.
 // `createHashMap` / `HashMap` are zrender util exports that ZRenderKit intentionally
-// did NOT port (see ZRenderKit/Core/util.swift PORT-NOTE: "use Swift Dictionary
+// did NOT port (see ZRenderKit/Core/util.swift note: "use Swift Dictionary
 // directly"). model.ts needs an insertion-ordered map with JS-style string-key
 // coercion, so this local public shim mirrors the upstream surface used here
 // (`get`/`set`/`each`/`keys`). Generic `KEY` is dropped (keys are always string-like).
 // ============================================================================
-public final class HashMap<V> {                                             // PORT-NOTE: local shim for zrender HashMap
+public final class HashMap<V> {                                             // local shim for zrender HashMap
     private var data: [String: V] = [:]
     private var _keys: [String] = []   // preserves insertion order, like JS `Object.keys`
 
@@ -148,14 +148,14 @@ public final class HashMap<V> {                                             // P
         }
     }
 }
-public func createHashMap<V>() -> HashMap<V> {                              // PORT-NOTE: local shim for zrender createHashMap
+public func createHashMap<V>() -> HashMap<V> {                              // local shim for zrender createHashMap
     return HashMap<V>()
 }
 
 // JS object-key coercion (number -> its toString, string -> itself). Not part of upstream.
 fileprivate func hashKey(_ key: Any?) -> String {
     switch key {
-    case nil: return "undefined"   // PORT-NOTE (language-difference): JS coerces `null`→"null" and `undefined`→"undefined" as distinct keys; Swift has a single `nil`, mapped to "undefined"
+    case nil: return "undefined"   // note (language-difference): JS coerces `null`→"null" and `undefined`→"undefined" as distinct keys; Swift has a single `nil`, mapped to "undefined"
     case let s as String: return s
     case let d as Double: return jsNumberStr(d)
     case let i as Int: return String(i)
@@ -232,7 +232,7 @@ enum AttrIdName {
 // number id will not be converted to string in option.
 // number id will be converted to string in component instance id.
 // upstream: `interface MappingExistingItem { id?: OptionId; name?: string; }`.
-// PORT-NOTE: `name` widened from `string` to `OptionName` so this protocol and `ComponentOption`
+// `name` widened from `string` to `OptionName` so this protocol and `ComponentOption`
 //   share `MappingComparable` uniformly (id is already OptionId). Coerced back to String at use.
 public protocol MappingExistingItem: AnyObject, MappingComparable {
     var id: OptionId? { get }
@@ -254,7 +254,7 @@ extension ComponentOption: MappingComparable {}
  * The indices are the same as the `existings`.
  * Items will not be `null`/`undefined` even if the corresponding `existings` will be removed.
  */
-// PORT-NOTE: upstream is generic `MappingResult<T extends MappingExistingItem>`. Flattened to
+// upstream is generic `MappingResult<T extends MappingExistingItem>`. Flattened to
 //   `MappingExistingItem` (TS array covariance has no Swift analogue, and `makeIdAndName`
 //   consumes `MappingResult<MappingExistingItem>`). Callers cast `.existing` to their concrete type.
 public typealias MappingResult = [MappingResultItem]
@@ -304,22 +304,22 @@ public enum MappingToExistsMode: String {                                    // 
  * (See upstream for the full doc block.)
  */
 // upstream: number | number[] | 'all' | 'none' | false | NullUndefined
-public typealias ModelFinderIndexQuery = Any                                 // PORT-NOTE: union
+public typealias ModelFinderIndexQuery = Any                                 // union
 // upstream: OptionId | OptionId[] | NullUndefined
-public typealias ModelFinderIdQuery = Any                                    // PORT-NOTE: union
+public typealias ModelFinderIdQuery = Any                                    // union
 // upstream: OptionId | OptionId[] | NullUndefined
-public typealias ModelFinderNameQuery = Any                                  // PORT-NOTE: union
+public typealias ModelFinderNameQuery = Any                                  // union
 // upstream: string | ModelFinderObject
-public typealias ModelFinder = Any                                           // PORT-NOTE: string | ModelFinderObject
+public typealias ModelFinder = Any                                           // string | ModelFinderObject
 // upstream: a typed object with seriesIndex/seriesId/... keys; accessed dynamically (regex on
 //   keys), so the runtime representation is a dictionary.
-public typealias ModelFinderObject = [String: Any]                           // PORT-NOTE: typed object upstream
+public typealias ModelFinderObject = [String: Any]                           // typed object upstream
 /**
  * { seriesModels: [...], seriesModel: ..., geoModels: [...], ... }
  */
 // upstream: { [key: string]: ComponentModel | ComponentModel[] | undefined }
-public typealias ParsedModelFinder = [String: Any]                           // PORT-NOTE: typed value union
-public typealias ParsedModelFinderKnown = ParsedModelFinder                  // PORT-NOTE: known-keys variant
+public typealias ParsedModelFinder = [String: Any]                           // typed value union
+public typealias ParsedModelFinderKnown = ParsedModelFinder                  // known-keys variant
 
 public struct QueryReferringUserOption {
     public var index: ModelFinderIndexQuery?
@@ -483,14 +483,14 @@ public enum model {
         if let v = value as? T {
             return [v]
         }
-        return []   // PORT-NOTE (language-difference): upstream would wrap any non-null value as `[value]`; here a value that fails the `as? T` cast (type mismatch vs the call-site annotation) falls through to []
+        return []   // note (language-difference): upstream would wrap any non-null value as `[value]`; here a value that fails the `as? T` cast (type mismatch vs the call-site annotation) falls through to []
     }
 
     /**
      * Sync default option between normal and emphasis like `position` and `show`
      * (See upstream for the full example.)
      */
-    // PORT-NOTE: `opt` is `inout` and `Optional` because upstream mutates the object in place and
+    // `opt` is `inout` and `Optional` because upstream mutates the object in place and
     //   guards with `if (opt)`; `DisplayStateHostOption` is a value struct (CONVENTIONS §4), so the
     //   nested dictionary writes are read-modify-write-back. `opt[key]` reads from the dynamic
     //   `.other` bag; `opt.emphasis` is the typed field.
@@ -857,7 +857,7 @@ public enum model {
                 keyInfo.name = makeComparableKey(opt.name)
             }
             else if let existing = existing {
-                keyInfo.name = convertOptionIdName(existing.name, "") ?? ""   // PORT-NOTE: name widened to OptionName
+                keyInfo.name = convertOptionIdName(existing.name, "") ?? ""   // name widened to OptionName
             }
             else {
                 // Avoid that different series has the same name,
@@ -911,7 +911,7 @@ public enum model {
         if __DEV__ {
             if val == nil {
                 // upstream: throw new Error();
-                util.assert(false)   // PORT-NOTE (language-difference): upstream `throw new Error()`; this fn is non-throwing, so the dev-only guard traps via assert (equivalent fail-fast)
+                util.assert(false)   // note (language-difference): upstream `throw new Error()`; this fn is non-throwing, so the dev-only guard traps via assert (equivalent fail-fast)
             }
         }
         return convertOptionIdName(val, "") ?? ""
@@ -992,7 +992,7 @@ public enum model {
             subType = type
         }
         else if let existComponent = existComponent {
-            // PORT-NOTE: existComponent.subType requires the component to conform to HasSubType.
+            // existComponent.subType requires the component to conform to HasSubType.
             subType = (existComponent as? HasSubType)?.subType ?? ""
         }
         else {
@@ -1077,7 +1077,7 @@ public enum model {
 
     // upstream `mapToArray(map, isData?)` is one recursive function returning `any[]`. Swift's type
     // system makes a single signature awkward, so it is split: outer (seriesId -> dataIndices) and
-    // inner (dataIndex cell -> +i). PORT-NOTE: documented split of upstream's recursive mapToArray.
+    // inner (dataIndex cell -> +i). note: documented split of upstream's recursive mapToArray.
     static func mapToArrayOuter(_ map: [String: [String: Double?]]) -> [BatchItem] {
         var result: [BatchItem] = []
         for i in map.keys {
@@ -1142,7 +1142,7 @@ public enum model {
      * Enable property storage to any host object. (See upstream usage block.)
      * [CAVEAT]: DO NOT use it in performance-sensitive scenarios.
      */
-    // PORT-NOTE: upstream stores a hidden key (`'__ec_inner_' + innerUniqueIndex++`) directly on the
+    // upstream stores a hidden key (`'__ec_inner_' + innerUniqueIndex++`) directly on the
     //   host object and lazily creates an empty `{}` bag. Swift cannot add a dynamic property to an
     //   arbitrary object, and cannot construct `T` without a factory, so:
     //     - storage uses a per-`makeInner` `WeakMap<Host, T>` (object-identity keyed),
@@ -1222,7 +1222,7 @@ public enum model {
         var mainTypeSpecified = false
 
         // each(finder, function (value, key) { ... })
-        // PORT-NOTE: object iteration order is not guaranteed by Swift Dictionary; upstream relies
+        // object iteration order is not guaranteed by Swift Dictionary; upstream relies
         //   on JS enumeration order, but here each key is processed independently so order is benign.
         for (key, value) in finder {
             // Exclude 'dataIndex' and other illegal keys.
@@ -1254,7 +1254,7 @@ public enum model {
             case "name": queryOption.name = value
             default: break
             }
-            // PORT-NOTE: QueryReferringUserOption is a value struct; write the mutated copy back.
+            // QueryReferringUserOption is a value struct; write the mutated copy back.
             queryOptionMap.set(mainType, queryOption)
         }
 
@@ -1347,7 +1347,7 @@ public enum model {
             util.assert(!mainType.isEmpty)   // assert(mainType)
         }
         var query: [String: Any] = [:]
-        // PORT-NOTE: `payload[mainType + 'Id']` dynamic access -> `payload.other[...]`.
+        // `payload[mainType + 'Id']` dynamic access -> `payload.other[...]`.
         query[mainType + "Id"] = payload.other[mainType + "Id"]
         query[mainType + "Index"] = payload.other[mainType + "Index"]
         query[mainType + "Name"] = payload.other[mainType + "Name"]
@@ -1361,7 +1361,7 @@ public enum model {
     }
 
     public static func setAttribute(_ dom: HTMLElement, _ key: String, _ value: Any) {
-        // PORT-NOTE: DOM seam (CONVENTIONS §9) — no HTMLElement on iOS.
+        // DOM seam (CONVENTIONS §9) — no HTMLElement on iOS.
         //   dom.setAttribute ? dom.setAttribute(key, value) : (dom[key] = value);
         _ = dom
         _ = key
@@ -1369,7 +1369,7 @@ public enum model {
     }
 
     public static func getAttribute(_ dom: HTMLElement, _ key: String) -> Any? {
-        // PORT-NOTE: DOM seam (CONVENTIONS §9).
+        // DOM seam (CONVENTIONS §9).
         //   return dom.getAttribute ? dom.getAttribute(key) : dom[key];
         _ = dom
         _ = key
@@ -1379,7 +1379,7 @@ public enum model {
     public static func getTooltipRenderMode(_ renderModeOption: Any?) -> TooltipRenderMode {
         if (renderModeOption as? String) == "auto" {
             // Using html when `document` exists, use richText otherwise.
-            // PORT-NOTE: zrender `env` is module-internal (not exposed to EChartsKit); on iOS
+            // zrender `env` is module-internal (not exposed to EChartsKit); on iOS
             //   `env.domSupported` is always false -> richText.
             return .richText
         }
@@ -1414,7 +1414,7 @@ public enum model {
                 bucket = buckets.set(key, [T]())
             }
             bucket!.append(item)
-            // PORT-NOTE: JS arrays are reference types; Swift `[T]` is a value type, so write the
+            // JS arrays are reference types; Swift `[T]` is a value type, so write the
             //   mutated bucket back into the map.
             buckets.set(key, bucket!)
         })
@@ -1513,7 +1513,7 @@ public enum model {
      *  - The input `val` must be a number - type checking is not performed.
      *  - `extent` should be initialized as `initExtentForUnion()`.
      */
-    // PORT-NOTE: `extent` is `inout` (upstream mutates `number[]` in place; Swift `[Double]` is a value).
+    // `extent` is `inout` (upstream mutates `number[]` in place; Swift `[Double]` is a value).
     public static func unionExtentFromNumber(_ extent: inout [Double], _ val: Double?) {
         if isValidNumberForExtent(val) {
             if val! < extent[0] { extent[0] = val! }
@@ -1569,7 +1569,7 @@ public enum model {
     /**
      * NOTE: considered items are null/undefined/NaN - do nothing for this case.
      */
-    // PORT-NOTE: `extent` is `inout`; items typed `(number | NullUndefined)[]` -> `[Double?]`.
+    // `extent` is `inout`; items typed `(number | NullUndefined)[]` -> `[Double?]`.
     public static func ensureExtentAscSimply(_ extent: inout [Double?]) {
         if isValidBoundsForExtent(extent[0], extent[1]) && extent[0]! > extent[1]! {
             extent[0] = extent[1]
@@ -1579,7 +1579,7 @@ public enum model {
     /**
      * A util for ensuring the callback is called only once. (See upstream usage block.)
      */
-    // PORT-NOTE: upstream stamps a hidden key (`'__ec_once_' + onceUniqueIndex++`) on the host via
+    // upstream stamps a hidden key (`'__ec_once_' + onceUniqueIndex++`) on the host via
     //   `hasOwn`. Swift cannot add a dynamic property, so a per-`makeCallOnlyOnce` `WeakMap<Host, Bool>`
     //   (object-identity keyed) records whether the callback already ran for a given host.
     public static func makeCallOnlyOnce<Host: AnyObject>() -> (Host, () -> Void) -> Void {
@@ -1605,7 +1605,7 @@ public enum model {
      *  - Callers can use `resolve` to manually modify the `currItem`.
      *  - Callers need to handle null/undefined (if existing) in `getKey`.
      */
-    // PORT-NOTE: `arr` is `inout` (upstream mutates in place, incl. `arr.length = writeIdx`).
+    // `arr` is `inout` (upstream mutates in place, incl. `arr.length = writeIdx`).
     public static func removeDuplicates<TItem>(
         _ arr: inout [TItem?],
         _ getKey: (TItem?) -> String,
@@ -1640,7 +1640,7 @@ public enum model {
 
     // upstream: removeDuplicatesGetKeyFromValueProp<TValue>(item: {value: TValue}): string
     public static func removeDuplicatesGetKeyFromValueProp(_ item: Any?) -> String {
-        // PORT-NOTE: typed `{value: TValue}` object -> dictionary access.
+        // typed `{value: TValue}` object -> dictionary access.
         let value = (item as? [String: Any])?["value"]
         if __DEV__ {
             util.assert(value != nil)

@@ -56,7 +56,7 @@ open class VisualMapView: ComponentView {
     public let autoPositionValues: [String: Int] = ["left": 1, "right": 1, "top": 1, "bottom": 1]
 
     // ecModel: GlobalModel;  (injected by init)
-    // PORT-NOTE: IUO-bound var (NOT a `let` — CONVENTIONS §trap 2 concerns `let x = foo.bar` only); assigned in `init`.
+    // IUO-bound var (NOT a `let` — CONVENTIONS §trap 2 concerns `let x = foo.bar` only); assigned in `init`.
     public var ecModel: GlobalModel!
 
     // api: ExtensionAPI;
@@ -83,7 +83,7 @@ open class VisualMapView: ComponentView {
         let visualMapModel = model as! VisualMapModel
         self.visualMapModel = visualMapModel
 
-        // PORT-NOTE: the pipeline is expected to call `init(ecModel, api)` before `render`; guarantee the
+        // the pipeline is expected to call `init(ecModel, api)` before `render`; guarantee the
         //   injected refs exist (same defensive init as LegendView).
         if self.ecModel == nil || self.api == nil {
             self.`init`(ecModel, api)
@@ -125,7 +125,7 @@ open class VisualMapView: ComponentView {
             "z2": -1.0, // Lay background rect on the lowest layer.
             "silent": true,
             "shape": shape as PathShape,
-            // PORT-NOTE: bridge the dynamic style bag → typed `PathStyleProps` via the shared
+            // bridge the dynamic style bag → typed `PathStyleProps` via the shared
             //   `barStyleFromDict` seam (BarView.swift).
             "style": barStyleFromDict(styleBag)
         ]))
@@ -142,7 +142,7 @@ open class VisualMapView: ComponentView {
      */
     // upstream: protected getControllerVisual(targetValue, visualCluster, opts?) → `internal`.
     //   The `opts` object literal is spread into two default params (`forceState`, `convertOpacityToAlpha`).
-    // PORT-NOTE: upstream types `targetValue: number`, but for a `categories` visualMap the represent
+    // upstream types `targetValue: number`, but for a `categories` visualMap the represent
     //   value is the raw category (often a STRING). `getValueState` / `applyVisual` both accept the loose
     //   value, so `targetValue` is kept as `Any?` here (continuous callers still pass a Double, which is a
     //   valid `Any?`). Narrowing to Double coerced string categories to 0 → every piecewise-categories
@@ -224,7 +224,7 @@ open class VisualMapView: ComponentView {
 // export default VisualMapView;  → `open class VisualMapView` above.
 
 // ============================================================================
-// PORT-NOTE helpers — NOT part of visualMap/VisualMapView.ts upstream. These reproduce out-of-phase
+// note helpers — NOT part of visualMap/VisualMapView.ts upstream. These reproduce out-of-phase
 // sibling APIs / JS idioms so the static visualMap render compiles. Delete each when its real sibling
 // lands and call the sibling directly. (Kept `internal` so the two subclass files can reuse them.)
 // ============================================================================

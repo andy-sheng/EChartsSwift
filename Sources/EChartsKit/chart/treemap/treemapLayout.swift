@@ -44,7 +44,7 @@ import ZRenderKit
 //   import { TreeNode } from '../../data/Tree';                         -> TreeNode (data/Tree.swift).
 //   import Model from '../../model/Model';                              -> Model (model/Model.swift).
 //   import { TreemapRenderPayload, TreemapMovePayload, TreemapZoomToNodePayload } from './treemapAction';
-//       -> PORT-NOTE: treemapAction.ts not ported; payload read dynamically off `Payload` (util/types.swift).
+//       -> note: treemapAction.ts not ported; payload read dynamically off `Payload` (util/types.swift).
 //   import { initExtentForUnion } from '../../util/model';              -> `model.initExtentForUnion`.
 //   import { RoamOptionMixin } from '../../util/types';                 -> type-only (dropped, CONVENTIONS §2).
 //   import { clampByZoomLimit } from '../../coord/View';                -> clampByZoomLimit (coord/View.swift);
@@ -149,7 +149,7 @@ public func treemapLayoutReset(
     let types = ["treemapZoomToNode", "treemapRootToNode"]
     let targetInfo = retrieveTargetInfo(payload, types, seriesModel)
     // const rootRect = (payloadType === 'treemapRender' || payloadType === 'treemapMove') ? payload.rootRect : null;
-    // PORT-NOTE: upstream `payload.rootRect: RectLike`; read dynamically off `Payload.other`.
+    // upstream `payload.rootRect: RectLike`; read dynamically off `Payload.other`.
     let rootRect: [String: Double]? = (payloadType == "treemapRender" || payloadType == "treemapMove")
         ? (payload?.other["rootRect"] as? [String: Double])
         : nil
@@ -840,7 +840,7 @@ private func retrieveTargetInfo(
     return TargetInfo(node: info.node)
 }
 
-// PORT-NOTE: upstream `helper.getPathToRoot(node)` from '../helper/treeHelper'. treeHelper.swift ports it
+// upstream `helper.getPathToRoot(node)` from '../helper/treeHelper'. treeHelper.swift ports it
 //   for `TreeNode`; reimplemented here for `TreemapLayoutNode`. Note upstream advances to `parentNode` BEFORE
 //   pushing, so the returned path EXCLUDES `node` itself: [root, ..., node.parentNode].
 private func getPathToRoot(_ node: TreemapLayoutNode) -> [TreemapLayoutNode] {
@@ -854,7 +854,7 @@ private func getPathToRoot(_ node: TreemapLayoutNode) -> [TreemapLayoutNode] {
     return path
 }
 
-// PORT-NOTE: upstream `import { clampByZoomLimit } from '../../coord/View'`. coord/View.swift ports it
+// upstream `import { clampByZoomLimit } from '../../coord/View'`. coord/View.swift ports it
 //   (public clampByZoomLimit); this local `Any?`-typed variant mirrors it.
 private func clampByZoomLimit(_ zoom: Double, _ zoomLimit: Any?) -> Double {
     if let zoomLimit = zoomLimit as? [String: Any], jsTruthy(zoomLimit) {

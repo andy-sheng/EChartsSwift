@@ -40,19 +40,19 @@
 //   - NATIVE PANE ON (nativeSupported: true). Both former blockers are now closed:
 //     (1) `renderItemPoint` / `renderBoundary` are ported to Swift `CustomSeriesRenderItem` closures
 //         below (statement for statement, including the upstream `isNewCluster = clusterIdx ===
-//         api.value(3)` comparison verbatim — see the closure's own PORT-NOTE for why that's not a typo
+//         api.value(3)` comparison verbatim — see the closure's own note for why that's not a typo
 //         fix), registered under the `"renderItem"` key on each frame's series (the same convention
 //         official-custom-hexbin.swift and others use).
 //     (2) ecStat's `hierarchicalKMeans` bisecting k-means is ported to Swift
 //         (EcStatHierarchicalKMeansStepper, ecStatClusteringTransform.swift — also backs the general
 //         `ecStat:clustering` dataset-transform registration) and driven step-by-step exactly like the
 //         JS's `for (...; !(stepResult = step.next()).isEnd; ...)` loop, building all 6 timeline frames.
-//     PORT-NOTE (framework gap, out of scope here): CustomView's shape registry
+//     note (framework gap, out of scope here): CustomView's shape registry
 //     (makeShapeElement/applyShape) doesn't have an `"ellipse"` case yet, so `renderBoundary`'s ellipse
 //     renders as an empty path if invoked. This never affects the STILL FRAME this gallery diffs (step 0
 //     has zero boundary-series rows, so renderBoundary is never called there) — it would only show up if
 //     someone scrubs the interactive gallery's timeline to steps 1-5.
-//     PORT-NOTE 2 (framework gap, out of scope here): the verified target is the SCATTER FIELD — at step 0
+//     note 2 (framework gap, out of scope here): the verified target is the SCATTER FIELD — at step 0
 //     both panes draw the identical 60 grey circles at identical positions (the renderItemPoint closure +
 //     frame data ported here). The vertical Timeline CHROME still differs: SliderTimelineView lays a
 //     vertical (`orient: 'vertical'`) timeline on the LEFT rather than honouring `right: 50`, and its
@@ -195,7 +195,7 @@ private let scatterClusteringProcessFrames: [(data: [[Any]], centroids: [[Double
 // upstream `renderItemPoint(params, api)` — one circle per datum, coloured by its cluster index (dim 2;
 // missing/NaN before clustering runs -> 0, colorAll[0] = grey), with a shadow glow on the cluster born
 // THIS step (`isNewCluster`).
-// PORT-NOTE: `isNewCluster = clusterIdx === api.value(3)` is copied VERBATIM from the official example.
+// `isNewCluster = clusterIdx === api.value(3)` is copied VERBATIM from the official example.
 // Dim 3 is CENTER_DIM_IDX[0] — this datum's own assigned-centroid X COORDINATE, not the new-cluster
 // INDEX — so the comparison (a small int cluster index against a float centroid X) is essentially always
 // false in real runs. Ported as written, quirk included, not "fixed": this pane must match what the web
@@ -209,7 +209,7 @@ private let scatterClusteringProcessRenderItemPoint: CustomSeriesRenderItem = { 
     let clusterIdxRaw = scatterClusteringProcessNum(api.value(2.0, nil))
     let clusterIdx = clusterIdxRaw.isNaN ? 0 : Int(clusterIdxRaw)
 
-    // upstream: `var isNewCluster = clusterIdx === api.value(3);` (strict equality; see PORT-NOTE above).
+    // upstream: `var isNewCluster = clusterIdx === api.value(3);` (strict equality; see note above).
     let v3 = scatterClusteringProcessNum(api.value(3.0, nil))
     let isNewCluster = !v3.isNaN && Double(clusterIdx) == v3
 
@@ -234,7 +234,7 @@ private let scatterClusteringProcessRenderItemPoint: CustomSeriesRenderItem = { 
 
 // upstream `renderProgress: ++targetRenderProgress` — a module-scope counter incremented once per
 // ACTUAL renderBoundary call (during rendering, not option-build time). A plain file-scope `var` mirrors
-// the JS closure-captured mutable global (never invoked at step 0 — see the file header PORT-NOTE).
+// the JS closure-captured mutable global (never invoked at step 0 — see the file header note).
 private var scatterClusteringProcessRenderProgress = 0.0
 
 // upstream `renderBoundary(params, api)` — a dashed ellipse centred on the new centroid, sized in DATA
@@ -254,7 +254,7 @@ private let scatterClusteringProcessRenderBoundary: CustomSeriesRenderItem = { _
     scatterClusteringProcessRenderProgress += 1
 
     return [
-        // PORT-NOTE: "ellipse" isn't a registered CustomView shape type (framework gap, out of this
+        // "ellipse" isn't a registered CustomView shape type (framework gap, out of this
         // task's scope) — renders as an empty path if this closure is ever invoked. See file header.
         "type": "ellipse",
         "shape": ["cx": cx, "cy": cy, "rx": rx, "ry": ry] as [String: Any],
@@ -609,7 +609,7 @@ option.baseOption.animation = false;
                 "animation": false,
                 "tooltip": [:] as [String: Any],
                 // upstream doesn't declare a `grid` (echarts synthesizes a default one from xAxis/yAxis
-                // alone). PORT-NOTE: the port's default-grid auto-completion doesn't reach a series whose
+                // alone). note: the port's default-grid auto-completion doesn't reach a series whose
                 // axes/grid only exist inside `baseOption` (a `timeline`+`baseOption`+`options` option
                 // tree) — `Grid.create` -> `injectCoordSysByOption` resolves an `AxisModel` whose `.axis`
                 // was never assigned, a `nil`-unwrap crash (unrelated to the clustering/renderItem work

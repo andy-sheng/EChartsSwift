@@ -17,7 +17,7 @@ const PROJ = '/Volumes/EXT-Storage/Developer/iOS-Chart'
 
 const PREAMBLE = `FAITHFUL line-by-line port of Apache ZRender (TypeScript) to Swift; preserve upstream structure for mechanical re-sync.
 
-READ FIRST: ${PROJ}/CONVENTIONS.md (number->Double; free-fn module->caseless enum namespace; classes->final class; VectorArray=SIMD2<Double>, value-returning no out-params; header '// Ported from <upstream> — keep in sync with upstream'; mark gaps '// PORT-TODO') and ${PROJ}/PORT_STATUS.md (Phase 0-2 landed; §11 is the Phase 3 plan with exact file targets/deps; §10/§4/§P0-3 are the open-issue backlogs).
+READ FIRST: ${PROJ}/CONVENTIONS.md (number->Double; free-fn module->caseless enum namespace; classes->final class; VectorArray=SIMD2<Double>, value-returning no out-params; header '// Ported from <upstream> — keep in sync with upstream'; mark gaps '// TODO') and ${PROJ}/PORT_STATUS.md (Phase 0-2 landed; §11 is the Phase 3 plan with exact file targets/deps; §10/§4/§P0-3 are the open-issue backlogs).
 
 Phases 0-2 already translated zrender into ${PROJ}/Sources/ZRenderKit/ — Core/*, Element, Graphic/* (Displayable/Group/Path/Text/TSpan/Image/CompoundPath/IncrementalDisplayable + gradients/pattern), Graphic/Shape/* (all 16 shapes), Contain/* (hit-testing), Storage, ZRender host facade, Animation/{Animator(STUB),easing(STUB)}, Tool/color(partial). NativePainter/ is the hand-written CG/CA backend (CGPathRebuilder/CGRenderer/CALayerPainter, now also gradient/text/image paint). Reuse those APIs; do not re-translate.
 
@@ -45,7 +45,7 @@ TASK: Translate ${Z}/animation/Clip.ts -> ${PROJ}/Sources/ZRenderKit/Animation/C
 
   () => agent(`${PREAMBLE}
 
-TASK: Translate ${Z}/tool/path.ts -> ${PROJ}/Sources/ZRenderKit/Tool/path.swift (the path utilities: createFromString/parsePathString SVG-path parsing if present, mergePath, clonePath, the path<->shape helpers used by morphing). Depends on PathProxy, Path, all shapes, BoundingRect, matrix (all ported). For any SVG-string-parsing that pulls a big parser, port the core and '// PORT-TODO' exotic edge cases. READ the upstream imports.`, { label: 'translate:tool-path', phase: 'Foundations', schema: T }),
+TASK: Translate ${Z}/tool/path.ts -> ${PROJ}/Sources/ZRenderKit/Tool/path.swift (the path utilities: createFromString/parsePathString SVG-path parsing if present, mergePath, clonePath, the path<->shape helpers used by morphing). Depends on PathProxy, Path, all shapes, BoundingRect, matrix (all ported). For any SVG-string-parsing that pulls a big parser, port the core and '// TODO' exotic edge cases. READ the upstream imports.`, { label: 'translate:tool-path', phase: 'Foundations', schema: T }),
 
   () => agent(`${PREAMBLE}
 
@@ -62,7 +62,7 @@ TASK: Replace the Phase-1 STUB at ${PROJ}/Sources/ZRenderKit/Animation/Animator.
 - Keyframe add/sort, the catmull-rom/linear interpolation between keyframes, percent + easing per keyframe.
 - Animator: animateTo target collection, start/step(time)/stop, onframe/ondestroy/done callbacks, the 'additive' animation path, delay/duration/loop.
 - cloneValue and the value-cloning helpers Element references.
-Keep upstream method order/names. Reference easing (name->fn) and color.lerp. final class. Where it references the Animation scheduler (added next phase) or Element internals, use the existing hooks / '// PORT-TODO'. This unblocks morphPath and the Element animate wiring.`, { label: 'translate:Animator', phase: 'Animator', schema: T })
+Keep upstream method order/names. Reference easing (name->fn) and color.lerp. final class. Where it references the Animation scheduler (added next phase) or Element internals, use the existing hooks / '// TODO'. This unblocks morphPath and the Element animate wiring.`, { label: 'translate:Animator', phase: 'Animator', schema: T })
 
 // ---------------- Scheduler + dividePath ----------------
 phase('Scheduler')
@@ -86,8 +86,8 @@ TASK: Translate ${Z}/tool/morphPath.ts -> ${PROJ}/Sources/ZRenderKit/Tool/morphP
   () => agent(`${PREAMBLE}
 
 TASK: Wire the now-real animation system into the scene graph by replacing the Phase-1/2 stubs (faithful, minimal edits):
-- ${PROJ}/Sources/ZRenderKit/Element.swift: make animateTo/animateFrom/stopAnimation/animate/addAnimator/removeAnimator/updateDuringAnimation REAL (they were '// PORT-TODO' no-ops referencing the Animator stub). Translate the upstream bodies from ${Z}/Element.ts (the animation section), using the real Animator + the element's animators list. Keep the states/event stubs as-is (Phase 4).
-- ${PROJ}/Sources/ZRenderKit/ZRender.swift: wire the animation clock — ZRender owns an Animation (just translated); add/refresh should register animators and the flush/refresh hook should be driven by Animation.update. Replace the Phase-2 '// PORT-TODO' animation-clock stub.
+- ${PROJ}/Sources/ZRenderKit/Element.swift: make animateTo/animateFrom/stopAnimation/animate/addAnimator/removeAnimator/updateDuringAnimation REAL (they were '// TODO' no-ops referencing the Animator stub). Translate the upstream bodies from ${Z}/Element.ts (the animation section), using the real Animator + the element's animators list. Keep the states/event stubs as-is (Phase 4).
+- ${PROJ}/Sources/ZRenderKit/ZRender.swift: wire the animation clock — ZRender owns an Animation (just translated); add/refresh should register animators and the flush/refresh hook should be driven by Animation.update. Replace the Phase-2 '// TODO' animation-clock stub.
 READ both upstream files for the exact bodies. Document anything still deferred.`, { label: 'wire:Element+ZRender-animation', phase: 'Morph+Wire', schema: T }),
 
   () => agent(`${PREAMBLE}
@@ -100,7 +100,7 @@ phase('Integrate')
 const integrate = await agent(`${PREAMBLE}
 
 TASK: Make the package COMPILE GREEN and keep the existing 50 tests passing. The real Animator replaced a stub and animation got wired into Element/ZRender — expect integration breakage at those seams.
-Loop: 'cd ${PROJ} && swift build' (timeout ~400s), read errors, fix with MINIMAL FAITHFUL edits. Up to ~12 iterations. Rules: fix real mismatches over deleting logic; '// PORT-TODO' faithful-signature stubs OK for genuinely-deferred deps (Handler/event are Phase 4) but never weaken interpolation/morph/easing MATH to dodge an error — fix the call site. Then 'swift test' — the existing 50 tests (golden geometry + ported unit tests) MUST still pass; fix any regression you introduced (especially if the Element animate wiring changed shape/style state). Report buildGreen, testsPass, notes.`, { label: 'build-fix-loop', phase: 'Integrate', schema: BUILD })
+Loop: 'cd ${PROJ} && swift build' (timeout ~400s), read errors, fix with MINIMAL FAITHFUL edits. Up to ~12 iterations. Rules: fix real mismatches over deleting logic; '// TODO' faithful-signature stubs OK for genuinely-deferred deps (Handler/event are Phase 4) but never weaken interpolation/morph/easing MATH to dodge an error — fix the call site. Then 'swift test' — the existing 50 tests (golden geometry + ported unit tests) MUST still pass; fix any regression you introduced (especially if the Element animate wiring changed shape/style state). Report buildGreen, testsPass, notes.`, { label: 'build-fix-loop', phase: 'Integrate', schema: BUILD })
 
 // ---------------- Verify ----------------
 phase('Verify')
@@ -159,7 +159,7 @@ Read the produced Swift under ${PROJ}/Sources/ZRenderKit/{Animation,Tool} and th
 Append a 'Phase 3' section (preserve all prior history — append, do not delete) with:
 1. What landed (real Animator/Animation/Clip/easing, tool path/transformPath/dividePath/morphPath, color completion, Element/ZRender animation wiring, CADisplayLink host loop) — checklist + per-file status/verdict table.
 2. Build + test status: build green; test count pass/skip/fail incl. the ported animation/color unit tests + the new animation interpolation smoke.
-3. Deduped, severity-sorted NEW open issues + PORT-TODOs. Note what is now NO LONGER stubbed (animation) vs what REMAINS deferred to Phase 4 (states/emphasis/blur/select, Handler/event/GestureMgr interaction, native image loading if still stubbed).
+3. Deduped, severity-sorted NEW open issues + TODOs. Note what is now NO LONGER stubbed (animation) vs what REMAINS deferred to Phase 4 (states/emphasis/blur/select, Handler/event/GestureMgr interaction, native image loading if still stubbed).
 4. State that **zrender is now LOGIC-COMPLETE** (rendering + animation + path tools); the only remaining zrender work is Phase 4 = interaction (Handler.ts, core/event, GestureMgr -> UIKit gestures, dom bridging). After Phase 4, the port moves to the ECharts layer (coord/scale/data/chart).
 5. The Phase 4 plan: list upstream files (Handler.ts, core/event.ts, core/GestureMgr.ts, dom/) + how they bridge to native UIKit/AppKit gesture+event handling (this is mostly hand-written bridging, not direct translation).
 6. Keep the standing upstream-sync rule.`, { label: 'synthesize-status', phase: 'Synthesize' })

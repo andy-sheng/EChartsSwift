@@ -19,7 +19,7 @@
 //     carries its RESULT, the reversed literal ['#50a3ba', '#eac736', '#d94e5d']. Same colours.
 //   - The example's front-matter comment block is dropped from the web JS (metadata, not code).
 //   - `roam: true` is kept verbatim; it has nothing to pan/zoom in a static frame.
-//   - No option key is a JS closure, so the native pane is a FULL port — no omissions, no PORT-NOTEs.
+//   - No option key is a JS closure, so the native pane is a FULL port — no omissions, no notes.
 import Foundation
 import EChartsKit
 

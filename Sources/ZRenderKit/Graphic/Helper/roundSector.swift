@@ -34,9 +34,9 @@ private func mathMin(_ a: Double, _ b: Double) -> Double {
 }
 private let e = 1e-4
 
-// PORT-NOTE: upstream models the sector corner radius as the inline union `number | number[]`.
+// upstream models the sector corner radius as the inline union `number | number[]`.
 //   Modeled as a tagged enum (no untagged unions in Swift). Used by SectorShape + normalizeCornerRadius.
-//   PORT-NOTE: `Equatable` is a port addition (upstream compares the raw union with `===`). It lets
+//   `Equatable` is a port addition (upstream compares the raw union with `===`). It lets
 //   `anyStrictEqual` (Element.swift) see through the boxed enum so an UNCHANGED corner radius is
 //   filtered out of an `animateTo` prop bag instead of always allocating a no-op animator. The only
 //   deviation vs upstream is the `.array` case (JS `===` on two equal arrays is false); the animator
@@ -171,7 +171,7 @@ public enum roundSector {   // upstream module: graphic/helper/roundSector
     }
 
     // upstream: export function buildPath(ctx, shape)
-    // PORT-NOTE: upstream's `shape` is an inline structural type `{ cx, cy, startAngle, endAngle,
+    // upstream's `shape` is an inline structural type `{ cx, cy, startAngle, endAngle,
     //   clockwise?, r?, r0?, cornerRadius? }`. Only Sector calls this helper, so we accept the
     //   concrete `SectorShape` (its fields satisfy the structural type). `shape.r0 || 0` collapses
     //   to `shape.r0` since `r0` is a non-optional Double (default 0).

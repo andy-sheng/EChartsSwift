@@ -47,7 +47,7 @@ import ZRenderKit
 // `SortParam` which is materialized (below) because the `sort` callback consumes it by value.
 // ============================================================================
 
-// PORT-NOTE: TreeNode `depth`/`height`/`dataIndex` are `number` upstream. The exact Swift numeric type
+// TreeNode `depth`/`height`/`dataIndex` are `number` upstream. The exact Swift numeric type
 //   (Int vs Double) is owned by the sibling data/Tree.swift track. To stay build-robust regardless of
 //   that choice, every float-math use here wraps the metric in `Double(...)` and every array-index use
 //   wraps it in `Int(...)` (both compile whether the source is Int or Double). Integrate reconciles.
@@ -115,7 +115,7 @@ open class SunburstSeriesModel: SeriesModel {
         //         return model;
         //     });
         // }
-        // PORT-NOTE: SeriesData.wrapMethod cannot rebind a method by string name, so a `getItemModel`
+        // SeriesData.wrapMethod cannot rebind a method by string name, so a `getItemModel`
         //   injection is routed into the dedicated `_getItemModelInjections` store, which
         //   `SeriesData.getItemModel` threads through its (possibly replaced) result — see
         //   data/SeriesData.swift. The closure below therefore DOES fire per datum: it resolves the node
@@ -167,9 +167,9 @@ open class SunburstSeriesModel: SeriesModel {
 
         // const node = this.getData().tree.getNodeByDataIndex(dataIndex);
         // params.treePathInfo = wrapTreePathInfo(node, this);
-        //   PORT-NOTE: upstream's `<SunburstSeriesNodeItemOption['value']>` only narrows the element
+        //   upstream's `<SunburstSeriesNodeItemOption['value']>` only narrows the element
         //   `value` type; the Swift `TreePathInfoItem.value` is `Any?`, so the generic arg has no analogue.
-        //   PORT-NOTE: upstream types `tree`/`getNodeByDataIndex` optimistically, but `getNodeByDataIndex`
+        //   upstream types `tree`/`getNodeByDataIndex` optimistically, but `getNodeByDataIndex`
         //   indexes `this._nodes[rawIndex]` unchecked and yields `undefined` for an out-of-range index;
         //   `wrapTreePathInfo(undefined, ...)` then falls straight out of its `while (node)` loop and
         //   returns `[]`. So upstream ALWAYS assigns an array — never leaves the field absent. Map over
@@ -270,7 +270,7 @@ open class SunburstSeriesModel: SeriesModel {
 
     // getViewRoot() { return this._viewRoot; }
     open func getViewRoot() -> TreeNode {
-        // PORT-NOTE: upstream returns `this._viewRoot`, which is set by `optionUpdated()` (a model
+        // upstream returns `this._viewRoot`, which is set by `optionUpdated()` (a model
         //   lifecycle hook). If the driver has not invoked `optionUpdated` yet, `_viewRoot` is
         //   nil; lazily reset here so the layout/view see a valid root (safe fallback per task rule 6).
         if self._viewRoot == nil {

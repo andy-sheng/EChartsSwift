@@ -35,7 +35,7 @@ import ZRenderKit
 //       -> util/layout.swift (SIBLING). Referenced by its conventional public API:
 //          free-function module -> caseless enum `layout` (`layout.createBoxLayoutReference` /
 //          `layout.getLayoutRect`); the types `LayoutRect` / `BoxLayoutReferenceResult` stay top-level.
-//          PORT-NOTE: util/layout.swift is landed; namespacing follows the caseless-enum convention above.
+//          util/layout.swift is landed; namespacing follows the caseless-enum convention above.
 //   import {
 //       createScaleByModel, getScaleValuePositionKind, isNameLocationCenter, shouldAxisShow,
 //       retrieveAxisBreaksOption, determineAxisType, isOnAxisZeroDiscouraged,
@@ -92,7 +92,7 @@ import ZRenderKit
 //   import { associateSeriesWithAxis } from '../axisStatistics';            -> `associateSeriesWithAxis` (coord/axisStatistics.swift)
 //
 // ============================================================================
-// PORT-NOTE (CROSS-SIBLING HIERARCHY): Upstream `CartesianAxisModel implements AxisBaseModel<...>`, i.e. it
+// note (CROSS-SIBLING HIERARCHY): Upstream `CartesianAxisModel implements AxisBaseModel<...>`, i.e. it
 //   IS an `AxisBaseModel`. The Swift port matches this: `CartesianAxisModel: AxisBaseModel`
 //   (coord/cartesian/AxisModel.swift). Grid relies on the relation in two places:
 //     - `axis.model = axisModel` (base `Axis.model: AxisBaseModel!`), and
@@ -100,7 +100,7 @@ import ZRenderKit
 //   Both type-check against the aligned hierarchy.
 // ============================================================================
 //
-// PORT-NOTE (AXIS NAME CLASH): the former placeholder `public protocol Axis` in coord/axisStatistics.swift
+// note (AXIS NAME CLASH): the former placeholder `public protocol Axis` in coord/axisStatistics.swift
 //   was removed once the real `open class Axis` (coord/Axis.swift) landed. This file still uses the concrete
 //   `Axis2D` for local axis references and names `Axis` only where the `CoordinateSystemMaster` protocol requires it.
 
@@ -191,7 +191,7 @@ public final class Grid: CoordinateSystemMaster {
     // upstream: static dimIdxMap = createDimNameMap(cartesian2DDimensions);
     public static let dimIdxMap: HashMap<DimensionIndex> = createDimNameMap(cartesian2DDimensions)
 
-    // PORT-NOTE: `CoordinateSystemMaster.boxCoordinateSystem` (optional, default nil) is not used by Grid.
+    // `CoordinateSystemMaster.boxCoordinateSystem` (optional, default nil) is not used by Grid.
 
     // upstream: constructor(gridModel: GridModel, ecModel: GlobalModel, api: ExtensionAPI)
     public init(_ gridModel: GridModel, _ ecModel: GlobalModel, _ api: ExtensionAPI) {
@@ -202,7 +202,7 @@ public final class Grid: CoordinateSystemMaster {
     }
 
     // upstream: getRect(): LayoutRect
-    //   PORT-NOTE: upstream returns the concrete `LayoutRect`; return-type covariance means
+    //   upstream returns the concrete `LayoutRect`; return-type covariance means
     //   `getRect() -> LayoutRect` does NOT witness the optional protocol requirement
     //   `CoordinateSystemMaster.getRect(): RectLike?`, which resolves to its nil default through the
     //   protocol. All current callers (cartesian2dPrepareCustom, EChartsView, barGrid) deliberately
@@ -241,7 +241,7 @@ public final class Grid: CoordinateSystemMaster {
                     axisNeedsAlign.append(axis)
                 }
                 else {
-                    // PORT-NOTE: upstream `scaleCalcNice(axis)`; the landed `scaleCalcNice` takes a
+                    // upstream `scaleCalcNice(axis)`; the landed `scaleCalcNice` takes a
                     //   `ScaleCalcNiceAxisLike` (its own `axis` is re-derived from `model.axis` internally).
                     scaleCalcNice(ScaleCalcNiceAxisLike(scale: axis.scale, model: axis.model))
                 }
@@ -440,7 +440,7 @@ public final class Grid: CoordinateSystemMaster {
      * @implements
      */
     // upstream: convertFromPixel(ecModel, finder, value: number | number[]): number | number[]
-    //   PORT-NOTE: `CoordinateSystemMaster.convertFromPixel` erases the `number | number[]` union to
+    //   `CoordinateSystemMaster.convertFromPixel` erases the `number | number[]` union to
     //   `[Double]` (JS/Swift type difference). The single-axis branch (`value as number`) therefore
     //   reads the leading element as the scalar proxy — a single-axis pixel value is passed as a
     //   1-element array — which is semantically equivalent.
@@ -511,7 +511,7 @@ public final class Grid: CoordinateSystemMaster {
         if let coord = coord {
             return coord.containPoint(point)
         }
-        // PORT-NOTE: upstream implicitly returns `undefined` (falsy) when no coord exists.
+        // upstream implicitly returns `undefined` (falsy) when no coord exists.
         return false
     }
 
@@ -570,7 +570,7 @@ public final class Grid: CoordinateSystemMaster {
                     axisPosition
                 )
 
-                // PORT-NOTE (CROSS-SIBLING): `isAxisOnBand` / `axis.model = axisModel` rely on
+                // note (CROSS-SIBLING): `isAxisOnBand` / `axis.model = axisModel` rely on
                 //   `CartesianAxisModel: AxisBaseModel`, which the port now satisfies (see file header).
                 axis.onBand = axisHelper.isAxisOnBand(axis.scale, axisModel)
                 axis.inverse = (axisModel.get("inverse") as? Bool) ?? false
@@ -698,7 +698,7 @@ public final class Grid: CoordinateSystemMaster {
 
                 if __DEV__ {
                     if gridModel == nil {
-                        // PORT-NOTE: upstream `throw new Error(...)`. This coord-sys injection provider
+                        // upstream `throw new Error(...)`. This coord-sys injection provider
                         //   closure is non-throwing in the port, so the dev-mode guard is replicated as
                         //   an error log instead of a thrown exception.
                         log.error(
@@ -706,7 +706,7 @@ public final class Grid: CoordinateSystemMaster {
                         )
                     }
                     if (xAxisModel.getCoordSysModel() as AnyObject) !== (yAxisModel.getCoordSysModel() as AnyObject) {
-                        // PORT-NOTE: upstream `throw new Error('xAxis and yAxis must use the same grid')`;
+                        // upstream `throw new Error('xAxis and yAxis must use the same grid')`;
                         //   replicated as a dev-mode error log (this closure is non-throwing).
                         log.error("xAxis and yAxis must use the same grid")
                     }
@@ -1099,7 +1099,7 @@ func createOrUpdateAxesView(
     axesMap.y.each { axis, _ in buildTickLabelFor(axis) }
 
     // upstream: const nameMarginLevelMap = {x: 0, y: 0}; calcNameMarginLevel(0); calcNameMarginLevel(1);
-    //   PORT-NOTE: upstream indexes `gridRect[WH[xyIdx]]` / `layoutRef.refContainer[WH[xyIdx]]` via the
+    //   upstream indexes `gridRect[WH[xyIdx]]` / `layoutRef.refContainer[WH[xyIdx]]` via the
     //     XY/WH dimension-name tables; expressed here with explicit width/height accessors.
     var nameMarginLevelMap: [String: Int] = ["x": 0, "y": 0]
     func calcNameMarginLevel(_ xyIdx: Int) {
@@ -1211,7 +1211,7 @@ let resolveAxisNameOverlapForGrid: AxisBuilderSharedContext.ResolveAxisNameOverl
 }
 
 // JS truthiness for a dynamic option value (used where upstream relies on `if (x)` / `!x`).
-// PORT-NOTE: falsy = nil / NSNull / false / 0 / "" / NaN (CONVENTIONS §6).
+// falsy = nil / NSNull / false / 0 / "" / NaN (CONVENTIONS §6).
 private func isTruthy(_ value: Any?) -> Bool {
     switch value {
     case nil: return false

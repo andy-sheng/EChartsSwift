@@ -276,7 +276,7 @@ final class DecalBreadthTests: XCTestCase {
 }
 
 
-// PORT-NOTE: `Pattern.image` is an `ImageSource` enum (`.url(String)` / `.image(ImageLike)`) since the
+// `Pattern.image` is an `ImageSource` enum (`.url(String)` / `.image(ImageLike)`) since the
 //   Pattern retype; decal tiles are always produced as `.url(dataURI)`.
 private func decalImageURI(_ pattern: ZRenderKit.Pattern) -> String? {
     if case let .url(uri) = pattern.image { return uri }

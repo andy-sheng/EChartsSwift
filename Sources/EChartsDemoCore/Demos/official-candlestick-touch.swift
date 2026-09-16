@@ -319,7 +319,7 @@ option = {
                     "fontSize": 12.0,
                     "color": "#333"
                 ] as [String: Any]
-                // PORT-NOTE: tooltip.position omitted — a JS closure pinning the tooltip to top: 60 and
+                // tooltip.position omitted — a JS closure pinning the tooltip to top: 60 and
                 // flipping it between left: 5 / right: 5 depending on which half of the canvas the
                 // pointer is in.
             ] as [String: Any],

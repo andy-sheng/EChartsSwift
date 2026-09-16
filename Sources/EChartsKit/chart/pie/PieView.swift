@@ -25,9 +25,9 @@ import ZRenderKit
 //   import { clone, extend, retrieve3 } from 'zrender/src/core/util';  -> `util.clone` / `util.extend` /
 //       `util.retrieve3` (ZRenderKit).
 //   import * as graphic from '../../util/graphic';
-//       -> `Sector` / `Text` / `Polyline` are the ZRenderKit shapes. PORT-NOTE: `util/graphic` (util/graphic.swift,
+//       -> `Sector` / `Text` / `Polyline` are the ZRenderKit shapes. note: `util/graphic` (util/graphic.swift,
 //          which re-exports `initProps`/`updateProps` from animation/basicTransition + `removeElementWithFadeOut`)
-//          is ported; the PieView static render still omits the animation calls (see the PiePiece PORT-NOTE block).
+//          is ported; the PieView static render still omits the animation calls (see the PiePiece note block).
 //   import { setStatesStylesFromModel, toggleHoverEmphasis } from '../../util/states';
 //       -> util/states.swift (ported); the PieView static render omits states/emphasis wiring.
 //   import ChartView from '../../view/Chart';                      -> ChartView (view/Chart.swift).
@@ -57,7 +57,7 @@ import ZRenderKit
 // ================================================================================================
 // upstream: class PiePiece extends graphic.Sector { constructor(...); updateData(...); _updateLabel(...) }
 //
-// PORT-NOTE: `PiePiece` is modeled as a plain ZRenderKit `Sector` (the sanctioned DRAWING deviation —
+// `PiePiece` is modeled as a plain ZRenderKit `Sector` (the sanctioned DRAWING deviation —
 //   no Sector subclass) built + mutated by `createPiePiece` / `updatePieSectorData` / `_updateLabel`,
 //   which are the port of the PiePiece constructor + `updateData` + `_updateLabel`. `render` runs the
 //   upstream `data.diff(oldData).add/update/remove(...).execute()` (NOT a `group.removeAll()` rebuild),
@@ -237,7 +237,7 @@ open class PieView: ChartView {
     //     sector's CURRENT (previous-layout) angles/radii to the new layout. Reusing the SAME sector
     //     object (the diff `.update` path) both preserves its identity and drives the tween — the
     //     reset-on-update fix. Style/states/label are (re)applied for every datum, either way.
-    //   PORT-NOTE (NOW WIRED, was deferred): the `select`-state selectedOffset dx/dy (exploded slice),
+    //   note (NOW WIRED, was deferred): the `select`-state selectedOffset dx/dy (exploded slice),
     //     the focus/blur fan-out, the getSectorCornerRadius corner-radius merges (itemStyle + state
     //     shapes), the SSR scaleX/scaleY branch and the `animationType === 'scale'` r-grow enter are all
     //     implemented below (alongside the expansion enter).
@@ -466,7 +466,7 @@ open class PieView: ChartView {
 
         // upstream: sector.setTextConfig({ position: null, rotation: null }) — "reset position,
         //   rotation" so the label uses the absolute x/y `pieLabelLayout` computes.
-        // PORT-NOTE: `Element.setTextConfig` assigns wholesale (a Swift Optional cannot distinguish
+        // `Element.setTextConfig` assigns wholesale (a Swift Optional cannot distinguish
         //   "absent" from "explicitly nil"), which is precisely the reset semantics wanted here; the
         //   remaining fields are re-stamped by `pieLabelLayout` (`inside`).
         sector.setTextConfig(ElementTextConfig())

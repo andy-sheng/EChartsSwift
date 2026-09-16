@@ -13,7 +13,7 @@
 //     native `series.data`. The rest of the option is verbatim.
 //   - `series` is a bare object upstream; the Swift option wraps it in the one-element array echarts
 //     normalizes it to anyway.
-//   - no PORT-NOTE below: the option has NO function-valued key (no formatter / renderItem / label
+//   - no note below: the option has NO function-valued key (no formatter / renderItem / label
 //     callback), so the Swift `option` mirrors the JS one key-for-key with NOTHING dropped.
 //     `visualMap.type` is left unspelled because the official leaves it unspelled — visualMap's
 //     typeDefaulter resolves min/max to `continuous`, and writing it out would be an embellishment.

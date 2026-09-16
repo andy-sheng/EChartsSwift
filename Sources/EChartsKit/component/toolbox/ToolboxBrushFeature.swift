@@ -57,7 +57,7 @@ open class ToolboxBrushFeature: ToolboxFeature {
         // });
         ecModel.eachComponent("brush") { brushModelIn, _ in
             guard let brushModel = brushModelIn as? BrushModel else { return }
-            // See `applyTakeGlobalCursor`'s PORT-NOTE (stage order): upstream's brush VISUAL stage has
+            // See `applyTakeGlobalCursor`'s note (stage order): upstream's brush VISUAL stage has
             //   already applied the `takeGlobalCursor` payload by the time any view renders, so the icon
             //   status below reflects the click that just happened. This driver renders components BEFORE
             //   the brush visual, so apply it here too (idempotent — brushVisual makes the identical call).

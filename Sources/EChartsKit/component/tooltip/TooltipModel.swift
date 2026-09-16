@@ -30,11 +30,11 @@ import ZRenderKit
 //      CommonTooltipOption) already live in util/types.swift.
 // import tokens from '../../visual/tokens';             -> `tokens` (visual/tokens.swift)
 // import {AxisPointerOption} from '../axisPointer/AxisPointerModel';
-//   -> PORT-NOTE: axisPointer/AxisPointerModel is ported (component/axisPointer/AxisPointerModel.swift).
+//   -> note: axisPointer/AxisPointerModel is ported (component/axisPointer/AxisPointerModel.swift).
 //      `AxisPointerOption` is still kept below as an untyped option bag; the `axisPointer` sub-option
 //      in `defaultOption` is emitted as a plain `[String: Any]` literal.
 
-// PORT-NOTE: axisPointer/AxisPointerModel is ported; `AxisPointerOption` kept as an untyped bag here.
+// axisPointer/AxisPointerModel is ported; `AxisPointerOption` kept as an untyped bag here.
 public typealias AxisPointerOption = [String: Any]
 
 // export type TopLevelFormatterParams = CallbackDataParams | CallbackDataParams[];
@@ -47,7 +47,7 @@ public typealias AxisPointerOption = [String: Any]
 public enum TopLevelFormatterParams {
     case single(TooltipCallbackDataParams)
     case multiple([TooltipCallbackDataParams])
-    // PORT-NOTE (divergence, LANGUAGE constraint — no upstream TYPE analogue, but upstream BEHAVIOUR):
+    // note (divergence, LANGUAGE constraint — no upstream TYPE analogue, but upstream BEHAVIOUR):
     //   the COMPONENT-item tooltip path (`TooltipView._showComponentItemTooltip`, TooltipView.ts:740)
     //   hands `_showTooltipContent` the element's `ecData.tooltipConfig.option.formatterParams` — a
     //   `ComponentItemTooltipLabelFormatterParams` (`{componentType, name, $vars, ...extra}`,
@@ -142,7 +142,7 @@ open class TooltipModel: ComponentModel {
             "extraCssText": "",
 
             // axis indicator, trigger by axis
-            // PORT-NOTE: AxisPointerModel is ported; this sub-option is still emitted as a plain option bag.
+            // AxisPointerModel is ported; this sub-option is still emitted as a plain option bag.
             "axisPointer": [
                 // default is line
                 // legal values: 'line' | 'shadow' | 'cross'

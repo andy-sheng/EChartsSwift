@@ -30,7 +30,7 @@ import Foundation
 //     Z: 1
 // };
 
-// PORT-NOTE: interface ExtendedCanvasRenderingContext2D extends CanvasRenderingContext2D { dpr?: number }
+// interface ExtendedCanvasRenderingContext2D extends CanvasRenderingContext2D { dpr?: number }
 //            The canvas 2D context is a renderer-backend type and is NOT ported (CONVENTIONS §9).
 
 private var tmpOutX: [Double] = []
@@ -49,7 +49,7 @@ private func mathAbs(_ x: Double) -> Double { Swift.abs(x) }
 private let PI = Double.pi
 private let PI2 = PI * 2
 
-// PORT-NOTE: `typeof Float32Array !== 'undefined'` — runtime feature detection; on the
+// `typeof Float32Array !== 'undefined'` — runtime feature detection; on the
 // Swift side the typed buffer is always available, so the Float32Array branch is taken
 // (CONVENTIONS §8). The dynamic `number[] | Float32Array` distinction collapses to a single
 // growable `ContiguousArray<Double>` (CONVENTIONS §1).
@@ -119,7 +119,7 @@ public final class PathProxy {
 
     public var dpr: Double = 1
 
-    // PORT-NOTE: upstream `data: number[] | Float32Array`. Modeled as a single growable
+    // upstream `data: number[] | Float32Array`. Modeled as a single growable
     // `ContiguousArray<Double>` (CONVENTIONS §1). Always present (defaults to empty) rather
     // than possibly-undefined; constructor only assigns it when `_saveData`.
     public var data: ContiguousArray<Double> = []
@@ -145,7 +145,7 @@ public final class PathProxy {
     // Only update the pending pt when distance is larger.
     private var _pendingPtDist: Double = 0  // upstream default via initDefaultProps
 
-    // PORT-NOTE: private _ctx: ExtendedCanvasRenderingContext2D — renderer-backend context,
+    // private _ctx: ExtendedCanvasRenderingContext2D — renderer-backend context,
     //            not ported (CONVENTIONS §9). All `this._ctx && this._ctx.xxx()` calls below
     //            are dropped; path commands are recorded into `data` only.
 
@@ -211,11 +211,11 @@ public final class PathProxy {
         self.dpr = dpr
     }
 
-    // PORT-NOTE: setContext(ctx) / getContext() operate on a CanvasRenderingContext2D
+    // setContext(ctx) / getContext() operate on a CanvasRenderingContext2D
     //            (renderer seam, not ported — CONVENTIONS §9).
 
     public func beginPath() -> PathProxy {
-        // this._ctx && this._ctx.beginPath();   // PORT-NOTE renderer seam §9
+        // this._ctx && this._ctx.beginPath();   // note renderer seam §9
         self.reset()
         return self
     }
@@ -243,7 +243,7 @@ public final class PathProxy {
         self._drawPendingPt()
 
         self.addData(CMD.M, x, y)
-        // this._ctx && this._ctx.moveTo(x, y);   // PORT-NOTE renderer seam §9
+        // this._ctx && this._ctx.moveTo(x, y);   // note renderer seam §9
 
         // x0, y0, xi, yi 是记录在 _dashedXXXXTo 方法中使用
         // xi, yi 记录当前点, x0, y0 在 closePath 的时候回到起始点。
@@ -265,7 +265,7 @@ public final class PathProxy {
 
         self.addData(CMD.L, x, y)
 
-        // if (this._ctx && exceedUnit) { this._ctx.lineTo(x, y); }   // PORT-NOTE renderer seam §9
+        // if (this._ctx && exceedUnit) { this._ctx.lineTo(x, y); }   // note renderer seam §9
         if exceedUnit {
             self._xi = x
             self._yi = y
@@ -288,7 +288,7 @@ public final class PathProxy {
         self._drawPendingPt()
 
         self.addData(CMD.C, x1, y1, x2, y2, x3, y3)
-        // if (this._ctx) { this._ctx.bezierCurveTo(x1, y1, x2, y2, x3, y3); }   // PORT-NOTE renderer seam §9
+        // if (this._ctx) { this._ctx.bezierCurveTo(x1, y1, x2, y2, x3, y3); }   // note renderer seam §9
         self._xi = x3
         self._yi = y3
         return self
@@ -298,7 +298,7 @@ public final class PathProxy {
         self._drawPendingPt()
 
         self.addData(CMD.Q, x1, y1, x2, y2)
-        // if (this._ctx) { this._ctx.quadraticCurveTo(x1, y1, x2, y2); }   // PORT-NOTE renderer seam §9
+        // if (this._ctx) { this._ctx.quadraticCurveTo(x1, y1, x2, y2); }   // note renderer seam §9
         self._xi = x2
         self._yi = y2
         return self
@@ -320,7 +320,7 @@ public final class PathProxy {
             CMD.A, cx, cy, r, r, startAngle, delta, 0, (anticlockwise ?? false) ? 0 : 1
         )
 
-        // this._ctx && this._ctx.arc(cx, cy, r, startAngle, endAngle, anticlockwise);   // PORT-NOTE renderer seam §9
+        // this._ctx && this._ctx.arc(cx, cy, r, startAngle, endAngle, anticlockwise);   // note renderer seam §9
 
         self._xi = mathCos(endAngle) * r + cx
         self._yi = mathSin(endAngle) * r + cy
@@ -331,7 +331,7 @@ public final class PathProxy {
     public func arcTo(_ x1: Double, _ y1: Double, _ x2: Double, _ y2: Double, _ radius: Double) -> PathProxy {
         self._drawPendingPt()
 
-        // if (this._ctx) { this._ctx.arcTo(x1, y1, x2, y2, radius); }   // PORT-NOTE renderer seam §9
+        // if (this._ctx) { this._ctx.arcTo(x1, y1, x2, y2, radius); }   // note renderer seam §9
         return self
     }
 
@@ -339,7 +339,7 @@ public final class PathProxy {
     public func rect(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> PathProxy {
         self._drawPendingPt()
 
-        // this._ctx && this._ctx.rect(x, y, w, h);   // PORT-NOTE renderer seam §9
+        // this._ctx && this._ctx.rect(x, y, w, h);   // note renderer seam §9
         self.addData(CMD.R, x, y, w, h)
         return self
     }
@@ -350,25 +350,25 @@ public final class PathProxy {
 
         self.addData(CMD.Z)
 
-        // const ctx = this._ctx;   // PORT-NOTE renderer seam §9
+        // const ctx = this._ctx;   // note renderer seam §9
         let x0 = self._x0
         let y0 = self._y0
-        // if (ctx) { ctx.closePath(); }   // PORT-NOTE renderer seam §9
+        // if (ctx) { ctx.closePath(); }   // note renderer seam §9
 
         self._xi = x0
         self._yi = y0
         return self
     }
 
-    // PORT-NOTE: fill(ctx)/stroke(ctx) — `ctx` is a CanvasRenderingContext2D (renderer seam,
+    // fill(ctx)/stroke(ctx) — `ctx` is a CanvasRenderingContext2D (renderer seam,
     //            not ported — CONVENTIONS §9). The `ctx && ctx.fill()/stroke()` call is dropped.
     public func fill() {
-        // ctx && ctx.fill();   // PORT-NOTE renderer seam §9
+        // ctx && ctx.fill();   // note renderer seam §9
         self.toStatic()
     }
 
     public func stroke() {
-        // ctx && ctx.stroke();   // PORT-NOTE renderer seam §9
+        // ctx && ctx.stroke();   // note renderer seam §9
         self.toStatic()
     }
 
@@ -412,7 +412,7 @@ public final class PathProxy {
         }
         let oldData = self.data
         // upstream: if (hasTypedArray && (oldData instanceof Float32Array || !oldData))
-        // PORT-NOTE: single ContiguousArray<Double> — always reallocate to exact size.
+        // single ContiguousArray<Double> — always reallocate to exact size.
         if hasTypedArray {
             self.data = ContiguousArray<Double>(repeating: 0, count: offset + appendSize)
             if offset > 0 {   // upstream: offset > 0 && oldData
@@ -472,14 +472,14 @@ public final class PathProxy {
 
     private func _drawPendingPt() {
         if self._pendingPtDist > 0 {
-            // this._ctx && this._ctx.lineTo(this._pendingPtX, this._pendingPtY);   // PORT-NOTE renderer seam §9
+            // this._ctx && this._ctx.lineTo(this._pendingPtX, this._pendingPtY);   // note renderer seam §9
             self._pendingPtDist = 0
         }
     }
 
     private func _expandData() {
         // Only if data is Float32Array
-        // PORT-NOTE: upstream converts a static Float32Array back into a growable number[].
+        // upstream converts a static Float32Array back into a growable number[].
         // In Swift `data` is already a single growable ContiguousArray<Double>, so the
         // static→dynamic conversion is a no-op; growth happens via `append` in `addData`.
     }
@@ -500,7 +500,7 @@ public final class PathProxy {
         self._drawPendingPt()
 
         // upstream: if (data instanceof Array) { data.length = this._len; if (hasTypedArray && this._len > 11) this.data = new Float32Array(data); }
-        // PORT-NOTE: truncate to `_len`. The Float32Array static conversion (which would
+        // truncate to `_len`. The Float32Array static conversion (which would
         // truncate Double precision to Float) is dropped — single ContiguousArray<Double>
         // keeps full precision (CONVENTIONS §1).
         if self.data.count > Int(self._len) {
@@ -929,7 +929,7 @@ public final class PathProxy {
                         }
                         accumLength += l
                     }
-                    // PORT-NOTE: upstream guards `isEllipse && ctx.ellipse` (feature-detects
+                    // upstream guards `isEllipse && ctx.ellipse` (feature-detects
                     // the optional `ellipse` method). PathRebuilder always provides `ellipse`,
                     // so the existence check is dropped (CONVENTIONS §8/§9).
                     if isEllipse {

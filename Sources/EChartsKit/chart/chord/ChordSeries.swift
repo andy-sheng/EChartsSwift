@@ -182,7 +182,7 @@ open class ChordSeriesModel: SeriesModel {
         //     }
         //     return pathArr as string[];
         // }
-        // PORT-NOTE: upstream reassigns `model.resolveParentPath` / `model.getModel` per instance (a JS
+        // upstream reassigns `model.resolveParentPath` / `model.getModel` per instance (a JS
         //   prototype-method swap). Swift cannot rebind an instance method by name, so the swap is expressed
         //   as the two Model subclasses at file scope (`ChordEdgeLabelItemModel` / `ChordEdgeLabelChildModel`):
         //   the injection re-wraps the produced edge item model into `ChordEdgeLabelItemModel`, which redirects
@@ -319,7 +319,7 @@ open class ChordSeriesModel: SeriesModel {
             "top": 0.0,
             "right": 0.0,
             "bottom": 0.0,
-            // PORT-NOTE: upstream `width: null` / `height: null`; NSNull() retains the key in the bag.
+            // upstream `width: null` / `height: null`; NSNull() retains the key in the bag.
             "width": NSNull(),
             "height": NSNull(),
 

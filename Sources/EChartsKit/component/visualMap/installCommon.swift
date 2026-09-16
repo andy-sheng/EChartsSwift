@@ -67,7 +67,7 @@ import ZRenderKit
 //     registers.registerPreprocessor(preprocessor);
 // }
 //
-// PORT-NOTE: registration boilerplate lives in the Orchestrate/Integrate driver (ECharts.swift), not this
+// registration boilerplate lives in the Orchestrate/Integrate driver (ECharts.swift), not this
 //   file (same convention as chart/sankey/sankeyInstall.swift). The `installed`-once guard is a JS
 //   module singleton; in Swift the driver should call each registration exactly once. The subtype
 //   defaulter is the SAME logic as `visualMapSubTypeDefaulter` (typeDefaulter.swift) — do not duplicate

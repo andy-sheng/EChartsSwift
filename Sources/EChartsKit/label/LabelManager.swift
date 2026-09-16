@@ -179,7 +179,7 @@ public final class LabelManager {
     }
 
     /// upstream: updateLayoutConfig(api) — applies the user `labelLayout` option to each label.
-    /// PORT-NOTE: only the override branches are applied (the "restore default" else-branches are
+    /// only the override branches are applied (the "restore default" else-branches are
     /// no-ops on a fresh render, see the DEFERRED note). `draggable` / `labelLinePoints` deferred.
     public func updateLayoutConfig(_ width: Double, _ height: Double) {
         let degreeToRadian = Double.pi / 180
@@ -196,7 +196,7 @@ public final class LabelManager {
 
             // Host textConfig: force local:false; drop position config when x/y override it and rotation
             //   config when rotate overrides it (else keep the host's default); carry dx/dy as offset.
-            //   PORT-NOTE: upstream `hostEl.setTextConfig({...})` relies on zrender's field-MERGE
+            //   upstream `hostEl.setTextConfig({...})` relies on zrender's field-MERGE
             //   (`extend(this.textConfig, cfg)`), preserving unrelated fields like `inside`. The port's
             //   `setTextConfig` is a wholesale REPLACE stub, so start `cfg` from a COPY of the existing
             //   textConfig to reproduce the merge (keeps `inside`, and keeps `position`/`rotation` when

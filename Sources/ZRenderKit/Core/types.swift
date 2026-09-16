@@ -6,7 +6,7 @@ public typealias Dictionary<T> = [String: T]
  * Not readonly ArrayLike
  * Include Array, TypedArray
  */
-// PORT-NOTE: upstream ArrayLike<T> is a structural `{ [key: number]: T; length: number }`.
+// upstream ArrayLike<T> is a structural `{ [key: number]: T; length: number }`.
 // Swift `[T]` (and ContiguousArray<T>) satisfies that shape for our purposes.
 public typealias ArrayLike<T> = [T]
 
@@ -17,10 +17,10 @@ public typealias ArrayLike<T> = [T]
  * but a variable without `NullUndefined` may also be `null` or `undefined`,
  * which has to be determined by the implementation.
  */
-// PORT-NOTE: `NullUndefined = null | undefined` has no Swift equivalent as a standalone
+// `NullUndefined = null | undefined` has no Swift equivalent as a standalone
 // type; per CONVENTIONS §6, both null and undefined collapse to `nil` at use sites (`T?`).
 
-// PORT-NOTE: ImageLike = HTMLImageElement | HTMLCanvasElement | HTMLVideoElement —
+// ImageLike = HTMLImageElement | HTMLCanvasElement | HTMLVideoElement —
 // browser image-source types; ported as the backend seam `typealias ImageLike = Any`
 // in Core/platform.swift (CONVENTIONS §9).
 
@@ -72,10 +72,10 @@ public enum BuiltinTextPosition: String {
     case insideBottomRight
 }
 
-// PORT-NOTE: WXCanvasRenderingContext = CanvasRenderingContext2D & { draw: () => void } —
+// WXCanvasRenderingContext = CanvasRenderingContext2D & { draw: () => void } —
 // canvas backend type (CONVENTIONS §9), routed through Renderer/Painter seam.
 
-// PORT-NOTE: ZRCanvasRenderingContext = CanvasRenderingContext2D & { dpr; __attrCachedBy } —
+// ZRCanvasRenderingContext = CanvasRenderingContext2D & { dpr; __attrCachedBy } —
 // canvas backend type (CONVENTIONS §9), routed through Renderer/Painter seam.
 
 // Properties zrender will extended to the raw event
@@ -96,14 +96,14 @@ struct ZREventProperties {
     var zrByTouch: Bool = false
 }
 
-// PORT-NOTE: ZRRawMouseEvent / ZRRawTouchEvent / ZRRawPointerEvent = (MouseEvent|TouchEvent)
+// ZRRawMouseEvent / ZRRawTouchEvent / ZRRawPointerEvent = (MouseEvent|TouchEvent)
 // & ZREventProperties — ZRRawTouchEvent is a class in Core/GestureMgr.swift; the mouse/pointer
 // members collapse into the `ZRRawEvent` class (Core/event.swift) at the native event seam.
 
-// PORT-NOTE: ZRRawEvent = ZRRawMouseEvent | ZRRawTouchEvent | ZRRawPointerEvent — ported as the
+// ZRRawEvent = ZRRawMouseEvent | ZRRawTouchEvent | ZRRawPointerEvent — ported as the
 // `ZRRawEvent` class in Core/event.swift (collapses the union; see above).
 
-// PORT-NOTE: ZRPinchEvent = ZRRawEvent & { pinchScale; pinchX; pinchY; gestureEvent } —
+// ZRPinchEvent = ZRRawEvent & { pinchScale; pinchX; pinchY; gestureEvent } —
 // those fields are collapsed onto the `ZRRawEvent` class in Core/event.swift.
 
 public enum ElementEventName: String {
@@ -126,7 +126,7 @@ public enum ElementEventName: String {
     case globalout
     // upstream dispatches the gesture type (e.g. 'pinch') through `type as ElementEventName`
     //   in `Handler.processGesture` — a TS cast that bypasses the union, so 'pinch' is not a
-    //   literal member upstream. Added here so the Swift enum can carry it. // PORT-NOTE: deviation.
+    //   literal member upstream. Added here so the Swift enum can carry it. // note: deviation.
     case pinch
 }
 
@@ -153,18 +153,18 @@ public struct RenderedEvent {
 }
 
 // Useful type methods
-// PORT-NOTE: PropType<TObj, TProp> — TS keyof/index-access utility type; no Swift equivalent.
-// PORT-NOTE: AllPropTypes<T> — TS utility type; no Swift equivalent.
-// PORT-NOTE: FunctionPropertyNames<T> — TS mapped/conditional utility type; no Swift equivalent.
-// PORT-NOTE: MapToType<T, S> — TS recursive mapped utility type; no Swift equivalent.
+// PropType<TObj, TProp> — TS keyof/index-access utility type; no Swift equivalent.
+// AllPropTypes<T> — TS utility type; no Swift equivalent.
+// FunctionPropertyNames<T> — TS mapped/conditional utility type; no Swift equivalent.
+// MapToType<T, S> — TS recursive mapped utility type; no Swift equivalent.
 
 // See https://www.staging-typescript.org/docs/handbook/advanced-types.html#distributive-conditional-types
 // For the case:
 // `keyof A | B` does not equals to `Keyof A | Keyof B`
 // KeyOfDistributive<A | B> equals to `KeyOfDistributive<A> | KeyOfDistributive<B>`
-// PORT-NOTE: KeyOfDistributive<T> — TS distributive conditional type; no Swift equivalent.
+// KeyOfDistributive<T> — TS distributive conditional type; no Swift equivalent.
 
-// PORT-NOTE: WithThisType<Func, This> — TS `this`-parameter utility type; no Swift equivalent.
+// WithThisType<Func, This> — TS `this`-parameter utility type; no Swift equivalent.
 
 
 /**
@@ -180,7 +180,7 @@ public typealias IncrementalId = Double
 // Previously `el.incremental` is boolean. This is only used
 // for both TS type and value backward compatibility.
 // Internal conversion: true => 1, false => 0.
-// PORT-NOTE: IncrementalIdCompat = number | boolean — modeled as Double; the boolean
+// IncrementalIdCompat = number | boolean — modeled as Double; the boolean
 // arm is converted at use sites per the comment above (true => 1, false => 0).
 public typealias IncrementalIdCompat = Double
 public let INCREMENTAL_ID_FALSE: Double = 0
@@ -190,7 +190,7 @@ public let INCREMENTAL_ID_TRUE_COMPAT: Double = 1
 public typealias ZLevel = Double
 // zlevel2 can not be specified by users. It is assigned internally
 // and always be 0, 1, 2; never be greater than 2.
-// PORT-NOTE: ZLevel2 = typeof ZLEVEL2_NORMAL_ABOVE | typeof ZLEVEL2_INCREMENTAL
+// ZLevel2 = typeof ZLEVEL2_NORMAL_ABOVE | typeof ZLEVEL2_INCREMENTAL
 // | typeof ZLEVEL2_NORMAL_BELOW — a literal-typeof union (values 2 | 1 | 0); modeled as Double.
 public typealias ZLevel2 = Double
 

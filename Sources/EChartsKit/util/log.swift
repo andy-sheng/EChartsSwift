@@ -26,7 +26,7 @@ import ZRenderKit
 // import { map, isString, isFunction, eqNaN, isRegExp } from 'zrender/src/core/util';
 //   -> ZRenderKit `util` namespace (util.map / util.isString / util.isFunction / util.eqNaN / util.isRegExp).
 
-// PORT-NOTE: `__DEV__` is a build-time global replaced by upstream's bundler. There is no
+// `__DEV__` is a build-time global replaced by upstream's bundler. There is no
 //            shared env/config module in EChartsKit yet, so it is defined here as a module
 //            constant (defaults to dev). Move to a central config module once one exists, and
 //            remove this declaration to avoid a redeclaration collision.
@@ -39,7 +39,7 @@ public enum log {
     private static let ECHARTS_PREFIX = "[ECharts] "
     private static var storedLogs: Dictionary<Bool> = [:]
 
-    // PORT-NOTE: upstream feature-detects `console` (`typeof console !== 'undefined' && console.warn && console.log`).
+    // upstream feature-detects `console` (`typeof console !== 'undefined' && console.warn && console.log`).
     //            Swift has no `console`; output is routed through `print` (see outputLog), which is always available.
     private static let hasConsole = true
 
@@ -52,7 +52,7 @@ public enum log {
                 storedLogs[str] = true
             }
             // console[type](ECHARTS_PREFIX + str);
-            // PORT-NOTE (platform): no browser `console` in Swift — `type` ('log' | 'warn' | 'error') is
+            // note (platform): no browser `console` in Swift — `type` ('log' | 'warn' | 'error') is
             //            collapsed onto `print`. There is no strict parity target (browser warn/error share
             //            the devtools console, not a separate stderr stream); left as a single stdout seam.
             _ = type

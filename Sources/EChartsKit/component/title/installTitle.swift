@@ -44,10 +44,10 @@ import ZRenderKit
 //   import {windowOpen} from '../../util/format';
 //     -> `format.windowOpen` (format.swift:442), used by the `link`/`sublink` click handlers in `render`.
 //   import { EChartsExtensionInstallRegisters } from '../../extension';
-//     -> PORT-NOTE (deferred): registration boilerplate belongs to the Orchestrate driver (see `install`
+//     -> TODO: registration boilerplate belongs to the Orchestrate driver (see `install`
 //        note at the bottom).
 //   import tokens from '../../visual/tokens';
-//     -> PORT-NOTE: `visual/tokens.ts` is ported (visual/tokens.swift). The `tokens.*` values consumed in
+//     -> note: `visual/tokens.ts` is ported (visual/tokens.swift). The `tokens.*` values consumed in
 //        `defaultOption` are still inlined verbatim as their resolved constants (same deviation as
 //        GridModel/axisDefault); could be re-wired to the real `tokens` namespace.
 //          tokens.size.m            = 15                       (size.m)
@@ -272,7 +272,7 @@ public final class TitleView: ComponentView {
         }
         if !jsTruthy(textVerticalAlign) {
             // textVerticalAlign = (titleModel.get('top') || titleModel.get('bottom')) as ZRTextVerticalAlign;
-            // PORT-NOTE: upstream assigns the raw `top`/`bottom` option here; when it is a NUMBER (e.g.
+            // upstream assigns the raw `top`/`bottom` option here; when it is a NUMBER (e.g.
             //   the default `top: 15`) `textVerticalAlign` stays that number, none of the string
             //   comparisons below match, and the final `|| 'top'` keeps the (truthy) number — which
             //   zrender then renders as the default 'top'. We coerce non-string values to nil, so the
@@ -300,7 +300,7 @@ public final class TitleView: ComponentView {
         group.markRedraw()
         // const alignStyle = { align: textAlign, verticalAlign: textVerticalAlign };
         // textEl.setStyle(alignStyle); subTextEl.setStyle(alignStyle);
-        // PORT-NOTE: ZRText has no `setStyle(TextStyleProps)` overload (its rich style lives on
+        // ZRText has no `setStyle(TextStyleProps)` overload (its rich style lives on
         //   `textStyle`, and the inherited `Displayable.setStyle` only touches the CommonStyleProps
         //   subset — align/verticalAlign are not in it). Set the two fields directly on `textStyle`
         //   and mark the element dirty, which is the faithful effect of `setStyle({align, verticalAlign})`.
@@ -313,7 +313,7 @@ public final class TitleView: ComponentView {
         // Get groupRect again because textAlign has been changed
         groupRect = group.getBoundingRect(nil)
         // const padding = layoutRect.margin;
-        // PORT-NOTE: upstream reads the normalized css padding array off `layoutRect.margin`, but the
+        // upstream reads the normalized css padding array off `layoutRect.margin`, but the
         //   partial util/layout.swift `LayoutRect` (== BoundingRect) has no `.margin` slot yet (the
         //   deferred `.margin` field noted in layout.swift). Recompute it directly from the option — this is exactly the
         //   value `getLayoutRect` would have stored (`normalizeCssArray(titleModel.get('padding'))`).
@@ -332,10 +332,10 @@ public final class TitleView: ComponentView {
 
         let rect = Rect([
             "shape": shape as PathShape,
-            // PORT-NOTE: `getItemStyle` returns the dynamic `[String: Any]` style bag; bridge it to the
+            // `getItemStyle` returns the dynamic `[String: Any]` style bag; bridge it to the
             //   typed `PathStyleProps` via the shared `barStyleFromDict` seam (BarView.swift).
             "style": barStyleFromDict(style),
-            // PORT-NOTE: `subPixelOptimize: true` is not round-tripped through the dict prop bag
+            // `subPixelOptimize: true` is not round-tripped through the dict prop bag
             //   (Path.attrKV does not map it); it is a crisp-edge nicety with no layout effect. Set it
             //   explicitly below to preserve behavior.
             "subPixelOptimize": true,
@@ -352,13 +352,13 @@ public final class TitleView: ComponentView {
 //     registers.registerComponentModel(TitleModel);
 //     registers.registerComponentView(TitleView);
 // }
-// PORT-NOTE (deferred): registration boilerplate belongs to the Orchestrate driver (Integrate stage), not
+// TODO: registration boilerplate belongs to the Orchestrate driver (Integrate stage), not
 //   this render-layer file (same convention as grid/installSimple.swift). Preserved as commented
 //   source for the diffable surface.
 
 
 // ============================================================================
-// PORT-NOTE helpers — NOT part of title/install.ts upstream. These reproduce the
+// note helpers — NOT part of title/install.ts upstream. These reproduce the
 // out-of-phase sibling APIs referenced above so the static title render compiles.
 // Delete each when its real sibling lands and call the sibling directly.
 // ============================================================================
@@ -374,7 +374,7 @@ private func jsTruthy(_ v: Any?) -> Bool {
     return true
 }
 
-/// The `{align, verticalAlign}` slice of `setStyle` for a `ZRText` (see PORT-NOTE at the call site).
+/// The `{align, verticalAlign}` slice of `setStyle` for a `ZRText` (see note at the call site).
 private func setAlignStyle(_ el: ZRText, _ align: TextAlign?, _ verticalAlign: TextVerticalAlign?) {
     el.textStyle.align = align
     el.textStyle.verticalAlign = verticalAlign

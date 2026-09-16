@@ -80,13 +80,13 @@ public struct SectorShape: PathShape {
     }
 }
 
-// PORT-NOTE: upstream `interface SectorProps extends PathProps { shape?: Partial<SectorShape> }`.
+// upstream `interface SectorProps extends PathProps { shape?: Partial<SectorShape> }`.
 //   The typed-props interface collapses onto `PathProps == DisplayableProps` (the dynamic prop bag);
 //   see Path.swift's `PathProps` note. Kept as an alias for provenance.
 public typealias SectorProps = PathProps
 
 // upstream: class Sector extends Path<SectorProps>
-// PORT NOTE: `open` (not `final`) so `SunburstPiece extends graphic.Sector` (chart/sunburst/SunburstPiece.swift)
+// `open` (not `final`) so `SunburstPiece extends graphic.Sector` (chart/sunburst/SunburstPiece.swift)
 //   can subclass it cross-module, matching upstream where `SunburstPiece extends graphic.Sector`.
 open class Sector: Path {
 

@@ -30,13 +30,13 @@ import ZRenderKit
 //     free function); `graphic.groupTransition` is the ported top-level `groupTransition`
 //     (util/graphic.swift), called in `render`.
 //   import AxisView from './AxisView';                               -> `AxisView` (component/axis/AxisView.swift).
-//     PORT-NOTE: `AxisView` is ported (base class of this view). Public API used here:
+//     `AxisView` is ported (base class of this view). Public API used here:
 //     `open class AxisView: ComponentView` with an overridable `type: String`,
 //     `axisPointerClass: String`, `open func render(_ model: ComponentModel, _ ecModel: GlobalModel,
 //     _ api: ExtensionAPI, _ payload: Payload)`, and `open func remove(_ ecModel: GlobalModel,
 //     _ api: ExtensionAPI)`.
 //   import {rectCoordAxisBuildSplitArea, rectCoordAxisHandleRemove} from './axisSplitHelper';
-//     -> PORT-NOTE: `axisSplitHelper` is not ported as a standalone module; `rectCoordAxisBuildSplitArea`
+//     -> note: `axisSplitHelper` is not ported as a standalone module; `rectCoordAxisBuildSplitArea`
 //        and `rectCoordAxisHandleRemove` are ported inline in this file (see the splitArea builder and
 //        `rectCoordAxisHandleRemove` below).
 //   import GlobalModel from '../../model/Global';                    -> `GlobalModel`.
@@ -44,7 +44,7 @@ import ZRenderKit
 //   import CartesianAxisModel from '../../coord/cartesian/AxisModel'; -> `CartesianAxisModel`.
 //   import GridModel from '../../coord/cartesian/GridModel';          -> `GridModel`.
 //   import { Payload } from '../../util/types';                       -> `Payload` (util/types.swift).
-//   import { getAxisBreakHelper } from './axisBreakHelper';           -> PORT-NOTE (deferred): requires
+//   import { getAxisBreakHelper } from './axisBreakHelper';           -> TODO: requires
 //     `component/axis/axisBreakHelper` (axis break feature), not ported. `breakArea` builder deferred below.
 //   import { shouldAxisShow } from '../../coord/axisHelper';          -> `axisHelper.shouldAxisShow`.
 
@@ -104,14 +104,14 @@ open class CartesianAxisView: AxisView {
 
         // upstream: this._axisGroup.add(axisModel.axis.axisBuilder.group);
         //   `axisModel.axis` is typed `Any` (see AxisBaseModel.axis) → downcast to `Axis2D`.
-        //   PORT-NOTE: `Axis2D.axisBuilder` is the `AxisBuilder` (component/axis/AxisBuilder.swift, ported).
+        //   `Axis2D.axisBuilder` is the `AxisBuilder` (component/axis/AxisBuilder.swift, ported).
         //   `AxisBuilder.group: Group` is the built axisLine / ticks / labels group read here.
         _ = self._axisGroup.add((axisModel.axis as! Axis2D).axisBuilder.group)
 
         // upstream: zrUtil.each(selfBuilderAttrs, function (name) { ... }, this);
         for name in selfBuilderAttrs {
             // upstream: if (axisModel.get([name, 'show']))
-            //   PORT-NOTE: JS truthy check on the option value; coerced to Bool (all four `show`
+            //   JS truthy check on the option value; coerced to Bool (all four `show`
             //   flags are booleans).
             if (axisModel.get([name, "show"]) as? Bool) == true {
                 axisElementBuilders[name]!(
@@ -134,7 +134,7 @@ open class CartesianAxisView: AxisView {
             //   (util/graphic.swift): it matches old/new elements by `anid` and animates the
             //   transition (`updateProps`). `oldAxisGroup` is nil on the first render — the
             //   nil-guard lives inside `groupTransition`, matching upstream's `if (!g1 || !g2)`.
-            //   PORT-NOTE: only the `x` / `y` / `rotation` props actually interpolate today (axis
+            //   only the `x` / `y` / `rotation` props actually interpolate today (axis
             //   labels — the bar-racing case). The `shape` leg does NOT tween: `getAnimatableProps`
             //   puts a whole `PathShape` STRUCT under the "shape" key, and `animateToShallow`'s
             //   recursion guard is `util.isObject`, which is false for a struct — so the track is
@@ -142,7 +142,7 @@ open class CartesianAxisView: AxisView {
             //   the final value (correct final geometry, instant instead of tweened). Shape-carrying
             //   axis elements (splitLine `line_*`, minorSplitLine `minor_line_*`, splitArea `area_*`,
             //   AxisBuilder's axisLine / ticks) therefore snap.
-            // PORT-TODO: shape transition is discrete — the nested `getAnimatableProps` declared
+            // TODO: shape transition is discrete — the nested `getAnimatableProps` declared
             //   inside the body of the top-level `groupTransition` (util/graphic.swift, ~line 337;
             //   there is no file-scope `getAnimatableProps` symbol) must emit `shape` as a scalar
             //   `[String: Any]` sub-bag (the TreeView `bezierShapeDict` / ParallelView / SankeyView
@@ -262,11 +262,11 @@ private let axisElementBuilders: [String: AxisElementBuilder] = [
                 "style": style
             ])
             // upstream: anid: tickValue != null ? 'line_' + tickValue : null
-            //   PORT-NOTE: `AxisTickCoord.tickValue` is a non-optional `Double`, so the `!= null` guard
+            //   `AxisTickCoord.tickValue` is a non-optional `Double`, so the `!= null` guard
             //   is always true; `anid` is consumed by `groupTransition` (called in `render`) — which
             //   matches this element to its previous-render twin, but transitions its `shape`
-            //   discretely (see the PORT-TODO on the `groupTransition` call).
-            //   PORT-NOTE: interpolating a Swift `Double` formats "line_5.0" where upstream JS yields
+            //   discretely (see the TODO on the `groupTransition` call).
+            //   interpolating a Swift `Double` formats "line_5.0" where upstream JS yields
             //   "line_5". Harmless: `anid` has a single consumer (`groupTransition`'s elMap lookup)
             //   and both the old and the new group are built by this same code, so the values are
             //   symmetric across renders. The same drift applies to `minor_line_*` / `area_*` here
@@ -509,7 +509,7 @@ private func subPixelOptimizeLine(_ shape: LineShape, _ lineWidth: Double?) -> L
     return s
 }
 
-// PORT-NOTE: `util/graphic`-level style-bag bridge (JS dynamic dict -> typed Swift struct). `Model.getLineStyle()` returns the dynamic
+// `util/graphic`-level style-bag bridge (JS dynamic dict -> typed Swift struct). `Model.getLineStyle()` returns the dynamic
 //   `LineStyleProps` == `[String: Any]` bag (makeStyleMapper output, keyed by PathStyleProps field
 //   names); ZRenderKit `Line`'s `style` prop is a typed `PathStyleProps`. This maps the common line
 //   paint keys so the splitLine/minorSplitLine strokes are actually drawn. `lineDash`
@@ -553,7 +553,7 @@ private func lineStylePropsFromDict(_ style: [String: Any]) -> PathStyleProps {
     return s
 }
 
-// PORT-NOTE: number coercion for the dynamic style bag (Int|Double|NSNumber) — avoids the Int-drop trap
+// number coercion for the dynamic style bag (Int|Double|NSNumber) — avoids the Int-drop trap
 //   when a `lineDash` array element is an Int literal. Mirrors SingleAxisView.styleNum.
 private func styleNum(_ v: Any?) -> Double? {
     if let d = v as? Double { return d }

@@ -28,7 +28,7 @@ import ZRenderKit
 /// `symbolKeepAspect` visuals from the series option. SymbolDraw / Symbol read ONLY these visuals, so
 /// this stage is what carries the series `symbolSize: N` (etc.) through to the drawn symbol.
 ///
-/// PORT NOTE: run directly from the symbol views' render (the port invokes visual stages inline, see
+/// run directly from the symbol views' render (the port invokes visual stages inline, see
 ///   the slim-visual-stage-ordering note) rather than as Scheduler StageHandlers (Scheduler = sub-project
 ///   C). Callback (function) symbol props are DEFERRED — only literal option values are encoded.
 public enum symbolVisual {

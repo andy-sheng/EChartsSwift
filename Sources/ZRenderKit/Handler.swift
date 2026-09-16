@@ -192,7 +192,7 @@ public final class Handler: DraggableHandler {
     public var storage: Storage!
     public var painter: PainterBase!
     // upstream: `painterRoot: HTMLElement`. The DOM root is the native event seam (CONVENTIONS §9);
-    //   nil natively. // PORT-NOTE: provided by the native UIKit bridge.
+    //   nil natively. // note: provided by the native UIKit bridge.
     public var painterRoot: HTMLElement?
 
     public var proxy: HandlerProxyInterface!
@@ -378,7 +378,7 @@ public final class Handler: DraggableHandler {
             return
         }
         // const eventKey = ('on' + eventName) as ElementEventNameWithOn;
-        // PORT-NOTE: the `on`-prop handlers (ElementEventHandlerProps: onclick/onmousedown/...) are
+        // the `on`-prop handlers (ElementEventHandlerProps: onclick/onmousedown/...) are
         //   not modeled on Element (native event seam, CONVENTIONS §9), so `el[eventKey]` and its
         //   `cancelBubble` write are omitted. The `.on(...)` listener path below works: a listener
         //   sets `e.cancelBubble = true` on the shared packet (ElementEvent is a reference type), and
@@ -388,7 +388,7 @@ public final class Handler: DraggableHandler {
 
         while let cur = el {
             // el[eventKey]
-            //     && (eventPacket.cancelBubble = !!el[eventKey].call(el, eventPacket));   // PORT-NOTE above
+            //     && (eventPacket.cancelBubble = !!el[eventKey].call(el, eventPacket));   // note above
 
             cur.trigger(eventName.rawValue, eventPacket)
 
@@ -406,7 +406,7 @@ public final class Handler: DraggableHandler {
             self.trigger(eventName.rawValue, eventPacket)
             // 分发事件到用户自定义层
             // 用户有可能在全局 click 事件中 dispose，所以需要判断下 painter 是否存在
-            // PORT-NOTE: `(this.painter as CanvasPainter).eachOtherLayer` — canvas-only user layers,
+            // `(this.painter as CanvasPainter).eachOtherLayer` — canvas-only user layers,
             //   not modeled by the native PainterBase (browser/canvas seam, CONVENTIONS §9).
             // if (this.painter && (this.painter as CanvasPainter).eachOtherLayer) { ... }
             _ = eventPacket
@@ -439,7 +439,7 @@ public final class Handler: DraggableHandler {
                     // See Text.js _getOrCreateChild
                     && (el.parent == nil || !((el.parent as? Displayable)?.ignoreCoarsePointer ?? false))
                 {
-                    // PORT-NOTE: upstream assumes `getBoundingRect()` non-null (Path/Displayable); the
+                    // upstream assumes `getBoundingRect()` non-null (Path/Displayable); the
                     //   Swift signature is Optional, so guard — a nil rect simply skips the copy.
                     if let rect = el.getBoundingRect() {
                         tmpRect.copy(rect)
@@ -490,7 +490,7 @@ public final class Handler: DraggableHandler {
 
         if stage == "start" { gestureMgr.clear() }
 
-        // PORT-NOTE: native seam — GestureMgr consumes a `ZRRawTouchEvent` (with `touches[]`); bridge
+        // native seam — GestureMgr consumes a `ZRRawTouchEvent` (with `touches[]`); bridge
         //   it from the normalized `ZRRawEvent`. `(this.proxy as HandlerDomProxy).dom` (the DOM root)
         //   is browser-only and supplied as nil natively (CONVENTIONS §9).
         let touchEvent = ZRRawTouchEvent(touches: event.touches)
@@ -498,7 +498,7 @@ public final class Handler: DraggableHandler {
             touchEvent,
             // upstream passes `findHover(...).target` (possibly undefined). GestureMgr requires a
             //   non-optional Displayable; on an empty-space pinch fall back to a sentinel.
-            //   // PORT-NOTE: target identity diverges from upstream `undefined` in that edge case (native seam).
+            //   // note: target identity diverges from upstream `undefined` in that edge case (native seam).
             (self.findHover(event.zrX ?? 0, event.zrY ?? 0, nil).target as? Displayable) ?? Displayable(),
             nil
         )

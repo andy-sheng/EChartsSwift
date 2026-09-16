@@ -187,7 +187,7 @@ func graphForceLayout(_ ecModel: GlobalModel) {
             // forceInstance.afterStep(function (nodes, edges, stopped) { ... });
             forceInstance.afterStep { [weak graphSeries] nodes, edges, _ in
                 for i in 0..<nodes.count {
-                    // PORT-NOTE: upstream derefs `nodes[i].p` unconditionally, but `p` is genuinely
+                    // upstream derefs `nodes[i].p` unconditionally, but `p` is genuinely
                     //   Optional here (set to nil above when the initial point is missing/NaN), so the
                     //   node is skipped instead of trapping.
                     guard let p = nodes[i].p else { continue }
@@ -204,7 +204,7 @@ func graphForceLayout(_ ecModel: GlobalModel) {
                 graphSeries?.preservedPoints = preservedPoints
                 for i in 0..<edges.count {
                     let e = edges[i]
-                    // PORT-NOTE: upstream derefs the edge and both endpoint points unconditionally;
+                    // upstream derefs the edge and both endpoint points unconditionally;
                     //   both are Optional here, so a missing one skips the edge instead of trapping.
                     guard let edge = graph.getEdgeByIndex(i),
                           let p1 = e.n1.p,

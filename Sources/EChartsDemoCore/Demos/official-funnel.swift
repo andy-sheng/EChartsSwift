@@ -9,7 +9,7 @@
 // {c}%'), not a JS closure, so it survives into the Swift option unchanged — no option key is
 // dropped from the native `option`, which mirrors the JS one key-for-key.
 //
-// PORT-NOTE (native pane only, framework gap — not a demo simplification): `toolbox.feature.dataView`
+// note (native pane only, framework gap — not a demo simplification): `toolbox.feature.dataView`
 // is kept in the Swift option to stay faithful, but EChartsKit does not register a `dataView` feature
 // (component/toolbox/toolboxFeatures.swift: it is the HTML-overlay table editor, DEFERRED as a
 // host-DOM feature). ToolboxView skips unregistered features, so the native toolbox draws only the
@@ -97,7 +97,7 @@ option = {
             ] as [String: Any],
             "toolbox": [
                 "feature": [
-                    // PORT-NOTE: `dataView` is unregistered in EChartsKit (DOM overlay editor, deferred);
+                    // `dataView` is unregistered in EChartsKit (DOM overlay editor, deferred);
                     // ToolboxView skips it, so this key is inert natively but kept for option fidelity.
                     "dataView": ["readOnly": false] as [String: Any],
                     "restore": [:] as [String: Any],
