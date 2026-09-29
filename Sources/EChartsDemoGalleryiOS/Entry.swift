@@ -260,7 +260,7 @@ final class GallerySplitViewController: UISplitViewController, UISplitViewContro
     private let list = DemoListViewController(style: .plain)
     private let detail = DemoDetailViewController()
 
-    init() {
+    init(initialDemoName: String? = nil) {
         super.init(style: .doubleColumn)
         delegate = self
         preferredDisplayMode = .oneBesideSecondary
@@ -271,7 +271,9 @@ final class GallerySplitViewController: UISplitViewController, UISplitViewContro
             self.detail.show(demo)
             self.show(.secondary)
         }
-        if let first = EChartsDemoRegistry.everything.first { detail.show(first) }
+        let initialDemo = initialDemoName.flatMap(EChartsDemoRegistry.byName)
+            ?? EChartsDemoRegistry.everything.first
+        if let initialDemo { detail.show(initialDemo) }
     }
 
     @available(*, unavailable)
@@ -285,15 +287,36 @@ final class GallerySplitViewController: UISplitViewController, UISplitViewContro
 
 @main
 final class AppDelegate: UIResponder, UIApplicationDelegate {
-    var window: UIWindow?
-
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        let window = UIWindow(frame: UIScreen.main.bounds)
-        window.rootViewController = GallerySplitViewController()
+        return true
+    }
+
+    func application(_ application: UIApplication,
+                     configurationForConnecting connectingSceneSession: UISceneSession,
+                     options: UIScene.ConnectionOptions) -> UISceneConfiguration {
+        let configuration = UISceneConfiguration(
+            name: "Default Configuration",
+            sessionRole: connectingSceneSession.role)
+        configuration.delegateClass = SceneDelegate.self
+        return configuration
+    }
+}
+
+final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+    var window: UIWindow?
+
+    func scene(_ scene: UIScene,
+               willConnectTo session: UISceneSession,
+               options connectionOptions: UIScene.ConnectionOptions) {
+        guard let windowScene = scene as? UIWindowScene else { return }
+        let window = UIWindow(windowScene: windowScene)
+        // A launch-only test hook lets device smoke tests open an exact demo without relying on
+        // off-screen UITableView scrolling through the experimental physical-device UI channel.
+        let initialDemoName = ProcessInfo.processInfo.environment["ECHARTS_DEMO"]
+        window.rootViewController = GallerySplitViewController(initialDemoName: initialDemoName)
         window.makeKeyAndVisible()
         self.window = window
-        return true
     }
 }
 

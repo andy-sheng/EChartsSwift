@@ -4,16 +4,30 @@
 import Foundation
 
 // ---------------------------------------------------------------------------
-// upstream echarts UMD dist (the REAL echarts 6.1.0), baked in via #filePath — the same trick
-// DemoGallery uses for the zrender test dir. WebPage.swift lives at <repo>/Sources/EChartsDemoCore/.
-// On iOS this only resolves in the SIMULATOR (which shares the host filesystem); the staged .app is
-// a local dev/test artifact either way, exactly like the macOS one.
+// upstream echarts UMD dist (the REAL echarts 6.1.0), resolved from the source checkout during
+// local development. A device build can bundle the repo-relative runtime resources beneath a
+// `Repository` directory; that fallback keeps every existing `Upstream.repoRoot` asset lookup using
+// the same path on macOS, Simulator, and physical iOS devices.
 // ---------------------------------------------------------------------------
 public enum Upstream {
-    public static let repoRoot = URL(fileURLWithPath: #filePath)
+    private static let sourceRepoRoot = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()   // EChartsDemoCore
         .deletingLastPathComponent()   // Sources
         .deletingLastPathComponent()   // repo root
+
+    public static let repoRoot: URL = {
+        if FileManager.default.fileExists(atPath: sourceRepoRoot.path) {
+            return sourceRepoRoot
+        }
+        if let resources = Bundle.main.resourceURL {
+            let bundledRoot = resources.appendingPathComponent("Repository", isDirectory: true)
+            if FileManager.default.fileExists(atPath: bundledRoot.path) {
+                return bundledRoot
+            }
+        }
+        return sourceRepoRoot
+    }()
+
     public static let echartsDistJS = repoRoot.appendingPathComponent("upstream/echarts/dist/echarts.js")
 }
 

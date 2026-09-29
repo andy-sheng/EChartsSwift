@@ -35,10 +35,18 @@ private let lifeExpectancyRawJSON: String = {
 // category by interpolation — an NSNumber holding 1950 interpolates as "1950" (JS-like), whereas a Swift
 // `Double` would interpolate as "1950.0" and every x-axis label would be wrong. NSNumber still bridges to
 // Double for the numeric dimensions (`Income`) and for the filter's `isNumber`/`as! Double` fast path.
+private let lifeExpectancyHeader: [Any] = [
+    "Income", "Life Expectancy", "Population", "Country", "Year"
+]
+
 private let lifeExpectancyRows: [[Any]] = {
     guard let data = lifeExpectancyRawJSON.data(using: .utf8),
-          let rows = (try? JSONSerialization.jsonObject(with: data)) as? [[Any]] else { return [] }
-    return rows
+          let rows = (try? JSONSerialization.jsonObject(with: data)) as? [[Any]] else {
+        return [lifeExpectancyHeader]
+    }
+    // Preserve the schema when a device bundle is incomplete. The transform then yields an empty
+    // result instead of failing to resolve `Year` / `Country` and trapping through its `try!`.
+    return rows.isEmpty ? [lifeExpectancyHeader] : rows
 }()
 
 // The two `filter` transforms differ only by country — `Year >= 1950 AND Country = <name>`.

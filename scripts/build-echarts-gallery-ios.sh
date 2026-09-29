@@ -6,11 +6,9 @@
 #
 #   1. Sync the pinned upstream checkouts (scripts/sync-upstream.sh).
 #   2. Ensure upstream echarts's `dist/echarts.js` is present — the detail view's
-#      web pane inlines this UMD bundle, read off the HOST filesystem at the
-#      source path baked in via #filePath. Only the simulator shares the host
-#      filesystem, which is why this app is simulator-only.
+#      web pane inlines this UMD bundle.
 #   3. Cross-compile the EChartsDemoGalleryiOS SwiftPM product for the arm64
-#      simulator triple and stage a launchable .app bundle into ./build/.
+#      simulator triple and stage a self-contained .app bundle into ./build/.
 #
 # Usage:
 #   scripts/build-echarts-gallery-ios.sh              fast development build (debug)
@@ -21,8 +19,8 @@
 #   scripts/build-echarts-gallery-ios.sh --out <dir>  stage into <dir> instead of ./build
 #   scripts/build-echarts-gallery-ios.sh -h | --help
 #
-# Note: like the mac gallery, the staged .app only runs on this machine with the
-# repo in place — it is a local dev/test artifact, which is why build/ is ignored.
+# Note: this script still builds a simulator binary, but the staged bundle carries
+# the same Repository resource layout used by signed physical-device builds.
 
 set -euo pipefail
 
@@ -121,15 +119,31 @@ cat > "$APP/Info.plist" <<'PLIST'
     <key>CFBundleSupportedPlatforms</key> <array><string>iPhoneSimulator</string></array>
     <key>UIDeviceFamily</key>          <array><integer>1</integer><integer>2</integer></array>
     <key>UILaunchScreen</key>          <dict/>
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key><false/>
+        <key>UISceneConfigurations</key><dict/>
+    </dict>
     <key>UISupportedInterfaceOrientations</key>
     <array>
         <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationPortraitUpsideDown</string>
         <string>UIInterfaceOrientationLandscapeLeft</string>
         <string>UIInterfaceOrientationLandscapeRight</string>
     </array>
 </dict>
 </plist>
 PLIST
+
+# Keep repo-relative asset lookups working when the app cannot see the source checkout, as on a
+# physical device. Bundle the complete demo asset tree and the upstream JavaScript files referenced
+# by WebPage and the transform/statistical demos.
+REPOSITORY="$APP/Repository"
+mkdir -p "$REPOSITORY/upstream/echarts/dist" "$REPOSITORY/upstream/echarts/test/lib"
+/usr/bin/ditto "$ROOT/assets" "$REPOSITORY/assets"
+cp "$ROOT/upstream/echarts/dist/echarts.js" "$REPOSITORY/upstream/echarts/dist/echarts.js"
+cp "$ROOT/upstream/echarts/test/lib/ecStat.min.js" "$REPOSITORY/upstream/echarts/test/lib/ecStat.min.js"
+cp "$ROOT/upstream/echarts/test/lib/ecSimpleTransform.js" "$REPOSITORY/upstream/echarts/test/lib/ecSimpleTransform.js"
 
 # Ad-hoc sign — arm64 simulator binaries must carry a code signature to launch.
 codesign --force --sign - "$APP" >/dev/null 2>&1 || true
