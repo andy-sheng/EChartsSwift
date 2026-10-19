@@ -271,6 +271,12 @@ public enum axisHelper {
             }
         }
         else if util.isFunction(labelFormatter) {
+            // A JS formatter takes whatever it is handed; a Swift closure has one exact type, and a
+            //   forced cast to the other one traps. Each branch takes the closure type it calls, also
+            //   the other one where its arguments carry over (a category formatter's `Any` value
+            //   takes a number), and otherwise keeps the default label.
+            let categoryFormatter = labelFormatter as? AxisLabelCategoryFormatter
+            let valueFormatter = labelFormatter as? AxisLabelValueFormatter
             if axis.type == "category" {
                 return { tick, _ in
                     // The original intention of `idx` is "the index of the tick in all ticks".
@@ -279,11 +285,19 @@ public enum axisHelper {
                     // `1`, then the ticks "name5", "name7", "name9" are displayed, where the
                     // corresponding `idx` are `0`, `2`, `4`, but not `0`, `1`, `2`. So we keep
                     // the definition here for back compatibility.
-                    return (labelFormatter as! AxisLabelCategoryFormatter)(
-                        getAxisRawValue(axis, tick),
-                        tick.value - axis.scale.getExtent()[0],
-                        nil // Using `null` just for backward compat.
-                    )
+                    let rawValue = getAxisRawValue(axis, tick)
+                    let idx = tick.value - axis.scale.getExtent()[0]
+                    if let categoryFormatter = categoryFormatter {
+                        return categoryFormatter(
+                            rawValue,
+                            idx,
+                            nil // Using `null` just for backward compat.
+                        )
+                    }
+                    if let valueFormatter = valueFormatter, let value = rawValue as? Double {
+                        return valueFormatter(value, idx, nil)
+                    }
+                    return axis.scale.getLabel(tick)
                 }
             }
             let scaleBreakHelper = getScaleBreakHelper()
@@ -295,12 +309,19 @@ public enum axisHelper {
                 if let scaleBreakHelper = scaleBreakHelper {
                     extra = scaleBreakHelper.makeAxisLabelFormatterParamBreak(extra, tick.break)
                 }
-                return (labelFormatter as! AxisLabelValueFormatter)(
-                    // `getAxisRawValue<false>` returns `number`; cast from `Any`.
-                    getAxisRawValue(axis, tick) as! Double,
-                    idx ?? Double.nan,  // returned type widens `idx` to optional
-                    extra
-                )
+                let rawValue = getAxisRawValue(axis, tick)
+                if let valueFormatter = valueFormatter {
+                    return valueFormatter(
+                        // `getAxisRawValue<false>` returns `number`; cast from `Any`.
+                        (rawValue as? Double) ?? tick.value,
+                        idx ?? Double.nan,  // returned type widens `idx` to optional
+                        extra
+                    )
+                }
+                if let categoryFormatter = categoryFormatter {
+                    return categoryFormatter(rawValue, idx ?? Double.nan, extra)
+                }
+                return axis.scale.getLabel(tick)
             }
         }
         else {

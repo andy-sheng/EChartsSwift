@@ -334,6 +334,13 @@ private func getVisualGradient(
         }
     }
 
+    // No stop at all (visualMap pieces that are each open to one side, once overlaps are cut away,
+    //   bound no stretch): upstream reads `colorStopsInRange[0].coord` of an empty list and throws.
+    //   The line keeps its own color instead.
+    if inRangeStopLen == 0 {
+        return nil
+    }
+
     let tinyExtent = 10.0 // Arbitrary value: 10px
     let minCoord = colorStopsInRange[0].coord - tinyExtent
     let maxCoord = colorStopsInRange[inRangeStopLen - 1].coord + tinyExtent

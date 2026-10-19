@@ -690,6 +690,13 @@ public enum number {
         _ second: Double,
         _ millisecond: Double
     ) -> Date {
+        // JS `new Date(NaN, …)` is an Invalid Date (an empty string matches `TIME_REG` with every
+        //   group undefined, so `+undefined` reaches here); `Int(_:)` would trap on NaN, infinity
+        //   or a value out of its range.
+        for part in [year, monthZeroBased, day, hour, minute, second, millisecond]
+        where !part.isFinite || Swift.abs(part) > 1e9 {
+            return invalidDate
+        }
         var cal = Foundation.Calendar(identifier: .gregorian)
         cal.timeZone = timeZone
         var comps = DateComponents()

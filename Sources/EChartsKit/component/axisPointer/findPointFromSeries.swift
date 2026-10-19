@@ -142,14 +142,13 @@ public func findPointFromSeries(
             //     data.getValues(zrUtil.map(coordSys.dimensions, dim => data.mapDimension(dim)), dataIndex)
             // ) || [];
             // upstream's `zrUtil.map` is length-preserving — a `mapDimension` returning
-            //   `undefined` keeps its slot (undefined -> NaN through `getValues`). `compactMap` instead
-            //   DROPS a nil slot, which would shorten/misalign the dims array. This is safe here (and only
-            //   here) because Cartesian2D's `dimensions` are always ['x','y'], both of which resolve via
-            //   `mapDimension`, so no slot is ever nil. `SeriesData.getValues` also takes a non-optional
-            //   `[DimensionName]`, so a faithful length-preserving map would require widening that signature;
-            //   keep compactMap until a coord system with droppable dims reaches this branch.
-            let dims: [DimensionName] = cartesian.dimensions.compactMap { data.mapDimension($0) }
-            let values = data.getValues(dims, dataIndex)
+            //   `undefined` keeps its slot, and `getValues` reads it as NaN. A series that does not
+            //   map the cartesian dims (a `lines` series keeps its points in `coords`) thus asks for
+            //   [NaN, NaN] rather than for fewer values than `dataToPoint` reads.
+            let values: [ParsedValue] = cartesian.dimensions.map { dim in
+                guard let mapped = data.mapDimension(dim) else { return Double.nan }
+                return data.getValues([mapped], dataIndex).first ?? Double.nan
+            }
             point = cartesian.dataToPoint(values)
         }
     }

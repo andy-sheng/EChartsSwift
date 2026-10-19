@@ -60,7 +60,11 @@ private func createParallelIfNeeded(_ option: inout ECUnitOption) {
     //     if (seriesOpt && seriesOpt.type === 'parallel') { hasParallelSeries = true; }
     // });
     //   `option.series` is normally an array; `each` on undefined is a no-op -> pass `as? [Any]`.
-    util.each(option["series"] as? [Any]) { seriesOptAny, _ in
+    //   A single series object (accepted everywhere else, `normalizeToArray`) is that one series:
+    //   upstream's `each` walks the object's own values instead, misses the parallel series and
+    //   leaves its axes without a parallel component to render in.
+    let seriesList = (option["series"] as? [Any]) ?? (option["series"] as? [String: Any]).map { [$0] }
+    util.each(seriesList) { seriesOptAny, _ in
         if let seriesOpt = seriesOptAny as? [String: Any], (seriesOpt["type"] as? String) == "parallel" {
             hasParallelSeries = true
         }

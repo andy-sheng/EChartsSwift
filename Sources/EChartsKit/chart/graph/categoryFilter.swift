@@ -67,7 +67,13 @@ func categoryFilter(_ ecModel: GlobalModel) {
                 // let category: string. If a number, resolve to the category name.
                 let category: String
                 if util.isNumber(categoryRaw) {
-                    category = (categoryNames[Int(toNumber(categoryRaw))] as? String) ?? ""
+                    // upstream: `category = categoryNames[category]` — an index that is not one of the
+                    //   categories reads `undefined`, which no legend has deselected: the node stays.
+                    let index = toNumber(categoryRaw)
+                    guard index >= 0, index == index.rounded(), index < Double(categoryNames.count) else {
+                        return true
+                    }
+                    category = (categoryNames[Int(index)] as? String) ?? ""
                 }
                 else {
                     category = categoryRaw as? String ?? ""

@@ -642,7 +642,11 @@ private func pbCreateOrUpdateRepeatSymbols(
     let valueLineWidth = symbolMeta.valueLineWidth
     let pathPosition = symbolMeta.pathPosition
     let valueDim = opt.valueDim
-    let repeatTimes = Int(symbolMeta.repeatTimes.rounded(.towardZero) < 0 ? 0 : symbolMeta.repeatTimes)
+    // upstream loops `index < repeatTimes`: a NaN count (a `symbolMargin` or `symbolBoundingData`
+    //   it cannot read) repeats nothing. `Int(_:)` traps on NaN and infinity, so neither reaches it.
+    let repeatTimes = symbolMeta.repeatTimes.isFinite
+        ? Int(Swift.max(0, symbolMeta.repeatTimes.rounded(.towardZero)))
+        : 0
 
     let unit = symbolSize[valueDim.index] + valueLineWidth + symbolMeta.symbolMargin * 2
 
