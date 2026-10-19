@@ -686,6 +686,11 @@ open class BarView: ChartView {
         var tickNum = Int(Swift.max(0, extent[0]))
         let tickMax = Int(Swift.min(extent[1], Double(scale.getOrdinalMeta().categories.count - 1)))
         while tickNum <= tickMax {
+            // upstream: a tick past the sorted bars reads `undefined`, which is never the tick's
+            //   ordinal number: the order differs.
+            if tickNum >= orderInfo.ordinalNumbers.count {
+                return true
+            }
             if orderInfo.ordinalNumbers[tickNum] != scale.getRawOrdinalNumber(Double(tickNum)) {
                 return true
             }

@@ -437,7 +437,11 @@ public final class ParallelAxisView: ComponentView {
         // upstream: const coordSys = coordSysModel.coordinateSystem;
         //   `coordSysModel.coordinateSystem` is the concrete `Parallel` coord system (ported,
         //   API `getAxisLayout(dim)`). Referenced conventionally via the shims below.
-        let coordSys = coordSysModelCoordinateSystem(coordSysModel)
+        //   Unchecked upstream, which throws when the axis's parallel component is not there (a
+        //   `parallelIndex` past the parallels): no axis is drawn instead.
+        guard let coordSys = coordSysModelCoordinateSystem(coordSysModel) else {
+            return
+        }
 
         // upstream: const areaSelectStyle = axisModel.getAreaSelectStyle();
         //   `ParallelAxisModel.getAreaSelectStyle()` returns the makeStyleMapper bag
@@ -623,8 +627,8 @@ private func getCoordSysModel(_ axisModel: ComponentModel, _ ecModel: GlobalMode
 
 // `coordSysModel.coordinateSystem` — the `Parallel` coord system. Now that the coord port has landed,
 //   the real accessor is `(coordSysModel as! ParallelModel).coordinateSystem`.
-private func coordSysModelCoordinateSystem(_ coordSysModel: Any) -> Any {
-    return (coordSysModel as! ParallelModel).coordinateSystem as Any
+private func coordSysModelCoordinateSystem(_ coordSysModel: Any) -> Parallel? {
+    return (coordSysModel as? ParallelModel)?.coordinateSystem as? Parallel
 }
 
 // `coordSys.getAxisLayout(dim)` — the Parallel coord layout for one dim.

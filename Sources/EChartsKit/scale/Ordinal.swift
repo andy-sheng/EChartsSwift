@@ -347,9 +347,6 @@ public final class OrdinalScale: Scale, ClassManageable {
         //   `!= null`). Here they are pre-sized to `allCategoryLen` and seeded with `NaN` as the
         //   "unset" sentinel (`!= null` → `!isNaN`), then assigned to the properties at the end
         //   (no observer reads them mid-loop, so this is behaviorally equivalent).
-        // POTENTIAL-BUG: indices are assumed in `0..<allCategoryLen` per the `OrdinalNumber`
-        //   contract; an out-of-range ordinal would crash here (`ticksByOrdinal[Int(ordinalNumber)]`)
-        //   where JS would silently extend the array.
         let allCategoryLen = self._ordinalMeta.categories.count
         var ordinalsByTick = [OrdinalNumber](repeating: Double.nan, count: allCategoryLen)
         var ticksByOrdinal = [Double](repeating: Double.nan, count: allCategoryLen)
@@ -360,7 +357,11 @@ public final class OrdinalScale: Scale, ClassManageable {
         while tickNum < len {
             let ordinalNumber = infoOrdinalNumbers[tickNum]
             ordinalsByTick[tickNum] = ordinalNumber
-            ticksByOrdinal[Int(ordinalNumber)] = Double(tickNum)
+            // upstream writes any key here (a NaN ordinal becomes a "NaN" property, one past the
+            //   categories extends the array); neither is a tick of a category, so it is not recorded.
+            if ordinalNumber >= 0, ordinalNumber < Double(allCategoryLen) {
+                ticksByOrdinal[Int(ordinalNumber)] = Double(tickNum)
+            }
             tickNum += 1
         }
         // Handle that `series.data` only covers part of the `axis.category.data`.

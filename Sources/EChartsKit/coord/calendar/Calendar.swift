@@ -321,7 +321,11 @@ public final class Calendar: CoordinateSystemMaster, CoordinateSystem {
     private func _update(_ ecModel: GlobalModel, _ api: ExtensionAPI) {
 
         // this._firstDayOfWeek = +this._model.getModel('dayLabel').get('firstDay');
-        self._firstDayOfWeek = calendarPlus(self._model.getModel("dayLabel").get("firstDay"))
+        let firstDayOfWeek = calendarPlus(self._model.getModel("dayLabel").get("firstDay"))
+        // `+get('firstDay')` is NaN when `dayLabel` is not an object (`dayLabel: false`) or `firstDay`
+        //   is not a number, and so is every weekday index derived from it, which the layout uses as
+        //   an array index. Fall back to the default first day (Sunday).
+        self._firstDayOfWeek = firstDayOfWeek.isFinite ? firstDayOfWeek : 0
         // this._orient = this._model.get('orient');
         self._orient = LayoutOrient(rawValue: (self._model.get("orient") as? String) ?? "horizontal") ?? .horizontal
         // this._lineWidth = this._model.getModel('itemStyle').getItemStyle().lineWidth || 0;
