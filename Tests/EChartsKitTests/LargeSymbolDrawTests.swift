@@ -3,8 +3,13 @@
 //     (NOT N Symbol groups) whose packed `points` shape carries every datum.
 //   - findDataIndex maps a local pixel to the nearest point's data index (rect hit-test, top-down).
 //   - contain() caches that index in hoverDataIdx (the tooltip/hover hook upstream reads).
+//   - largeSymbolPathChunks hands the painter the same symbols in bounded chunks, so a large
+//     series of symbols too big to boost no longer fills as one N-sub-path path.
 import XCTest
 import ZRenderKit
+#if canImport(QuartzCore) && canImport(CoreGraphics)
+import NativePainter
+#endif
 @testable import EChartsKit
 
 final class LargeSymbolDrawTests: XCTestCase {
@@ -115,4 +120,64 @@ final class LargeSymbolDrawTests: XCTestCase {
         XCTAssertEqual(rect.width, 88, accuracy: 1e-9)
         XCTAssertEqual(rect.height, 68, accuracy: 1e-9)
     }
+
+    // The chunks hold exactly the commands of the single path, whole symbols at a time, in order.
+    func testChunksHoldTheSymbolsOfThePathInOrder() {
+        let path = LargeSymbolPath()
+        var shape = LargeSymbolPathShape()
+        var points: [Double] = []
+        for i in 0..<50 {
+            points.append(Double(i * 3))
+            points.append(Double(i % 7) * 5)
+        }
+        points.append(.nan)
+        points.append(1)
+        shape.points = points
+        shape.size = [10, 10]
+        path.setShape(shape)
+        guard let proxy = symbol.createSymbol("circle", 0, 0, 0, 0) as? Path else { return XCTFail("no symbol") }
+        path.setSymbolProxy(proxy, isEmptyBrush: false, symbolType: "circle")
+
+        let whole = path.getUpdatedPathProxy(false)
+        guard let chunks = path.largeSymbolPathChunks(8) else { return XCTFail("50 symbols → chunks of 8") }
+        XCTAssertEqual(chunks.count, 7, "50 drawn symbols (the NaN point is skipped) → ⌈50 / 8⌉ chunks")
+        var joined: [Double] = []
+        for chunk in chunks { joined += chunk.data[0..<Int(chunk.len())] }
+        XCTAssertEqual(joined, Array(whole.data[0..<Int(whole.len())]))
+        XCTAssertTrue(path.largeSymbolPathChunks(8)!.elementsEqual(chunks, by: ===), "cached while the shape stands")
+        XCTAssertNil(path.largeSymbolPathChunks(64), "a path that fits one chunk keeps the normal draw")
+
+        shape.points = Array(shape.points.prefix(40))
+        path.setShape(shape)
+        XCTAssertEqual(path.largeSymbolPathChunks(8)?.count, 3, "a new shape → new chunks (20 symbols)")
+    }
+
+    #if canImport(QuartzCore) && canImport(CoreGraphics)
+    // 20 000 overlapping 10px circles: as one path Core Graphics took minutes to fill them.
+    func testLargeScatterOfBigSymbolsRendersInBoundedTime() {
+        var data: [[Double]] = []
+        var seed: UInt64 = 7
+        func next() -> Double {
+            seed = seed &* 6364136223846793005 &+ 1442695040888963407
+            return Double(seed >> 11) / Double(1 << 53)
+        }
+        for _ in 0..<20_000 {
+            let x: Double = next() + next() + next()
+            let y: Double = next() + next() + next()
+            data.append([x, y])
+        }
+        let ec = ECharts(width: 360, height: 280)
+        ec.setOption([
+            "animation": false,
+            "xAxis": ["type": "value"] as [String: Any],
+            "yAxis": ["type": "value"] as [String: Any],
+            "series": [["type": "scatter", "large": true, "symbolSize": 10.0, "data": data] as [String: Any]]
+        ])
+        XCTAssertEqual(largePaths(ec).count, 1)
+        let start = Date()
+        let image = renderToImage(group: ec.getRoot(), size: CGSize(width: 360, height: 280), dpr: 2)
+        XCTAssertNotNil(image)
+        XCTAssertLessThan(Date().timeIntervalSince(start), 10, "bounded chunks keep the fill near linear")
+    }
+    #endif
 }

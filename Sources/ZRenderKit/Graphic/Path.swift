@@ -702,6 +702,16 @@ open class Path: Displayable {
     /// batched `CGContext.fill([CGRect])`. Returns nil for every non-boostable path (normal draw).
     open func largeSymbolBoostRects() -> [Double]? { return nil }
 
+    /// Large-symbol chunk hook — the companion of `largeSymbolBoostRects()` for symbols too big to
+    /// boost. Upstream fills the whole large-mode path (N symbol sub-paths) with one canvas `fill()`.
+    /// A native rasterizer that scan-converts all sub-paths at once is super-linear in their count
+    /// (Core Graphics: 20 000 overlapping 10px circles take minutes), so a path whose sub-paths are
+    /// independent symbols may return them split into bounded `PathProxy` chunks, each holding at most
+    /// `maxSymbols` WHOLE symbols, in drawing order (element-local coords, NaN/soft-clip applied).
+    /// The backend paints every chunk with the path's style and composites them as one fill / stroke.
+    /// Returns nil for every other path, and when the path fits in a single chunk (normal draw).
+    open func largeSymbolPathChunks(_ maxSymbols: Int) -> [PathProxy]? { return nil }
+
     /// Renderer seam: scatter's afterBrush fills each rect independently (including alpha
     /// accumulation); large bars instead contribute rectangles to a compound filled path.
     /// Backends may batch the latter when the paint/compositing state makes it equivalent.

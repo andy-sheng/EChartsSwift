@@ -64,7 +64,9 @@ public final class LargeSymbolPath: Path {
     private var _proxySymbolType: String = ""
 
     // upstream: softClipShape: CoordinateSystemClipArea — a soft clip (points outside are skipped).
-    public var softClipShape: SymbolClipShape?
+    public var softClipShape: SymbolClipShape? {
+        didSet { self._chunks = nil }
+    }
 
     // upstream: startIndex / endIndex — the [start, end) datum range this path covers (progressive).
     public var startIndex: Int?
@@ -98,6 +100,7 @@ public final class LargeSymbolPath: Path {
         self.symbolProxy = proxy
         self._isEmptyBrush = isEmptyBrush
         self._proxySymbolType = symbolType
+        self._chunks = nil
     }
 
     // upstream: reset() { this.notClear = false; this._off = 0; }
@@ -109,6 +112,12 @@ public final class LargeSymbolPath: Path {
     // upstream: buildPath(path, shape) — the per-point loop. `canBoost`/afterBrush (canvas fillRect)
     //   is omitted (no canvas ctx here); we always take the symbolProxy.buildPath loop.
     public override func buildPath(_ path: PathProxy, _ shapeIn: PathShape, _ inBatch: Bool) {
+        self._buildSymbols(shapeIn) { _ in path }
+    }
+
+    // The buildPath loop, emitting symbol n into `target(n)` (one proxy for buildPath, bounded
+    //   chunks for `largeSymbolPathChunks`).
+    private func _buildSymbols(_ shapeIn: PathShape, _ target: (Int) -> PathProxy) {
         guard let shape = shapeIn as? LargeSymbolPathShape else { return }
         let points = shape.points
         let size = shape.size
@@ -118,6 +127,7 @@ public final class LargeSymbolPath: Path {
         let softClipShape = self.softClipShape
 
         var i = self._off
+        var drawn = 0
         // Each datum contributes an (x, y) pair — iterate two-at-a-time.
         while i + 1 < points.count {
             let x = points[i]; i += 1
@@ -137,10 +147,33 @@ public final class LargeSymbolPath: Path {
             proxyShape.animationSet("width", size[0])
             proxyShape.animationSet("height", size[1])
 
-            symbolProxy.buildPath(path, proxyShape, true)
+            symbolProxy.buildPath(target(drawn), proxyShape, true)
+            drawn += 1
         }
         // DEVIATION: `if (this.incremental) { this._off = i; this.notClear = true; }` — inert here
         //   (`incremental == 0` in the driver), so `_off` stays 0 and the full range re-draws.
+    }
+
+    // Native-only (see the base `Path.largeSymbolPathChunks` doc): the same symbols as `buildPath`,
+    //   at most `maxSymbols` whole symbols per proxy, so the backend never scan-converts every symbol
+    //   of the series as one path. Cached until the shape or the proxy symbol changes.
+    private var _chunks: [PathProxy]??
+    private var _chunkSize = 0
+
+    public override func largeSymbolPathChunks(_ maxSymbols: Int) -> [PathProxy]? {
+        if let chunks = self._chunks, self._chunkSize == maxSymbols { return chunks }
+        guard maxSymbols > 0, let shape = self.shape else { return nil }
+        var chunks: [PathProxy] = []
+        self._buildSymbols(shape) { n in
+            if n % maxSymbols == 0 {
+                chunks.append(PathProxy(false))
+            }
+            return chunks[chunks.count - 1]
+        }
+        let result: [PathProxy]? = chunks.count > 1 ? chunks : nil
+        self._chunks = .some(result)
+        self._chunkSize = maxSymbols
+        return result
     }
 
     // upstream: `const canBoost = ctx && size[0] < BOOST_SIZE_THRESHOLD` (LargeSymbolDraw.ts:39,102) →
@@ -261,6 +294,7 @@ public final class LargeSymbolPath: Path {
     // Invalidate the cached bounding rect when the shape (points/size) changes.
     public override func dirtyShape() {
         self._largeRect = nil
+        self._chunks = nil
         super.dirtyShape()
     }
 }

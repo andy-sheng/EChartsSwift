@@ -50,5 +50,36 @@ final class CGRectBatchTests: XCTestCase {
         for i in 0..<35 where i != 12 { expected.fill(CGRect(x: i * 2, y: 10, width: 2, height: 20)) }
         XCTAssertEqual(pixels(actual), pixels(expected))
     }
+
+    // Large-symbol chunks (`Path.largeSymbolPathChunks`): painted as one fill / stroke, so symbols
+    // overlapping across chunks never compound a translucent color, the element alpha or a shadow.
+    func testChunksPaintLikeOnePath() {
+        let rects = (0..<24).map { CGRect(x: 8 + ($0 % 6) * 9, y: 10 + ($0 / 6) * 11, width: 30, height: 24) }
+        let chunks: [PathProxy] = stride(from: 0, to: rects.count, by: 5).map { start in
+            let proxy = PathProxy(false)
+            for r in rects[start..<min(start + 5, rects.count)] {
+                _ = proxy.rect(Double(r.minX), Double(r.minY), Double(r.width), Double(r.height))
+            }
+            return proxy
+        }
+        for (colorAlpha, opacity, shadow) in [(1.0, 1.0, false), (0.4, 1.0, false), (1.0, 0.5, false), (0.6, 0.7, true)] {
+            let actual = context(), expected = context()
+            var paint = PaintStyle()
+            paint.fill = CGColor(srgbRed: 0.2, green: 0.4, blue: 0.8, alpha: colorAlpha)
+            paint.stroke = CGColor(srgbRed: 0.9, green: 0.2, blue: 0.1, alpha: colorAlpha)
+            paint.lineWidth = 2
+            paint.opacity = opacity
+            for ctx in [actual, expected] {
+                ctx.setAlpha(opacity)
+                if shadow { ctx.setShadow(offset: CGSize(width: 2, height: 3), blur: 0, color: CGColor(gray: 0, alpha: 0.5)) }
+            }
+            CGRenderer(actual, flipped: false).paintChunks(chunks, paint, composited: opacity != 1 || shadow)
+            expected.addRects(rects); expected.setFillColor(paint.fill!); expected.fillPath()
+            expected.addRects(rects); expected.setStrokeColor(paint.stroke!); expected.setLineWidth(2); expected.strokePath()
+            // A shadow cast by the layer rounds the 8-bit channels once more: ±1.
+            let worst = zip(pixels(actual), pixels(expected)).map { abs(Int($0) - Int($1)) }.max() ?? 0
+            XCTAssertLessThanOrEqual(worst, shadow ? 1 : 0, "alpha \(colorAlpha), opacity \(opacity), shadow \(shadow)")
+        }
+    }
 }
 #endif
