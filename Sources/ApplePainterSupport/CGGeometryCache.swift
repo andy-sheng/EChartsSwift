@@ -72,7 +72,51 @@ public final class CGGeometryCache {
         return path
     }
 
+    private struct ChunkEntry {
+        weak var first: PathProxy?
+        let lengths: [Double]
+        let commands: [ContiguousArray<Double>]
+        let paths: [CGPath]
+    }
+    private static let maxChunkLists = 32
+    private var chunkLists: [ObjectIdentifier: ChunkEntry] = [:]
+    private var chunkOrder: [ObjectIdentifier] = []
+
+    /// The compiled chunks of a large-symbol path (`Path.largeSymbolPathChunks`), kept as ONE entry
+    /// per chunk list: a series of thousands of chunks must not evict every other path of the scene.
+    /// A path hands out new proxies whenever its geometry changes, so a list is matched by its first
+    /// proxy and every chunk's command buffer (O(1) per chunk while the buffers are unchanged).
+    public func paths(forChunks chunks: [PathProxy]) -> [CGPath] {
+        guard let first = chunks.first else { return [] }
+        let key = ObjectIdentifier(first)
+        if let entry = chunkLists[key], entry.first === first, entry.commands.count == chunks.count,
+           chunks.indices.allSatisfy({ entry.lengths[$0] == chunks[$0].len() && entry.commands[$0] == chunks[$0].data }) {
+            return entry.paths
+        }
+        let paths = chunks.map { proxy -> CGPath in
+            let rebuilder = CGPathRebuilder()
+            proxy.rebuildPath(rebuilder, 1)
+            return rebuilder.path.copy()!
+        }
+        if chunkLists.updateValue(ChunkEntry(first: first, lengths: chunks.map { $0.len() },
+                                             commands: chunks.map { $0.data }, paths: paths), forKey: key) == nil {
+            chunkOrder.append(key)
+        }
+        // Drop lists whose path is gone, then the oldest beyond the bound.
+        chunkOrder.removeAll { key in
+            guard chunkLists[key]?.first == nil else { return false }
+            chunkLists.removeValue(forKey: key)
+            return true
+        }
+        while chunkOrder.count > Self.maxChunkLists {
+            chunkLists.removeValue(forKey: chunkOrder.removeFirst())
+        }
+        return paths
+    }
+
     public func removeAll() {
+        chunkLists.removeAll()
+        chunkOrder.removeAll()
         entries.removeAll()
         order.removeAll()
         head = 0

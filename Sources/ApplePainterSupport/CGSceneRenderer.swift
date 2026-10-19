@@ -207,6 +207,9 @@ public func drawDisplayable(_ el: Displayable, into r: CGRenderer) {
     // else: unknown Displayable — nothing to paint.
 }
 
+/// Symbols per chunk for `largeSymbolPathChunks` (step 5b of `drawPath`).
+let largeSymbolChunkSize = 8
+
 private func drawPath(_ p: Path, into r: CGRenderer) {
     if p.invisible { return }
     guard let style = p.pathStyle else { return }
@@ -270,6 +273,20 @@ private func drawPath(_ p: Path, into r: CGRenderer) {
     if let boost = p.largeSymbolBoostRects() {
         r.fillBoostRects(boost, paint, compound: p.largeRectsAreCompound
             && makeShadow(style) == nil && (style.blend == nil || style.blend == "source-over"))
+        return
+    }
+
+    // 5b. Large-symbol chunks: a large-mode path of symbols too big to boost is filled as bounded
+    //     chunks of whole symbols instead of one N-sub-path CGPath — see the base Path's
+    //     `largeSymbolPathChunks()` doc (20 000 10px circles: minutes as one path). Solid paint only;
+    //     gradients, patterns and a partial strokePercent keep the single-path draw below.
+    if (style.strokePercent ?? 1) >= 1,
+       paint.fillGradient == nil, paint.fillPattern == nil,
+       paint.strokeGradient == nil, paint.strokePattern == nil,
+       let chunks = p.largeSymbolPathChunks(largeSymbolChunkSize) {
+        let composited = paint.opacity != 1 || makeShadow(style) != nil
+            || !(style.blend == nil || style.blend == "" || style.blend == "source-over")
+        r.paintChunks(chunks, paint, composited: composited)
         return
     }
 

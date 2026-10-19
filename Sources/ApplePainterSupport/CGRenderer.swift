@@ -110,6 +110,38 @@ public final class CGRenderer: Renderer {
         }
     }
 
+    /// Large-symbol chunks (`Path.largeSymbolPathChunks`): fill every chunk, then stroke every
+    /// chunk (`strokeFirst` swaps the passes), as the single path would be painted. Canvas paints
+    /// that path with one `fill()` / `stroke()`, so overlapping symbols never compound a
+    /// translucent color, the element alpha, a shadow or a blend mode. A pass that has any of those
+    /// paints its chunks opaque into one transparency layer and composites the layer once with them.
+    /// `composited` = the gstate holds element alpha, a shadow or a blend mode.
+    public func paintChunks(_ chunks: [PathProxy], _ style: PaintStyle, composited: Bool) {
+        let paths = geometryCache.paths(forChunks: chunks)
+        for stroking in style.strokeFirst ? [true, false] : [false, true] {
+            guard let color = stroking ? style.stroke : style.fill else { continue }
+            let layered = composited || color.alpha < 1
+            var pass = style
+            if layered {
+                let opaque = color.copy(alpha: 1) ?? color
+                if stroking { pass.stroke = opaque } else { pass.fill = opaque }
+                ctx.saveGState()
+                ctx.setAlpha(CGFloat(style.opacity) * color.alpha)
+                // Inside the layer: alpha 1, no shadow, normal blend; all three apply when it ends.
+                ctx.beginTransparencyLayer(auxiliaryInfo: nil)
+            }
+            for path in paths {
+                _preparedPath = path
+                if stroking { strokePath(pass) } else { fillPath(pass) }
+            }
+            if layered {
+                ctx.endTransparencyLayer()
+                ctx.restoreGState()
+            }
+        }
+        _preparedPath = nil
+    }
+
     public func strokePath(_ style: PaintStyle) {
         // Gradient / pattern stroke: replace the path with its stroked outline, then fill that
         // outline with the gradient/pattern (Core Graphics has no "stroke with gradient").
